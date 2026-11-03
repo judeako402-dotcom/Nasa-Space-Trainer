@@ -4,23 +4,23 @@ import { shuffle } from './model';
 type Complete = () => void;
 type Cleanups = (() => void)[];
 
-export function renderTaskGame(kind: TaskKind, host: HTMLElement, complete: Complete, cleanups: Cleanups): void {
+export function renderTaskGame(kind: TaskKind, host: HTMLElement, complete: Complete, cleanups: Cleanups, taskName?: string): void {
   switch (kind) {
     case 'wiring': renderWiring(host, complete); break;
     case 'swipe': renderSwipe(host, complete); break;
     case 'download': renderDownload(host, complete, cleanups); break;
-    case 'fuel': renderClicker(host, complete, 'PUMP FUEL', 8, '⛽'); break;
+    case 'fuel': renderClicker(host, complete, taskName ?? 'RESTORE POWER', 8, '⚡'); break;
     case 'calibrate': renderCalibrate(host, complete, cleanups); break;
     case 'inspect': renderInspect(host, complete); break;
-    case 'asteroids': renderAsteroids(host, complete); break;
     case 'shield': renderShield(host, complete); break;
     case 'garbage': renderHold(host, complete, cleanups, {
-      help: 'Hold the garbage chute lever until the bay is clear.',
-      label: 'PULL LEVER',
-      done: 'BAY CLEARED',
+      help: 'Clear the reusable filter tray, then confirm the airflow indicator is back in range.',
+      label: 'CLEAN FILTER',
+      done: 'FILTER SERVICE COMPLETE',
       duration: 2200,
       className: 'garbage',
     }); break;
+    case 'cards': renderCards(host, complete, taskName ?? 'Complete the task'); break;
   }
 }
 
@@ -34,6 +34,8 @@ function header(host: HTMLElement, help: string): void {
 function statusLine(host: HTMLElement, text: string): HTMLElement {
   const div = document.createElement('div');
   div.className = 'task-status';
+  div.setAttribute('role', 'status');
+  div.setAttribute('aria-live', 'polite');
   div.textContent = text;
   host.append(div);
   return div;
@@ -99,15 +101,15 @@ function renderWiring(host: HTMLElement, complete: Complete): void {
 }
 
 function renderSwipe(host: HTMLElement, complete: Complete): void {
-  header(host, 'Drag the ID card through the reader at a steady speed.');
+  header(host, 'Follow the suit-lock checklist and pass the pressure-seal verification at a steady pace.');
   const track = document.createElement('div');
   track.className = 'swipe-track';
   const reader = document.createElement('div');
   reader.className = 'swipe-reader';
-  reader.textContent = 'READER';
+  reader.textContent = 'SUIT CHECK';
   const card = document.createElement('div');
   card.className = 'swipe-card';
-  card.textContent = 'CREW ID';
+  card.textContent = 'SEAL CHECK';
   track.append(reader, card);
   host.append(track);
   const status = statusLine(host, 'DRAG THE CARD →');
@@ -190,7 +192,7 @@ function renderDownload(host: HTMLElement, complete: Complete, cleanups: Cleanup
 }
 
 function renderClicker(host: HTMLElement, complete: Complete, label: string, count: number, icon: string): void {
-  header(host, `Click each target: ${label}.`);
+  header(host, `Tap the power panel targets to complete: ${label}.`);
   const grid = document.createElement('div');
   grid.className = 'clicker-grid';
   host.append(grid);
@@ -277,30 +279,6 @@ function renderInspect(host: HTMLElement, complete: Complete): void {
   }
 }
 
-function renderAsteroids(host: HTMLElement, complete: Complete): void {
-  header(host, 'Clear the asteroid field. Hit eight asteroids.');
-  const field = document.createElement('div');
-  field.className = 'asteroid-field';
-  host.append(field);
-  const status = statusLine(host, '0 / 8');
-  let hits = 0;
-  for (let i = 0; i < 8; i += 1) {
-    const button = document.createElement('button');
-    button.className = 'asteroid';
-    button.textContent = '☄';
-    button.style.left = `${6 + (i % 4) * 23}%`;
-    button.style.top = `${12 + Math.floor(i / 4) * 46}%`;
-    button.addEventListener('click', () => {
-      if (button.classList.contains('done')) return;
-      button.classList.add('done');
-      hits += 1;
-      status.textContent = `${hits} / 8`;
-      if (hits >= 8) complete();
-    });
-    field.append(button);
-  }
-}
-
 function renderShield(host: HTMLElement, complete: Complete): void {
   header(host, 'Activate all six shield nodes.');
   const grid = document.createElement('div');
@@ -379,5 +357,77 @@ function renderHold(
   cleanups.push(() => {
     holding = false;
     cancelAnimationFrame(raf);
+  });
+}
+
+function renderCards(host: HTMLElement, complete: Complete, taskName?: string): void {
+  header(host, 'Match the symbols to complete the task.');
+  const card = document.createElement('div');
+  card.className = 'task-card-kenney';
+  card.innerHTML = `
+    <div class="card-head">
+      <div class="eyebrow">TASK</div>
+      <h2>${taskName ?? 'Cards Task'}</h2>
+      <button class="close-btn" aria-label="Close task">×</button>
+    </div>
+    <div class="card-body">
+      <div class="symbols-grid">
+        <div class="symbol-box"><span>□</span></div>
+        <div class="symbol-box"><span>◉</span></div>
+        <div class="symbol-box"><span>✚</span></div>
+        <div class="symbol-box"><span>△</span></div>
+      </div>
+      <p class="help-text">Match three symbols in a row to complete.</p>
+    </div>
+    <div class="card-footer">
+      <span class="progress">0 / 3 MATCHED</span>
+      <button class="primary-button">COMPLETE</button>
+    </div>
+  `;
+  host.append(card);
+  const symbols = card.querySelectorAll('.symbol-box');
+  let matched = 0;
+  const targetCount = 3;
+
+  // Make symbols clickable
+  symbols.forEach((symbol, _index) => {
+    symbol.addEventListener('click', () => {
+      symbol.classList.toggle('selected');
+      if (symbol.classList.contains('selected')) {
+        matched += 1;
+        const progress = card.querySelector('.progress');
+        if (progress) progress.textContent = `${matched} / ${targetCount} MATCHED`;
+      } else {
+        matched -= 1;
+        const progress = card.querySelector('.progress');
+        if (progress) progress.textContent = `${matched} / ${targetCount} MATCHED`;
+      }
+    });
+  });
+
+  card.querySelector('.primary-button')?.addEventListener('click', () => {
+    if (matched >= targetCount) {
+      complete();
+    } else {
+      // Show toast directly
+      const toast = document.querySelector('#toast');
+      if (toast) {
+        toast.textContent = `Match ${targetCount} symbols to complete. Only ${matched} matched.`;
+        toast.classList.add('visible');
+        setTimeout(() => toast.classList.remove('visible'), 3400);
+      }
+    }
+  });
+
+  card.querySelector('.close-btn')?.addEventListener('click', () => {
+    card.remove();
+    complete();
+  });
+
+  card.addEventListener('click', event => {
+    if (event.target === card) {
+      card.remove();
+      complete();
+    }
   });
 }

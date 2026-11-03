@@ -23,11 +23,21 @@ export type GamePhase = 'menu' | 'story' | 'exam' | 'launch' | 'playing' | 'repo
 export type DestinationId = 'moon' | 'mars';
 export type SpecialistId = 'repairman' | 'farmer' | 'traveller' | 'researcher' | 'shield';
 export type DifficultyId = 'cadet' | 'crew' | 'veteran';
-export type MissionMetric = 'oxygen' | 'starch' | 'morale' | 'research';
+export type MissionMetric =
+  | 'power'
+  | 'oxygen'
+  | 'water'
+  | 'starch'
+  | 'hull'
+  | 'morale'
+  | 'research';
 
 export interface MissionMetrics {
+  power: number;
   oxygen: number;
+  water: number;
   starch: number;
+  hull: number;
   morale: number;
   research: number;
 }
@@ -37,6 +47,11 @@ export interface EarthProgressReport {
   completed: number;
   assigned: number;
   event: string;
+  eventId?: string;
+  eventChoiceId?: string;
+  metrics?: MissionMetrics;
+  tasks?: string[];
+  completedTasks?: string[];
 }
 
 export interface TrialProgress {
@@ -52,8 +67,10 @@ export interface SavedTrial extends TrialProgress {
   phase: 'playing' | 'report' | 'penalty';
   tasks: string[];
   completed: string[];
+  eventId: string | null;
   reports: EarthProgressReport[];
   report: EarthProgressReport | null;
+  remainingMs?: number;
 }
 
 export interface RoomDef {
@@ -81,9 +98,9 @@ export type TaskKind =
   | 'fuel'
   | 'calibrate'
   | 'inspect'
-  | 'asteroids'
   | 'shield'
-  | 'garbage';
+  | 'garbage'
+  | 'cards';
 
 export interface TaskDef {
   id: string;
@@ -92,24 +109,30 @@ export interface TaskDef {
   roomId: string;
   x: number;
   y: number;
+  system?: 'power' | 'life' | 'farming' | 'shielding' | 'science';
 }
 
-
 export interface GameOptions {
+  masterVolume?: number;
   sound: boolean;
   volume: number;
+  music: boolean;
+  musicVolume: number;
+  lineOfSight: boolean;
   reducedMotion: boolean;
   difficulty: DifficultyId;
 }
 
 export interface PlayerSave {
-  version: 7;
+  version: 8;
   colorId: PlayerColorId;
   name: string;
   wins: number;
   losses: number;
   games: number;
   certified: boolean;
+  trainingComplete: boolean;
+  trainingRank: 'S' | 'A' | 'B' | null;
   examBest: number;
   trialDay: number;
   activeTrial: SavedTrial | null;
@@ -157,7 +180,7 @@ export interface LobbySettings {
 }
 
 export const WORLD_WIDTH = 2600;
-export const WORLD_HEIGHT = 1560;
+export const WORLD_HEIGHT = 1880;
 
 export const PLAYER_COLORS: PlayerColor[] = [
   { id: 'red', name: 'Red', hex: 0xc51111, css: '#c51111' },
@@ -179,65 +202,67 @@ export function getColor(id: PlayerColorId): PlayerColor {
 }
 
 export const ROOMS: RoomDef[] = [
-  { id: 'upper-engine', name: 'Upper Engine', x: 120, y: 130, w: 300, h: 300, tint: 0x49556a, icon: '⚙' },
-  { id: 'reactor', name: 'Reactor', x: 120, y: 520, w: 320, h: 360, tint: 0x5b4654, icon: '◉' },
-  { id: 'lower-engine', name: 'Lower Engine', x: 120, y: 1000, w: 300, h: 300, tint: 0x49556a, icon: '⚙' },
-  { id: 'medbay', name: 'MedBay', x: 520, y: 380, w: 340, h: 300, tint: 0x3f6a69, icon: '✚' },
-  { id: 'cafeteria', name: 'Cafeteria', x: 960, y: 110, w: 600, h: 430, tint: 0x5a6b86, icon: '☕' },
-  { id: 'weapons', name: 'Weapons', x: 1720, y: 150, w: 320, h: 300, tint: 0x4c5874, icon: '✦' },
-  { id: 'navigation', name: 'Navigation', x: 2160, y: 240, w: 320, h: 300, tint: 0x3d5574, icon: '✧' },
-  { id: 'o2', name: 'O2', x: 1740, y: 540, w: 250, h: 230, tint: 0x3e6a58, icon: '❋' },
-  { id: 'admin', name: 'Admin', x: 2050, y: 650, w: 340, h: 300, tint: 0x476252, icon: '▤' },
-  { id: 'storage', name: 'Storage', x: 920, y: 860, w: 460, h: 420, tint: 0x5e5040, icon: '▦' },
-  { id: 'electrical', name: 'Electrical', x: 1450, y: 1010, w: 290, h: 300, tint: 0x625c3d, icon: '⚡' },
-  { id: 'security', name: 'Security', x: 540, y: 980, w: 300, h: 290, tint: 0x45516b, icon: '◈' },
-  { id: 'shields', name: 'Shields', x: 1800, y: 1040, w: 340, h: 300, tint: 0x3f6268, icon: '◍' },
-  { id: 'communications', name: 'Comms', x: 2200, y: 1050, w: 300, h: 260, tint: 0x4b4470, icon: '⌁' },
+  { id: 'upper-engine', name: 'Solar Array Control', x: 100, y: 100, w: 500, h: 300, tint: 0x49556a, icon: '⚙' },
+  { id: 'reactor', name: 'Power & Thermal', x: 1450, y: 900, w: 450, h: 300, tint: 0x5b4654, icon: '◉' },
+  { id: 'lower-engine', name: 'Workshop & Spares', x: 100, y: 1300, w: 500, h: 250, tint: 0x49556a, icon: '⚙' },
+  { id: 'medbay', name: 'Medical & Sample Lab', x: 100, y: 500, w: 500, h: 300, tint: 0x3f6a69, icon: '✚' },
+  { id: 'cafeteria', name: 'Greenhouse & Galley', x: 700, y: 100, w: 700, h: 300, tint: 0x5a6b86, icon: '☕' },
+  { id: 'weapons', name: 'EVA Preparation', x: 1500, y: 100, w: 500, h: 300, tint: 0x4c5874, icon: '✦' },
+  { id: 'navigation', name: 'Mission Planning', x: 2100, y: 100, w: 400, h: 300, tint: 0x3d5574, icon: '✧' },
+  { id: 'o2', name: 'Life Support', x: 1450, y: 500, w: 450, h: 300, tint: 0x3e6a58, icon: '❋' },
+  { id: 'admin', name: 'Command & Data', x: 2000, y: 500, w: 500, h: 300, tint: 0x476252, icon: '▤' },
+  { id: 'storage', name: 'Cargo & Water', x: 700, y: 900, w: 450, h: 300, tint: 0x5e5040, icon: '▦' },
+  { id: 'electrical', name: 'Electrical Shop', x: 700, y: 500, w: 450, h: 300, tint: 0x625c3d, icon: '⚡' },
+  { id: 'security', name: 'Rover & Robotics', x: 100, y: 900, w: 500, h: 300, tint: 0x45516b, icon: '◈' },
+  { id: 'shields', name: 'Radiation Shelter', x: 2000, y: 900, w: 500, h: 300, tint: 0x3f6268, icon: '◍' },
+  { id: 'communications', name: 'Communications', x: 700, y: 1300, w: 450, h: 250, tint: 0x4b4470, icon: '⌁' },
+  { id: 'exterior', name: 'EVA Worksite', x: 1200, y: 1500, w: 1300, h: 320, tint: 0x544b45, icon: 'E' },
 ];
 
 export const CORRIDORS: CorridorDef[] = [
-  { x: 420, y: 250, w: 546, h: 100 },
-  { x: 1560, y: 260, w: 166, h: 100 },
-  { x: 2040, y: 320, w: 126, h: 100 },
-  { x: 1780, y: 444, w: 100, h: 100 },
-  { x: 1984, y: 655, w: 72, h: 100 },
-  { x: 2220, y: 540, w: 100, h: 116 },
-  { x: 2160, y: 944, w: 100, h: 112 },
-  { x: 2140, y: 1120, w: 66, h: 100 },
-  { x: 1210, y: 540, w: 100, h: 326 },
-  { x: 1380, y: 1080, w: 76, h: 100 },
-  { x: 1734, y: 1080, w: 72, h: 100 },
-  { x: 840, y: 1070, w: 86, h: 100 },
-  { x: 420, y: 1070, w: 126, h: 100 },
-  { x: 220, y: 874, w: 100, h: 132 },
-  { x: 440, y: 650, w: 86, h: 100 },
-  { x: 220, y: 430, w: 100, h: 96 },
-  { x: 860, y: 460, w: 106, h: 100 },
-  { x: 660, y: 680, w: 100, h: 306 },
+  { x: 550, y: 200, w: 200, h: 100 },
+  { x: 1350, y: 200, w: 200, h: 100 },
+  { x: 1950, y: 200, w: 250, h: 100 },
+  { x: 250, y: 350, w: 100, h: 1050 },
+  { x: 1225, y: 350, w: 100, h: 1200 },
+  { x: 2200, y: 350, w: 100, h: 900 },
+  { x: 550, y: 600, w: 200, h: 100 },
+  { x: 1100, y: 600, w: 1150, h: 100 },
+
+  { x: 850, y: 750, w: 100, h: 200 },
+  { x: 1350, y: 1000, w: 150, h: 100 },
+  { x: 1225, y: 1000, w: 1075, h: 100 },
+  { x: 850, y: 1150, w: 100, h: 200 },
+  { x: 1100, y: 1400, w: 200, h: 100 },
 ];
 
 export const TASKS: TaskDef[] = [
-  { id: 'fuel-upper', name: 'Fuel Engines', kind: 'fuel', roomId: 'upper-engine', x: 280, y: 210 },
-  { id: 'align-engine', name: 'Align Engine', kind: 'calibrate', roomId: 'upper-engine', x: 200, y: 330 },
-  { id: 'wiring-cafeteria', name: 'Fix Wiring', kind: 'wiring', roomId: 'cafeteria', x: 1170, y: 200 },
-  { id: 'garbage', name: 'Empty Garbage', kind: 'garbage', roomId: 'cafeteria', x: 1090, y: 450 },
-  { id: 'asteroids', name: 'Clear Asteroids', kind: 'asteroids', roomId: 'weapons', x: 1880, y: 260 },
-  { id: 'steering', name: 'Stabilize Steering', kind: 'calibrate', roomId: 'navigation', x: 2280, y: 330 },
-  { id: 'download-nav', name: 'Download Data', kind: 'download', roomId: 'navigation', x: 2390, y: 450 },
-  { id: 'reactor-start', name: 'Start Reactor', kind: 'calibrate', roomId: 'reactor', x: 260, y: 650 },
-  { id: 'inspect', name: 'Inspect Sample', kind: 'inspect', roomId: 'medbay', x: 650, y: 470 },
-  { id: 'calibrate', name: 'Calibrate Distributor', kind: 'calibrate', roomId: 'electrical', x: 1590, y: 1100 },
-  { id: 'swipe', name: 'Swipe Card', kind: 'swipe', roomId: 'admin', x: 2230, y: 750 },
-  { id: 'upload-admin', name: 'Upload Data', kind: 'download', roomId: 'admin', x: 2130, y: 860 },
-  { id: 'fuel-storage', name: 'Fuel Storage', kind: 'fuel', roomId: 'storage', x: 1040, y: 1120 },
-  { id: 'shields', name: 'Prime Shields', kind: 'shield', roomId: 'shields', x: 1960, y: 1160 },
-  { id: 'wiring-electrical', name: 'Fix Wiring', kind: 'wiring', roomId: 'electrical', x: 1520, y: 1210 },
-  { id: 'review-cams', name: 'Review Cameras', kind: 'download', roomId: 'security', x: 640, y: 1080 },
-  { id: 'clean-o2', name: 'Clean O2 Filter', kind: 'garbage', roomId: 'o2', x: 1850, y: 610 },
-  { id: 'reboot-comms', name: 'Reboot Comms', kind: 'calibrate', roomId: 'communications', x: 2330, y: 1140 },
+  { id: 'fuel-upper', name: 'Balance Solar-Battery Load', kind: 'fuel', roomId: 'upper-engine', x: 280, y: 210, system: 'power' },
+  { id: 'align-engine', name: 'Align Sun-Tracking Array', kind: 'calibrate', roomId: 'upper-engine', x: 200, y: 330, system: 'power' },
+  { id: 'wiring-cafeteria', name: 'Route Greenhouse Power', kind: 'wiring', roomId: 'cafeteria', x: 1170, y: 200, system: 'power' },
+  { id: 'garbage', name: 'Sort Galley Water Filters', kind: 'garbage', roomId: 'cafeteria', x: 1090, y: 350, system: 'life' },
+  { id: 'grow-light-balance', name: 'Balance Grow-Light Spectrum', kind: 'calibrate', roomId: 'cafeteria', x: 1330, y: 200, system: 'farming' },
+  { id: 'nutrient-loop', name: 'Check Hydroponics Nutrient Loop', kind: 'inspect', roomId: 'cafeteria', x: 1300, y: 350, system: 'farming' },
+  { id: 'asteroids', name: 'Survey EVA Safe Route', kind: 'inspect', roomId: 'weapons', x: 1880, y: 260, system: 'science' },
+  { id: 'steering', name: 'Plan Rover Traverse', kind: 'calibrate', roomId: 'navigation', x: 2280, y: 330, system: 'science' },
+  { id: 'download-nav', name: 'Upload Surface Weather', kind: 'download', roomId: 'navigation', x: 2350, y: 350, system: 'science' },
+  { id: 'reactor-start', name: 'Tune Thermal Control', kind: 'calibrate', roomId: 'reactor', x: 1650, y: 980, system: 'power' },
+  { id: 'inspect', name: 'Analyze Regolith Sample', kind: 'inspect', roomId: 'medbay', x: 400, y: 690, system: 'science' },
+  { id: 'calibrate', name: 'Balance Habitat Power Bus', kind: 'calibrate', roomId: 'electrical', x: 950, y: 690, system: 'power' },
+  { id: 'swipe', name: 'Check Suit Pressure Seal', kind: 'swipe', roomId: 'shields', x: 2150, y: 1080, system: 'shielding' },
+  { id: 'upload-admin', name: 'Send Earth Science Log', kind: 'download', roomId: 'admin', x: 2250, y: 700, system: 'science' },
+  { id: 'fuel-storage', name: 'Replace Battery Module', kind: 'fuel', roomId: 'reactor', x: 1770, y: 1100, system: 'power' },
+  { id: 'shields', name: 'Prime Shields', kind: 'shield', roomId: 'shields', x: 2250, y: 1050 },
+  { id: 'wiring-electrical', name: 'Reconnect Power Distribution Bus', kind: 'wiring', roomId: 'electrical', x: 800, y: 730, system: 'power' },
+  { id: 'review-cams', name: 'Review Rover Terrain Images', kind: 'download', roomId: 'security', x: 350, y: 1080, system: 'science' },
+  { id: 'clean-o2', name: 'Service CO2 Scrubber Filter', kind: 'garbage', roomId: 'o2', x: 1850, y: 610, system: 'life' },
+  { id: 'reboot-comms', name: 'Align Deep-Space Antenna', kind: 'calibrate', roomId: 'communications', x: 900, y: 1420, system: 'science' },
+  { id: 'eva-sample', name: 'Collect Geology Sample', kind: 'inspect', roomId: 'exterior', x: 1450, y: 1580, system: 'science' },
+  { id: 'eva-array', name: 'Inspect Exterior Power Cable', kind: 'wiring', roomId: 'exterior', x: 1900, y: 1600, system: 'power' },
+  { id: 'eva-route', name: 'Mark Return-to-Airlock Route', kind: 'download', roomId: 'exterior', x: 2330, y: 1580, system: 'science' },
 ];
 
-export const PLAYER_SPAWN = { x: 1120, y: 360 };
+export const PLAYER_SPAWN = { x: 900, y: 250 };
 
 export const SPECIALISTS: Specialist[] = [
   {
@@ -246,7 +271,7 @@ export const SPECIALISTS: Specialist[] = [
     shortName: 'REPAIR',
     role: 'Station Systems',
     art: '/assets/potato-repairman.png',
-    perk: 'Improves oxygen recovery after completed repairs.',
+    perk: 'Power, life-support, and hull jobs gain +3 recovery points.',
     description: 'You know every bolt on the station. When the alarms start, you keep the air inside.',
     accent: '#f2b544',
   },
@@ -256,7 +281,7 @@ export const SPECIALISTS: Specialist[] = [
     shortName: 'FARM',
     role: 'Hydroponics',
     art: '/assets/potato-farmer.png',
-    perk: 'Improves starch integrity after completed assignments.',
+    perk: 'Hydroponics and science jobs gain +3 specialist recovery points.',
     description: 'Soil, water, light. You can grow a meal in a crater and make it taste like home.',
     accent: '#9bd15a',
   },
@@ -276,7 +301,7 @@ export const SPECIALISTS: Specialist[] = [
     shortName: 'RESEARCH',
     role: 'Science & Samples',
     art: '/assets/potato-researcher.png',
-    perk: 'Adds research progress for completed science assignments.',
+    perk: 'Science assignments earn +3 extra research points.',
     description: 'You ask questions for a living. The crew will hear your evidence, even twice.',
     accent: '#78d8e8',
   },
@@ -286,7 +311,7 @@ export const SPECIALISTS: Specialist[] = [
     shortName: 'SHIELD',
     role: 'Radiation & Hull',
     art: '/assets/potato-default.png',
-    perk: 'Reduces the habitat impact of missed assignments.',
+    perk: 'Reduces missed-day hull loss from 4 points to 2.',
     description: 'You build walls around problems. The reactor will hold while you get there.',
     accent: '#ba9df0',
   },
@@ -326,8 +351,12 @@ export const DIFFICULTY_INFO: Record<DifficultyId, { name: string; description: 
 };
 
 export const DEFAULT_OPTIONS: GameOptions = {
+  masterVolume: 80,
   sound: true,
   volume: 60,
+  music: true,
+  musicVolume: 55,
+  lineOfSight: true,
   reducedMotion: false,
   difficulty: 'crew',
 };
@@ -352,11 +381,11 @@ export const EXAM_QUESTIONS: ExamQuestion[] = [
   {
     id: 'micrometeoroid',
     topic: 'Equipment',
-    prompt: 'Which suit layer is designed to stop tiny micrometeoroids?',
-    options: ['The soft thermal underlayer', 'The hard upper torso shell', 'The cotton neck seal', 'The mission patch'],
-    correct: [1],
-    explanation: 'The hard upper torso distributes impacts across a rigid shell. The soft layers handle temperature and flexibility.',
-    lesson: 'Suit layers have separate jobs: thermal control, pressure retention, mobility, and impact protection. The rigid shell absorbs micrometeoroid hits.',
+    prompt: 'Which part of a spacesuit helps protect astronauts from tiny micrometeoroid impacts?',
+    options: ['The micrometeoroid and thermal outer layers', 'The soft underwear layer alone', 'The cotton neck seal', 'The mission patch'],
+    correct: [0],
+    explanation: 'EVA suits use layered outer garments for thermal control and micrometeoroid protection, along with separate pressure and mobility layers.',
+    lesson: 'A spacesuit is a small spacecraft. Its layers manage pressure, temperature, movement, and small-particle impacts; no single layer makes an astronaut invulnerable.',
   },
   {
     id: 'hull-breach',
@@ -415,11 +444,11 @@ export const EXAM_QUESTIONS: ExamQuestion[] = [
   {
     id: 'radiation',
     topic: 'Shielding',
-    prompt: 'Which shielding approach is most effective against cosmic radiation?',
+    prompt: 'Why do engineers study hydrogen-rich materials such as water for radiation shielding?',
     options: ['A thin sheet of aluminum foil', 'Water-rich or polyethylene layers', 'A layer of dried potato peel', 'A painted hull'],
     correct: [1],
-    explanation: 'Hydrogen-rich materials such as water and polyethylene slow energetic particles effectively.',
-    lesson: 'Cosmic rays are best slowed by dense, hydrogen-rich material. Water walls and polyethylene panels are practical habitat shields.',
+    explanation: 'Hydrogen-rich materials can help reduce exposure to some energetic particles, but no simple wall blocks every kind of space radiation.',
+    lesson: 'Radiation protection is a design challenge involving shielding, mission timing, shelter, and monitoring. The game’s hull gauge is a simplified teaching model.',
   },
   {
     id: 'gravity-turn',
@@ -468,7 +497,9 @@ export const EXAM_QUESTIONS: ExamQuestion[] = [
   },
 ];
 
-export const SAVE_KEY = 'spudnaut-cooperative-trial-save-v7';
+export const SAVE_KEY = 'spudnaut-cooperative-trial-save-v8';
+export const SAVE_BACKUP_KEY = 'spudnaut-cooperative-trial-save-v8-backup';
+export const LEGACY_SAVE_KEYS = ['spudnaut-cooperative-trial-save-v7'] as const;
 
 function isColorId(value: unknown): value is PlayerColorId {
   return typeof value === 'string' && PLAYER_COLORS.some(color => color.id === value);
@@ -486,15 +517,17 @@ function isDifficultyId(value: unknown): value is DifficultyId {
   return value === 'cadet' || value === 'crew' || value === 'veteran';
 }
 
-function defaultSave(): PlayerSave {
+export function defaultSave(): PlayerSave {
   return {
-    version: 7,
+    version: 8,
     colorId: 'orange',
     name: 'Spudnaut',
     wins: 0,
     losses: 0,
     games: 0,
     certified: false,
+    trainingComplete: false,
+    trainingRank: null,
     examBest: 0,
     trialDay: 0,
     activeTrial: null,
@@ -504,29 +537,59 @@ function defaultSave(): PlayerSave {
   };
 }
 
+function readRawSave(): string | null {
+  try {
+    const current = localStorage.getItem(SAVE_KEY);
+    if (current) {
+      try {
+        JSON.parse(current);
+        return current;
+      } catch {
+        const backup = localStorage.getItem(SAVE_BACKUP_KEY);
+        return backup ?? current;
+      }
+    }
+    for (const key of LEGACY_SAVE_KEYS) {
+      const legacy = localStorage.getItem(key);
+      if (legacy) return legacy;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export function loadSave(): PlayerSave {
   try {
-    const value = localStorage.getItem(SAVE_KEY);
+    const value = readRawSave();
     if (!value) return defaultSave();
     const parsed = JSON.parse(value) as Partial<PlayerSave> & { version?: number };
     const fallback = defaultSave();
     const options = (parsed.options ?? {}) as Partial<GameOptions>;
     return {
-      version: 7,
+      version: 8,
       colorId: isColorId(parsed.colorId) ? parsed.colorId : fallback.colorId,
       name: typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name.slice(0, 14) : fallback.name,
       wins: Number.isFinite(parsed.wins) ? Number(parsed.wins) : 0,
       losses: Number.isFinite(parsed.losses) ? Number(parsed.losses) : 0,
       games: Number.isFinite(parsed.games) ? Number(parsed.games) : 0,
       certified: Boolean(parsed.certified),
+      trainingComplete: Boolean(parsed.trainingComplete),
+      trainingRank: parsed.trainingRank === 'S' || parsed.trainingRank === 'A' || parsed.trainingRank === 'B'
+        ? parsed.trainingRank
+        : null,
       examBest: Number.isFinite(parsed.examBest) ? Number(parsed.examBest) : 0,
       trialDay: Number.isFinite(parsed.trialDay) ? Math.max(0, Math.min(TRIAL_MAX_DAY, Number(parsed.trialDay))) : 0,
       activeTrial: parseSavedTrial(parsed.activeTrial),
       specialist: isSpecialistId(parsed.specialist) ? parsed.specialist : fallback.specialist,
       destination: isDestinationId(parsed.destination) ? parsed.destination : fallback.destination,
       options: {
+        masterVolume: typeof options.masterVolume === 'number' ? Math.max(0, Math.min(100, options.masterVolume)) : (fallback.options.masterVolume ?? 80),
         sound: typeof options.sound === 'boolean' ? options.sound : fallback.options.sound,
         volume: typeof options.volume === 'number' ? Math.max(0, Math.min(100, options.volume)) : fallback.options.volume,
+        music: typeof options.music === 'boolean' ? options.music : fallback.options.music,
+        musicVolume: typeof options.musicVolume === 'number' ? Math.max(0, Math.min(100, options.musicVolume)) : fallback.options.musicVolume,
+        lineOfSight: typeof options.lineOfSight === 'boolean' ? options.lineOfSight : fallback.options.lineOfSight,
         reducedMotion: typeof options.reducedMotion === 'boolean' ? options.reducedMotion : fallback.options.reducedMotion,
         difficulty: isDifficultyId(options.difficulty) ? options.difficulty : fallback.options.difficulty,
       },
@@ -545,39 +608,84 @@ function parseSavedTrial(value: unknown): SavedTrial | null {
   if (!Array.isArray(trial.tasks) || !trial.tasks.every(id => typeof id === 'string' && TASKS.some(task => task.id === id))) return null;
   if (!Array.isArray(trial.completed) || !trial.completed.every(id => typeof id === 'string' && trial.tasks?.includes(id))) return null;
   if (!Number.isFinite(trial.totalAssigned) || !Number.isFinite(trial.totalCompleted) || !Number.isFinite(trial.missedDays)) return null;
-  if (!trial.metrics || !['oxygen', 'starch', 'morale', 'research'].every(key => {
-    const metric = trial.metrics?.[key as keyof MissionMetrics];
-    return typeof metric === 'number' && Number.isFinite(metric) && metric >= 0 && metric <= 100;
-  })) return null;
-  const reports = Array.isArray(trial.reports) ? trial.reports.filter((report): report is EarthProgressReport => (
-    Boolean(report)
-    && Number.isInteger(report.day)
-    && Number.isInteger(report.completed)
-    && Number.isInteger(report.assigned)
-    && typeof report.event === 'string'
-  )) : [];
-  const report = trial.report && Number.isInteger(trial.report.day)
-    && Number.isInteger(trial.report.completed) && Number.isInteger(trial.report.assigned)
-    && typeof trial.report.event === 'string'
-    ? trial.report
-    : null;
+  const metrics = migrateMetrics(trial.metrics);
+  if (!metrics) return null;
+  const parseReport = (value: unknown): EarthProgressReport | null => {
+    if (!value || typeof value !== 'object') return null;
+    const raw = value as Partial<EarthProgressReport>;
+    if (!Number.isInteger(raw.day) || !Number.isInteger(raw.completed) || !Number.isInteger(raw.assigned) || typeof raw.event !== 'string') return null;
+    const validTaskIds = (ids: unknown): string[] | undefined => Array.isArray(ids)
+      ? ids.filter((id): id is string => typeof id === 'string' && TASKS.some(task => task.id === id))
+      : undefined;
+    return {
+      day: Number(raw.day), completed: Number(raw.completed), assigned: Number(raw.assigned), event: raw.event,
+      eventId: typeof raw.eventId === 'string' ? raw.eventId : undefined,
+      eventChoiceId: typeof raw.eventChoiceId === 'string' ? raw.eventChoiceId : undefined,
+      metrics: raw.metrics ? migrateMetrics(raw.metrics) ?? undefined : undefined,
+      tasks: validTaskIds(raw.tasks), completedTasks: validTaskIds(raw.completedTasks),
+    };
+  };
+  const reports = Array.isArray(trial.reports)
+    ? trial.reports.map(parseReport).filter((item): item is EarthProgressReport => Boolean(item))
+    : [];
+  const report = parseReport(trial.report);
   return {
     phase: trial.phase,
     day: Number(trial.day),
     penaltyDay: Number(trial.penaltyDay),
     tasks: [...trial.tasks],
     completed: [...trial.completed],
+    eventId: typeof trial.eventId === 'string' ? trial.eventId : null,
     totalAssigned: Math.max(0, Number(trial.totalAssigned)),
     totalCompleted: Math.max(0, Number(trial.totalCompleted)),
     missedDays: Math.max(0, Number(trial.missedDays)),
-    metrics: { ...trial.metrics },
+    metrics,
     reports: reports.slice(-TRIAL_MAX_DAY - PENALTY_MAX_DAY),
     report,
+    remainingMs: typeof trial.remainingMs === 'number' ? Math.max(0, Math.min(300000, trial.remainingMs)) : undefined,
+  };
+}
+
+/* v7 saves only tracked oxygen, starch, morale, and research. Fill the new
+   four-system fields with defensible defaults so old runs can resume. */
+function migrateMetrics(value: unknown): MissionMetrics | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+  const pick = (key: string, fallback: number): number | null => {
+    if (raw[key] === undefined) return fallback;
+    const metric = Number(raw[key]);
+    return Number.isFinite(metric) ? Math.max(0, Math.min(100, metric)) : null;
+  };
+  const oxygen = pick('oxygen', 82);
+  const starch = pick('starch', 78);
+  const morale = pick('morale', 72);
+  const research = pick('research', 8);
+  const power = pick('power', 74);
+  const water = pick('water', 76);
+  const hull = pick('hull', 80);
+  if ([oxygen, starch, morale, research, power, water, hull].some(metric => metric === null)) return null;
+  return {
+    power: power as number,
+    oxygen: oxygen as number,
+    water: water as number,
+    starch: starch as number,
+    hull: hull as number,
+    morale: morale as number,
+    research: research as number,
   };
 }
 
 export function persistSave(save: PlayerSave): void {
   try {
+    const previous = localStorage.getItem(SAVE_KEY);
+    if (previous) {
+      try {
+        JSON.parse(previous);
+        localStorage.setItem(SAVE_BACKUP_KEY, previous);
+      } catch {
+        // Keep the last known-good backup when the current value is corrupt.
+      }
+    }
     localStorage.setItem(SAVE_KEY, JSON.stringify(save));
   } catch {
     /* Storage can be disabled in private browsing. */
