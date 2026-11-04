@@ -1,0 +1,8 @@
+# GitHub Linguist configuration — highlight JavaScript & Phaser 3 engine code
+Assets/** linguist-vendored
+public/assets/** linguist-vendored
+src/style.css linguist-vendored
+src/ui-kit.css linguist-vendored
+*.js linguist-language=JavaScript
+*.mjs linguist-language=JavaScript
+*.d.ts linguist-vendored
