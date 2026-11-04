@@ -3,7 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
 const publicDir = join(root, 'public');
-const assets = join(root, 'Assets');
+const assets = join(root, 'unused/ui-packs');
 
 const copies = [];
 
@@ -20,7 +20,7 @@ function copy(from, to) {
 }
 
 /* Kenney sci-fi UI: HUD, task frames and meters. CC0. */
-const kenney = 'Assets/kenney_ui-pack-scifi/PNG';
+const kenney = 'unused/ui-packs/kenney_ui-pack-scifi/PNG';
 const kenneyFiles = [
   'bar_round_gloss_large.png',
   'bar_round_gloss_large_l.png',
@@ -53,11 +53,11 @@ for (const tint of ['Blue', 'Yellow', 'Green', 'Red']) {
     copy(`${kenney}/${tint}/Default/${file}`, `assets/ui/kenney/${tint.toLowerCase()}/${file}`);
   }
 }
-copy('Assets/kenney_ui-pack-scifi/Font/Kenney Future.ttf', 'assets/fonts/Kenney Future.ttf');
-copy('Assets/kenney_ui-pack-scifi/Font/Kenney Future Narrow.ttf', 'assets/fonts/Kenney Future Narrow.ttf');
-copy('Assets/kenney_ui-pack-scifi/License.txt', 'assets/ui/kenney/LICENSE.txt');
+copy('unused/ui-packs/kenney_ui-pack-scifi/Font/Kenney Future.ttf', 'assets/fonts/Kenney Future.ttf');
+copy('unused/ui-packs/kenney_ui-pack-scifi/Font/Kenney Future Narrow.ttf', 'assets/fonts/Kenney Future Narrow.ttf');
+copy('unused/ui-packs/kenney_ui-pack-scifi/License.txt', 'assets/ui/kenney/LICENSE.txt');
 
-const extra = 'Assets/kenney_ui-pack-scifi/PNG/Extra/Default';
+const extra = 'unused/ui-packs/kenney_ui-pack-scifi/PNG/Extra/Default';
 for (const file of [
   'panel_rectangle.png',
   'panel_rectangle_screws.png',
@@ -75,7 +75,7 @@ for (const file of [
 }
 
 /* Wenrexa Free Hologram: start-screen options and credits. */
-const holo = 'Assets/1. Free Hologram Interface Wenrexa/1. Free Hologram Interface Wenrexa';
+const holo = 'unused/ui-packs/1. Free Hologram Interface Wenrexa/1. Free Hologram Interface Wenrexa';
 copy(`${holo}/Button 1/Button Normal.png`, 'assets/ui/hologram/button-normal.png');
 copy(`${holo}/Button 1/Button Hover.png`, 'assets/ui/hologram/button-hover.png');
 copy(`${holo}/Button 1/Button Active.png`, 'assets/ui/hologram/button-active.png');
@@ -94,7 +94,7 @@ for (let i = 1; i <= 35; i += 1) {
 }
 
 /* Wenrexa More UI: cards, buttons, bars, sliders, checkboxes. */
-const more = 'Assets/2. More UI Hologram Interface Wenrexa';
+const more = 'unused/ui-packs/2. More UI Hologram Interface Wenrexa';
 copy(`${more}/Button 2/Button Normal.png`, 'assets/ui/hologram2/button-normal.png');
 copy(`${more}/Button 2/Button Hover.png`, 'assets/ui/hologram2/button-hover.png');
 copy(`${more}/Button 2/Button Active.png`, 'assets/ui/hologram2/button-active.png');
@@ -125,7 +125,7 @@ for (const [file, target] of [
 }
 
 /* Wenrexa RPG & Military icons: task and system glyphs at 128px. */
-const iconRoot = 'Assets/4. Icons RPG & Military +102 Wenrexa/New Assets Icons & RPG & Military +102/RPG Icons & Tools & KIT[+58-2030]/PNG/128x128px/Blue';
+const iconRoot = 'unused/ui-packs/4. Icons RPG & Military +102 Wenrexa/New Assets Icons & RPG & Military +102/RPG Icons & Tools & KIT[+58-2030]/PNG/128x128px/Blue';
 const iconFiles = [
   'Wenrexa Hammer.png',
   'Wenrexa Lightning.png',
