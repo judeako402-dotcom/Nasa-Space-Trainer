@@ -21,7 +21,7 @@ export interface PlayerColor {
 
 export type GamePhase = 'menu' | 'story' | 'exam' | 'launch' | 'playing' | 'report' | 'penalty' | 'complete';
 export type DestinationId = 'moon' | 'mars';
-export type SpecialistId = 'repairman' | 'farmer' | 'traveller' | 'researcher' | 'shield';
+export type SpecialistId = 'repairman' | 'farmer' | 'traveller' | 'researcher';
 export type DifficultyId = 'cadet' | 'crew' | 'veteran';
 export type MissionMetric =
   | 'power'
@@ -304,16 +304,6 @@ export const SPECIALISTS: Specialist[] = [
     perk: 'Science assignments earn +3 extra research points.',
     description: 'You ask questions for a living. The crew will hear your evidence, even twice.',
     accent: '#78d8e8',
-  },
-  {
-    id: 'shield',
-    name: 'Shield Expert',
-    shortName: 'SHIELD',
-    role: 'Radiation & Hull',
-    art: '/assets/potato-default.png',
-    perk: 'Reduces missed-day hull loss from 4 points to 2.',
-    description: 'You build walls around problems. The reactor will hold while you get there.',
-    accent: '#ba9df0',
   },
 ];
 
@@ -675,8 +665,14 @@ function migrateMetrics(value: unknown): MissionMetrics | null {
   };
 }
 
-export function persistSave(save: PlayerSave): void {
+export function persistSave(save: PlayerSave, { replaceBackup = false } = {}): boolean {
   try {
+    const serialized = JSON.stringify(save);
+    if (replaceBackup) {
+      localStorage.setItem(SAVE_BACKUP_KEY, serialized);
+      localStorage.setItem(SAVE_KEY, serialized);
+      return true;
+    }
     const previous = localStorage.getItem(SAVE_KEY);
     if (previous) {
       try {
@@ -686,9 +682,10 @@ export function persistSave(save: PlayerSave): void {
         // Keep the last known-good backup when the current value is corrupt.
       }
     }
-    localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+    localStorage.setItem(SAVE_KEY, serialized);
+    return true;
   } catch {
-    /* Storage can be disabled in private browsing. */
+    return false;
   }
 }
 

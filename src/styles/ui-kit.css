@@ -352,47 +352,6 @@
   height: 100%;
 }
 
-.planning-panel {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: min(1100px, calc(100vw - 32px));
-  max-height: calc(100vh - 40px);
-  overflow: auto;
-  display: grid;
-  gap: 18px;
-  padding: clamp(22px, 6vw, 54px);
-}
-
-.offers-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 14px;
-}
-
-.offer-card {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 14px;
-  align-items: center;
-  padding: 16px 18px;
-  text-align: left;
-  background: url('/assets/ui/kenney/panel_rectangle.png') center/100% 100% no-repeat;
-  color: #eef6ff;
-  border: none;
-  cursor: pointer;
-}
-
-.offer-card.selected {
-  box-shadow: 0 0 40px rgba(122, 215, 255, 0.24);
-}
-
-.offer-card img {
-  width: 42px;
-  height: 42px;
-}
-
 .event-card-panel {
   position: absolute;
   left: 50%;
@@ -494,15 +453,32 @@
 .training-map,
 .training-exit,
 .training-toggle {
-  border: 1px solid rgba(125, 215, 255, 0.45);
-  border-radius: 3px;
-  padding: 6px 8px;
-  background: rgba(15, 35, 54, 0.88);
+  min-height: 44px;
+  border: 1px solid #526385;
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: #152541;
   color: #eef6ff;
-  font: inherit;
-  font-size: 8px;
-  letter-spacing: 0.05em;
+  font: 700 11px/1.2 var(--display);
   cursor: pointer;
+}
+
+.training-map kbd {
+  margin-left: 3px;
+  color: #9beeff;
+  font: 700 10px/1 var(--mono);
+}
+
+.training-panel button:focus-visible {
+  outline: 2px solid #9beeff;
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .training-panel button:hover {
+    border-color: #9beeff;
+    background: #284969;
+  }
 }
 
 .training-controls {
@@ -662,45 +638,6 @@
   left: 30px;
 }
 
-/* HUD improvements */
-.hud {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  padding: 16px 24px;
-  display: grid;
-  gap: 12px;
-  background: radial-gradient(circle at top, rgba(30, 80, 120, 0.4), transparent 60%), #050912;
-  backdrop-filter: blur(4px);
-  z-index: 50;
-}
-
-.hud-top-left {
-  display: grid;
-  grid-template-columns: auto auto auto;
-  gap: 12px;
-  align-items: center;
-}
-
-.hud-top-right {
-  display: grid;
-  grid-template-columns: auto auto auto auto;
-  gap: 8px;
-  align-items: center;
-}
-
-.hud-square {
-  background: url('/assets/ui/kenney/button_rectangle.png') center/100% 100% no-repeat;
-  border: none;
-  color: #eef6ff;
-  padding: 8px 14px;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  cursor: pointer;
-}
-
 .hud-bottom-left {
   display: grid;
   grid-template-columns: auto auto;
@@ -748,20 +685,4 @@
   text-transform: uppercase;
   letter-spacing: 0.1em;
   cursor: pointer;
-}
-
-@media (max-width: 768px) {
-  .hud-top-right {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .hud-square {
-    padding: 6px 10px;
-    font-size: 9px;
-  }
-  
-  .hud-top-left {
-    grid-template-columns: auto auto;
-    gap: 8px;
-  }
 }

@@ -52,7 +52,7 @@ export const STORY_BEATS: StoryBeat[] = [
     id: 'roles',
     kicker: 'CREW ROLES · TRADEOFFS',
     title: 'Every specialist leaves something behind.',
-    body: 'Repairmen keep the air inside. Farmers protect the starch supply. Travellers move faster and scout farther. Researchers turn samples into evidence. Shield experts hold the hull against radiation. Choose the tradeoff you can live with.',
+    body: 'Repairmen keep the air inside. Farmers protect the starch supply. Travellers move faster and scout farther. Researchers turn samples into evidence. Choose the tradeoff you can live with.',
     note: 'Your role changes which assignments reach you first.',
     art: '/assets/characters.jpg',
     cutscene: 'role-tradeoff-table',

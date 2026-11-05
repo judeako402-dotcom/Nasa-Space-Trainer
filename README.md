@@ -34,7 +34,9 @@ The trial is cooperative: there are no impostors, kills, meetings, voting, eject
 | Click or tap | Walk to a station or destination |
 | E | Use a nearby assignment |
 | M | Open the station map |
-| Tab | Open today's assignment list |
+| T | Open today's assignment list |
+| H | Open controls and help |
+| O | Open in-game settings |
 | Esc | Close a task or panel |
 
 ## Source layout

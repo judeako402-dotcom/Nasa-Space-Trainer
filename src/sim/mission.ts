@@ -43,7 +43,6 @@ const ROLE_SYSTEMS: Record<SpecialistId, AssignmentSystem[]> = {
   farmer: ['farming', 'life', 'science'],
   traveller: ['science', 'power', 'shielding'],
   researcher: ['science'],
-  shield: ['shielding', 'power', 'life'],
 };
 
 export function createMetrics(): MissionMetrics {
@@ -77,7 +76,7 @@ export function offersForDay(tasks: TaskDef[], role: SpecialistId, rng: Rng, rec
       name: task.name,
       roomId: task.roomId,
       system,
-      blurb: `${meta.blurb} ${task.name} is scheduled in ${roomLabel(task.roomId)}.`,
+      blurb: meta.blurb,
       icon: meta.icon,
       accent: meta.accent,
     };
@@ -140,14 +139,13 @@ export function applyTaskCompletion(metrics: MissionMetrics, task: TaskDef, role
 
 export function applyMissedDay(metrics: MissionMetrics, role: SpecialistId): MissionMetrics {
   const next = { ...metrics };
-  const shieldMitigation = role === 'shield' ? 0.5 : 1;
   const farmerMitigation = role === 'farmer' ? 0.5 : 1;
   const repairMitigation = role === 'repairman' ? 0.6 : 1;
   next.power = clamp(next.power - Math.round(4 * repairMitigation));
   next.oxygen = clamp(next.oxygen - Math.round(3 * repairMitigation));
   next.water = clamp(next.water - 3);
   next.starch = clamp(next.starch - Math.round(5 * farmerMitigation));
-  next.hull = clamp(next.hull - Math.round(4 * shieldMitigation));
+  next.hull = clamp(next.hull - 4);
   next.morale = clamp(next.morale - 6);
   return next;
 }
@@ -184,24 +182,4 @@ export function clamp(value: number): number {
 
 function requirement(key: string, label: string, value: number, target: number): Requirement {
   return { key, label, value: Math.round(value), target: Math.round(target), met: value >= target };
-}
-
-function roomLabel(roomId: string): string {
-  const labels: Record<string, string> = {
-    'upper-engine': 'Upper Engine',
-    'lower-engine': 'Lower Engine',
-    reactor: 'Reactor',
-    medbay: 'MedBay',
-    cafeteria: 'Cafeteria',
-    weapons: 'Weapons',
-    navigation: 'Navigation',
-    o2: 'O2',
-    admin: 'Admin',
-    storage: 'Storage',
-    electrical: 'Electrical',
-    security: 'Security',
-    shields: 'Shields',
-    communications: 'Comms',
-  };
-  return labels[roomId] ?? roomId;
 }

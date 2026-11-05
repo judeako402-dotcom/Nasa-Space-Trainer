@@ -97,27 +97,41 @@ function ensureStationGame(): Promise<PhaserGame> {
 const app = document.querySelector<HTMLDivElement>('#app');
 if (!app) throw new Error('Missing #app root element.');
 
+const GAME_MENU_BUTTONS = [
+  { action: 'map', label: 'Map', key: 'M', icon: '<path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2zM9 3v16m6-14v16"/>' },
+  { action: 'tasks', label: 'Tasks', key: 'T', icon: '<path d="m3 6 2 2 3-4m-5 9 2 2 3-4m-5 9 2 2 3-4M12 6h9m-9 7h9m-9 7h9"/>' },
+  { action: 'log', label: 'Log', key: '', icon: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6m-6 4h6m-6 4h4"/>' },
+  { action: 'help', label: 'Help', key: 'H', icon: '<circle cx="12" cy="12" r="9"/><path d="M9 9a3 3 0 1 1 5 2.2c-1.4 1-2 1.4-2 2.8m0 3h.01"/>' },
+  { action: 'options', label: 'Settings', key: 'O', icon: '<path d="M4 6h16M4 12h16M4 18h16M8 4v4m8 2v4m-6 2v4"/>' },
+] as const;
+
 app.innerHTML = `
   <div class="game-frame">
     <main class="screen-root" id="screen-root"></main>
     <div class="scene-shell" id="scene-shell" hidden>
       <div id="game-canvas" class="game-canvas"></div>
       <div class="scene-vignette" aria-hidden="true"></div>
-      <div class="hud" id="hud" hidden>
-        <div class="hud-top-left">
-          <button class="hud-square" data-action="options" title="Options (O)">OPTIONS</button>
-          <div class="trial-day-pill" id="trial-day">DAY 01 / 30</div>
-          <div class="task-meter" aria-live="polite">
-            <span class="task-meter-label" id="task-label">TODAY 0 / 3</span>
-            <span class="task-meter-track"><span id="task-fill"></span></span>
+      <div class="hud mission-hud" id="hud" hidden>
+        <div class="mission-hud-head">
+          <div class="mission-shift-status">
+            <div class="trial-day-pill" id="trial-day">DAY 01 / 30</div>
+            <div class="day-clock" id="day-clock"></div>
+            <div class="task-meter" aria-live="polite">
+              <span class="task-meter-label" id="task-label">TASKS 0 / 3</span>
+              <span class="task-meter-track" aria-hidden="true"><span id="task-fill"></span></span>
+            </div>
+            <span class="alive-pill" id="crew-progress">COOPERATIVE TRIAL</span>
           </div>
-          <span class="alive-pill" id="crew-progress">COOPERATIVE TRIAL</span>
-        </div>
-        <div class="hud-top-right">
-          <button class="hud-square" data-action="map" title="Map (M)">MAP</button>
-          <button class="hud-square" data-action="tasks" title="Today's assignments (Tab)">TASKS</button>
-          <button class="hud-square" data-action="log" title="Mission log">LOG</button>
-          <button class="hud-square" data-action="help" title="Controls">?</button>
+          <nav class="mission-toolbar" aria-label="In-game menus">
+            ${GAME_MENU_BUTTONS.map(({ action, label, key, icon }) => `
+              <button type="button" class="mission-menu-button" data-action="${action}" title="${label}${key ? ` (${key})` : ''}"
+                ${key ? `aria-keyshortcuts="${key}"` : ''} ${action === 'options' ? '' : 'aria-haspopup="dialog"'}>
+                <svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg>
+                <span>${label}</span>
+                ${key ? `<kbd aria-hidden="true">${key}</kbd>` : ''}
+              </button>
+            `).join('')}
+          </nav>
         </div>
         <div class="hud-systems" id="hud-systems"></div>
         <div class="hud-bottom-left">
@@ -130,9 +144,8 @@ app.innerHTML = `
         </div>
         <div class="action-cluster">
           <span class="interaction-prompt" id="interaction-prompt" aria-live="polite"></span>
-          <button class="action-button use" data-action="use" hidden>USE <small>E</small></button>
+          <button type="button" class="action-button use" data-action="use" aria-keyshortcuts="E" hidden>Interact <kbd aria-hidden="true">E</kbd></button>
         </div>
-        <div class="day-clock" id="day-clock"></div>
         <div class="toast" id="toast" role="status"></div>
       </div>
       <div class="training-hud" id="training-hud" hidden></div>
@@ -183,13 +196,6 @@ const SPECIALIST_STATS: Record<SpecialistId, { label: string; value: number }[]>
     { label: 'EVA SPEED', value: 66 },
     { label: 'SCIENCE', value: 98 },
     { label: 'SHIELDING', value: 70 },
-  ],
-  shield: [
-    { label: 'REPAIR', value: 84 },
-    { label: 'BOTANY', value: 62 },
-    { label: 'EVA SPEED', value: 72 },
-    { label: 'SCIENCE', value: 70 },
-    { label: 'SHIELDING', value: 97 },
   ],
 };
 
@@ -623,9 +629,15 @@ function renderTrainingHud(): void {
   const sample = training.completed.includes('sample');
   trainingHud.innerHTML = `
     <section class="training-panel ${trainingHudExpanded ? 'expanded' : ''}">
-      <header class="training-head"><div><span class="training-kicker">EARTH SIMULATOR</span><strong>TRAINING DECK</strong></div><div class="training-head-actions"><button class="training-map" data-training-map>MAP</button><button class="training-exit" data-training-exit>EXIT</button></div></header>
+      <header class="training-head">
+        <div><span class="training-kicker">EARTH SIMULATOR</span><strong>TRAINING DECK</strong></div>
+        <div class="training-head-actions">
+          <button class="training-map" type="button" data-training-map aria-haspopup="dialog" aria-keyshortcuts="M">Map <kbd aria-hidden="true">M</kbd></button>
+          <button class="training-exit" type="button" data-training-exit>Exit</button>
+        </div>
+      </header>
       <div class="training-controls">Move <kbd>WASD</kbd> / <kbd>ARROWS</kbd> <span aria-hidden="true">·</span> Click to walk <span aria-hidden="true">·</span> <kbd>E</kbd> interact</div>
-      <button class="training-toggle" data-training-toggle aria-expanded="${trainingHudExpanded}"><span>OBJECTIVES · ${inspected} / ${systems.length}</span><span>${trainingHudExpanded ? 'HIDE ▲' : 'SHOW ▼'}</span></button>
+      <button class="training-toggle" type="button" data-training-toggle aria-expanded="${trainingHudExpanded}"><span>OBJECTIVES · ${inspected} / ${systems.length}</span><span>${trainingHudExpanded ? 'HIDE ▲' : 'SHOW ▼'}</span></button>
       <div class="training-list">
         ${systems.map(interaction => `<div class="training-objective ${training.completed.includes(interaction.id) ? 'done' : ''}" style="--accent:${interaction.accent ?? '#7ad7ea'}"><img src="/assets/ui/icons/${interaction.icon}.png" alt="" /><span>${escapeHtml(interaction.name)}</span><b>${training.completed.includes(interaction.id) ? '✓' : '○'}</b></div>`).join('')}
       </div>
@@ -645,6 +657,7 @@ function renderTrainingHud(): void {
   trainingHud.querySelector('[data-training-toggle]')?.addEventListener('click', () => {
     trainingHudExpanded = !trainingHudExpanded;
     renderTrainingHud();
+    trainingHud.querySelector<HTMLButtonElement>('[data-training-toggle]')?.focus();
   });
 }
 
@@ -1280,10 +1293,19 @@ function showOptions(): void {
       <article class="svg-options-window" aria-labelledby="options-window-title">
         <header class="svg-window-header">
           <span class="svg-kicker">S.P.U.D.I.E. · CREW CONFIGURATION</span>
-          <h1 id="options-window-title">OPTIONS</h1>
+          <h1 id="options-window-title" tabindex="-1">OPTIONS</h1>
         </header>
 
         <div class="svg-options-body">
+          ${returnScreen === 'mission' ? `
+            <section class="svg-section-block" aria-label="Active mission">
+              <span class="svg-section-pill is-gold">ACTIVE MISSION</span>
+              <div class="svg-subcard mission-exit-row">
+                <p>End this trial and return to the main menu.</p>
+                <button class="game-menu-close mission-abort-button" type="button" data-abort-mission aria-haspopup="dialog">Abort mission</button>
+              </div>
+            </section>
+          ` : ''}
           <!-- VOLUME SECTION (Options panel.svg Archetype B) -->
           <section class="svg-section-block" aria-label="Volume Settings">
             <span class="svg-section-pill">VOLUME</span>
@@ -1394,7 +1416,7 @@ function showOptions(): void {
             <button class="svg-tab-pill" type="button" data-options-credits>CREDITS &amp; SCIENCE</button>
             <button class="svg-tab-pill" type="button" data-options-reset style="border-color:rgba(255,130,130,0.5);color:#ffb4b4;">RESET SAVE</button>
           </div>
-          <button class="svg-back-pill-btn" type="button" data-options-back>${returnScreen === 'menu' ? '← BACK' : '← RETURN TO GAME'}</button>
+          <button class="svg-back-pill-btn ${returnScreen === 'menu' ? '' : 'is-cyan'}" type="button" data-options-back ${returnScreen === 'menu' ? '' : 'data-game-return'}>${returnScreen === 'menu' ? '← BACK' : '← RETURN TO GAME · ESC'}</button>
         </footer>
       </article>
       ${renderPotatoOverride(true)}
@@ -1402,6 +1424,9 @@ function showOptions(): void {
   `);
 
   wireUniversalTopBar();
+
+  if (returnScreen !== 'menu') screenRoot.querySelector<HTMLElement>('#options-window-title')?.focus();
+  screenRoot.querySelector('[data-abort-mission]')?.addEventListener('click', showAbortMissionConfirmation);
 
   const syncOptionVisuals = (): void => {
     const masterVal = options.masterVolume ?? 80;
@@ -1527,6 +1552,7 @@ function showOptions(): void {
       showMissionShell();
       resumeMissionAfterModal();
       startLoop();
+      hud.querySelector<HTMLButtonElement>('[data-action="options"]')?.focus();
     } else if (returnScreen === 'training') {
       currentScreen = 'training';
       screenRoot.hidden = true;
@@ -1554,6 +1580,52 @@ function showOptions(): void {
     persistSave(save);
     showMenu();
   });
+}
+
+function showAbortMissionConfirmation(): void {
+  sfx.click();
+  modalRoot.innerHTML = `
+    <dialog class="game-menu-dialog mission-abort-dialog" aria-labelledby="abort-mission-title" aria-describedby="abort-mission-description">
+      <section class="svg-options-window">
+        <header class="svg-window-header">
+          <h2 id="abort-mission-title">Abort this mission?</h2>
+        </header>
+        <div class="svg-options-body">
+          <p id="abort-mission-description">This ends your current trial and clears its shift progress and reports. Your training progress and settings are kept.</p>
+          <p class="mission-abort-error" role="alert" hidden>Could not clear the saved trial. Your mission is still active.</p>
+        </div>
+        <footer class="svg-window-footer">
+          <button class="game-menu-close" type="button" data-cancel-abort autofocus>Keep mission</button>
+          <button class="game-menu-close mission-abort-button" type="button" data-confirm-abort>Abort &amp; return to menu</button>
+        </footer>
+      </section>
+    </dialog>
+  `;
+  const dialog = modalRoot.querySelector<HTMLDialogElement>('dialog')!;
+  const cancel = (): void => {
+    dialog.close();
+    modalRoot.replaceChildren();
+  };
+  dialog.querySelector('[data-cancel-abort]')?.addEventListener('click', cancel);
+  dialog.addEventListener('cancel', event => {
+    event.preventDefault();
+    cancel();
+  });
+  dialog.querySelector('[data-confirm-abort]')?.addEventListener('click', () => {
+    const nextSave: PlayerSave = { ...save, activeTrial: null, trialDay: 0 };
+    if (!persistSave(nextSave, { replaceBackup: true })) {
+      dialog.querySelector<HTMLElement>('.mission-abort-error')!.hidden = false;
+      return;
+    }
+    sfx.click();
+    save = nextSave;
+    mission = createMissionState();
+    planningEventBase = null;
+    selectedEventChoice = '';
+    dialog.close();
+    showMenu();
+  });
+  dialog.showModal();
 }
 
 function showCredits(): void {
@@ -1681,17 +1753,20 @@ function showCredits(): void {
 
 function renderLobbyInspectorDetails(): string {
   const spec = specialistById(lobby.specialist);
-  const dest = destinationById(lobby.destination);
-  const brief = scienceBrief(lobby.destination);
+  const color = getColor(lobby.colorId);
   const stats = SPECIALIST_STATS[lobby.specialist] ?? SPECIALIST_STATS.repairman;
   return `
-    <div class="svg-inspector-preview">
-      <img src="${spec.art}" alt="" />
-      <div class="svg-inspector-title">
-        <span>${escapeHtml(spec.role)} · ${escapeHtml(dest.name.toUpperCase())}</span>
+    <div class="loadout-preview" style="--choice-accent:${color.css}">
+      <div class="loadout-portrait"><img src="${spec.art}" alt="" /></div>
+      <div class="loadout-preview-copy">
+        <span id="loadout-callsign">${escapeHtml(lobby.playerName.trim() || 'Spudnaut')}</span>
         <h3>${escapeHtml(spec.name)}</h3>
-        <small>${escapeHtml(spec.perk)}</small>
+        <span class="loadout-suit-label"><i aria-hidden="true"></i>${escapeHtml(color.name)} suit</span>
       </div>
+    </div>
+    <div class="svg-inspector-box">
+      <strong>Class perk</strong>
+      ${escapeHtml(spec.perk)}
     </div>
     <div class="svg-stat-bars">
       ${stats.map(row => `
@@ -1702,35 +1777,10 @@ function renderLobbyInspectorDetails(): string {
         </div>
       `).join('')}
     </div>
-    <div class="svg-inspector-box">
-      <strong>FIELD SCIENCE · ${escapeHtml(dest.name.toUpperCase())} (${dest.gravity})</strong>
-      <p style="margin:4px 0 6px;">${escapeHtml(brief.fact)}</p>
-      <small style="display:block;color:#9beeff;">${escapeHtml(brief.operationsNote)}</small>
-    </div>
   `;
 }
 
-function updateLobbySuitBadge(): void {
-  const color = getColor(lobby.colorId);
-  const spec = specialistById(lobby.specialist);
-  const callsign = (lobby.playerName || 'Spudnaut').trim() || 'Spudnaut';
-  const dot = screenRoot.querySelector<HTMLElement>('#potato-suit-dot');
-  const label = screenRoot.querySelector<HTMLElement>('#potato-suit-label');
-  if (dot) {
-    dot.style.background = color.css;
-    dot.style.color = color.css;
-  }
-  if (label) {
-    label.textContent = `${callsign} · ${spec.shortName}`;
-  }
-  const footerNote = screenRoot.querySelector<HTMLElement>('#lobby-summary-note');
-  if (footerNote) {
-    footerNote.textContent = `${spec.role} · ${destinationById(lobby.destination).name} · ${DIFFICULTY_INFO[save.options.difficulty].name}`;
-  }
-}
-
 function showLobby(): void {
-  const colors = PLAYER_COLORS;
   setScreen('lobby', `
     <section class="universal-duelyst-screen is-zoomed-vista lobby-screen">
       ${renderUniversalBackdrop()}
@@ -1738,8 +1788,8 @@ function showLobby(): void {
       <article class="svg-inventory-window">
         <header class="svg-inventory-topbar">
           <div class="svg-inventory-title">
-            <span>MISSION SELECT · LOADOUT &amp; DESTINATION</span>
-            <h1>BUILD YOUR SPUDNAUT</h1>
+            <span>MISSION SELECT · STEP 1 OF 2</span>
+            <h1 tabindex="-1">BUILD YOUR SPUDNAUT</h1>
           </div>
           <div class="svg-tab-strip">
             <button type="button" class="svg-tab-pill" data-lobby-randomize title="Randomize Loadout">🎲 RANDOMIZE</button>
@@ -1749,99 +1799,76 @@ function showLobby(): void {
         </header>
 
         <div class="svg-master-detail-body">
-          <!-- Left Slot Grid Well (Inventory.svg Archetype A) -->
           <div class="svg-slot-well">
-            <div>
-              <span class="svg-section-pill" style="margin-bottom:10px;">01 · SPECIALIST CLASS</span>
-              <div class="svg-slot-grid">
+            <div class="loadout-options">
+              <h2 id="specialist-heading">Specialist class</h2>
+              <div class="loadout-class-grid" role="group" aria-labelledby="specialist-heading">
                 ${SPECIALISTS.map(specialist => `
-                  <button type="button" class="svg-slot-card specialist-tile ${lobby.specialist === specialist.id ? 'selected' : ''}" data-specialist="${specialist.id}" style="--accent:${specialist.accent}">
-                    <span class="svg-slot-badge">${escapeHtml(specialist.shortName)}</span>
+                  <button type="button" class="loadout-choice loadout-class" data-specialist="${specialist.id}"
+                    aria-pressed="${lobby.specialist === specialist.id}" style="--choice-accent:${specialist.accent}">
+                    <span class="loadout-check" aria-hidden="true">✓</span>
                     <img src="${specialist.art}" alt="" />
                     <strong>${escapeHtml(specialist.name)}</strong>
                     <small>${escapeHtml(specialist.role)}</small>
                   </button>
                 `).join('')}
-                <div class="svg-slot-card is-empty" aria-hidden="true">
-                  <span style="font-size:22px;line-height:1;">+</span>
-                  <small>EXPANSION SLOT</small>
-                </div>
               </div>
             </div>
 
-            <div>
-              <span class="svg-section-pill is-blue" style="margin-bottom:10px;">02 · TARGET HABITAT &amp; SUIT SWATCH</span>
-              <div class="svg-slot-grid" style="margin-bottom:12px;">
-                ${DESTINATIONS.map(destination => `
-                  <button type="button" class="svg-slot-card destination-tile ${lobby.destination === destination.id ? 'selected' : ''}" data-destination="${destination.id}" style="--accent:${destination.accent}">
-                    <span class="svg-slot-badge">${escapeHtml(destination.gravity)}</span>
-                    <strong>${escapeHtml(destination.name)}</strong>
-                    <small>${escapeHtml(destination.hazard)}</small>
-                  </button>
-                `).join('')}
-                <div class="svg-slot-card is-empty" aria-hidden="true">
-                  <span style="font-size:20px;line-height:1;">+</span>
-                  <small>EUROPA · LOCKED</small>
-                </div>
-              </div>
-
-              <div class="color-grid" style="grid-template-columns:repeat(auto-fit,minmax(62px,1fr));gap:8px;">
-                ${colors.map(color => `
-                  <button type="button" class="color-swatch ${lobby.colorId === color.id ? 'selected' : ''}" data-color="${color.id}" style="--swatch:${color.css};padding:6px;border-radius:8px;">
-                    <i style="display:block;width:18px;height:18px;margin:0 auto 4px;border-radius:50%;background:${color.css}"></i>
-                    <span style="font-size:10px;">${color.name}</span>
+            <div class="loadout-options">
+              <h2 id="suit-color-heading">Suit color</h2>
+              <div class="loadout-color-grid" role="group" aria-labelledby="suit-color-heading">
+                ${PLAYER_COLORS.map(color => `
+                  <button type="button" class="loadout-choice loadout-color" data-color="${color.id}"
+                    aria-pressed="${lobby.colorId === color.id}" style="--choice-accent:${color.css}">
+                    <span class="loadout-check" aria-hidden="true">✓</span>
+                    <i aria-hidden="true"></i>
+                    <span>${escapeHtml(color.name)}</span>
                   </button>
                 `).join('')}
               </div>
-            </div>
-
-            <div class="svg-slot-footer-bar">
-              <span>LOADOUT SLOTS · 3 / 3 ACTIVE</span>
-              <span id="lobby-summary-note">${escapeHtml(specialistById(lobby.specialist).role)} · ${destinationById(lobby.destination).name} · ${DIFFICULTY_INFO[save.options.difficulty].name}</span>
             </div>
           </div>
 
-          <!-- Right Inspector Card (Inventory.svg Archetype A) -->
-          <aside class="svg-inspector-card" id="lobby-inspector">
+          <aside class="svg-inspector-card loadout-inspector" aria-label="Crew loadout preview">
             <div>
               <label class="svg-row-sub" for="lobby-name" style="margin-bottom:6px;">SPUDNAUT CALLSIGN</label>
               <input class="lobby-input" id="lobby-name" maxlength="18" value="${escapeHtml(lobby.playerName)}" />
             </div>
-            <div id="lobby-inspector-details" style="display:grid;gap:12px;">
+            <div class="loadout-details">
               ${renderLobbyInspectorDetails()}
+            </div>
+            <div class="svg-slot-footer-bar">
+              <span>DIFFICULTY</span>
+              <span>${escapeHtml(DIFFICULTY_INFO[save.options.difficulty].name)}</span>
             </div>
           </aside>
         </div>
 
         <footer class="svg-window-footer">
           <button class="svg-back-pill-btn" type="button" data-lobby-back>← BACK</button>
-          <button class="svg-back-pill-btn is-cyan" type="button" data-lobby-launch>CONTINUE TO LAUNCH →</button>
+          <button class="svg-back-pill-btn is-cyan" type="button" data-lobby-next>CHOOSE HABITAT →</button>
         </footer>
       </article>
-      ${renderPotatoOverride(true)}
     </section>
   `);
 
   wireUniversalTopBar();
+  screenRoot.querySelector<HTMLElement>('h1')?.focus();
 
   const refreshLobbyInPlace = (): void => {
-    screenRoot.querySelectorAll<HTMLButtonElement>('[data-color]').forEach(btn => {
-      btn.classList.toggle('selected', btn.dataset.color === lobby.colorId);
+    screenRoot.querySelectorAll<HTMLButtonElement>('.loadout-choice').forEach(button => {
+      const selected = button.dataset.color === lobby.colorId || button.dataset.specialist === lobby.specialist;
+      button.setAttribute('aria-pressed', String(selected));
     });
-    screenRoot.querySelectorAll<HTMLButtonElement>('[data-specialist]').forEach(btn => {
-      btn.classList.toggle('selected', btn.dataset.specialist === lobby.specialist);
-    });
-    screenRoot.querySelectorAll<HTMLButtonElement>('[data-destination]').forEach(btn => {
-      btn.classList.toggle('selected', btn.dataset.destination === lobby.destination);
-    });
-    const details = screenRoot.querySelector<HTMLElement>('#lobby-inspector-details');
+    const details = screenRoot.querySelector<HTMLElement>('.loadout-details');
     if (details) details.innerHTML = renderLobbyInspectorDetails();
-    updateLobbySuitBadge();
   };
 
   screenRoot.querySelector<HTMLInputElement>('#lobby-name')?.addEventListener('input', event => {
     lobby.playerName = (event.target as HTMLInputElement).value;
-    updateLobbySuitBadge();
+    const callsign = screenRoot.querySelector<HTMLElement>('#loadout-callsign');
+    if (callsign) callsign.textContent = lobby.playerName.trim() || 'Spudnaut';
   });
 
   screenRoot.querySelectorAll<HTMLButtonElement>('[data-color]').forEach(button => button.addEventListener('click', () => {
@@ -1856,18 +1883,11 @@ function showLobby(): void {
     refreshLobbyInPlace();
   }));
 
-  screenRoot.querySelectorAll<HTMLButtonElement>('[data-destination]').forEach(button => button.addEventListener('click', () => {
-    lobby.destination = button.dataset.destination as DestinationId;
-    sfx.click();
-    refreshLobbyInPlace();
-  }));
-
   screenRoot.querySelector('[data-lobby-randomize]')?.addEventListener('click', () => {
     const callsigns = ['Cmdr. Yukon', 'Nova Spud', 'Russet-7', 'Tater Prime', 'Sol-Tuber', 'Orbit Mash', 'Kennebec'];
     lobby.playerName = callsigns[Math.floor(Math.random() * callsigns.length)] ?? 'Spudnaut';
     lobby.colorId = PLAYER_COLORS[Math.floor(Math.random() * PLAYER_COLORS.length)]?.id ?? lobby.colorId;
     lobby.specialist = SPECIALISTS[Math.floor(Math.random() * SPECIALISTS.length)]?.id ?? lobby.specialist;
-    lobby.destination = DESTINATIONS[Math.floor(Math.random() * DESTINATIONS.length)]?.id ?? lobby.destination;
     const input = screenRoot.querySelector<HTMLInputElement>('#lobby-name');
     if (input) input.value = lobby.playerName;
     sfx.click();
@@ -1900,7 +1920,79 @@ function showLobby(): void {
     sfx.click();
     showMenu();
   });
-  screenRoot.querySelector('[data-lobby-launch]')?.addEventListener('click', () => {
+  screenRoot.querySelector('[data-lobby-next]')?.addEventListener('click', () => {
+    sfx.click();
+    showHabitat();
+  });
+}
+
+function renderHabitatBrief(): string {
+  const destination = destinationById(lobby.destination);
+  const brief = scienceBrief(destination.id);
+  return `
+    <div class="svg-inspector-box">
+      <strong>FIELD SCIENCE · ${escapeHtml(destination.name.toUpperCase())}</strong>
+      <p>${escapeHtml(brief.fact)}</p>
+      <small>${escapeHtml(brief.operationsNote)}</small>
+    </div>
+  `;
+}
+
+function showHabitat(): void {
+  setScreen('lobby', `
+    <section class="universal-duelyst-screen is-zoomed-vista habitat-screen">
+      ${renderUniversalBackdrop()}
+      ${renderUniversalTopBar('play')}
+      <article class="svg-inventory-window">
+        <header class="svg-inventory-topbar">
+          <div class="svg-inventory-title">
+            <span>MISSION SELECT · STEP 2 OF 2</span>
+            <h1 tabindex="-1">CHOOSE YOUR TARGET HABITAT</h1>
+          </div>
+        </header>
+        <div class="svg-master-detail-body habitat-body">
+          <div class="habitat-choices" role="group" aria-label="Target habitat">
+            ${DESTINATIONS.map(destination => `
+              <button type="button" class="habitat-choice" data-destination="${destination.id}"
+                aria-pressed="${lobby.destination === destination.id}" style="--habitat-accent:${destination.accent}">
+                <span class="habitat-art">
+                  <img src="/assets/habitats/${destination.id}.png" alt="" width="1254" height="1254" />
+                </span>
+                <strong>${escapeHtml(destination.name)}</strong>
+                <small>${escapeHtml(destination.gravity)} · ${escapeHtml(destination.hazard)}</small>
+                <span class="habitat-selected" aria-hidden="true">✓ Selected</span>
+              </button>
+            `).join('')}
+          </div>
+          <aside class="svg-inspector-card habitat-brief" aria-live="polite">
+            ${renderHabitatBrief()}
+          </aside>
+        </div>
+        <footer class="svg-window-footer">
+          <button class="svg-back-pill-btn" type="button" data-habitat-back>← BACK TO CLASS</button>
+          <button class="svg-back-pill-btn is-cyan" type="button" data-habitat-next>CONTINUE TO LAUNCH →</button>
+        </footer>
+      </article>
+    </section>
+  `);
+
+  wireUniversalTopBar();
+  screenRoot.querySelector<HTMLElement>('h1')?.focus();
+
+  const choices = screenRoot.querySelectorAll<HTMLButtonElement>('[data-destination]');
+  const brief = screenRoot.querySelector<HTMLElement>('.habitat-brief');
+  choices.forEach(button => button.addEventListener('click', () => {
+    lobby.destination = button.dataset.destination as DestinationId;
+    sfx.click();
+    choices.forEach(choice => choice.setAttribute('aria-pressed', String(choice === button)));
+    if (brief) brief.innerHTML = renderHabitatBrief();
+  }));
+
+  screenRoot.querySelector('[data-habitat-back]')?.addEventListener('click', () => {
+    sfx.click();
+    showLobby();
+  });
+  screenRoot.querySelector('[data-habitat-next]')?.addEventListener('click', () => {
     sfx.click();
     showLaunch();
   });
@@ -1917,7 +2009,7 @@ function showLaunch(): void {
       <article class="svg-options-window" style="width:min(760px,calc(100vw - 28px));">
         <header class="svg-window-header">
           <span class="svg-kicker">SPUDNAUT SPACE AGENCY · LAUNCH CLEARANCE</span>
-          <h1>FINAL FLIGHT CHECK</h1>
+          <h1 tabindex="-1">FINAL FLIGHT CHECK</h1>
         </header>
         <div class="svg-options-body">
           <div class="svg-inspector-preview">
@@ -1938,7 +2030,7 @@ function showLaunch(): void {
           </div>
         </div>
         <footer class="svg-window-footer">
-          <button class="svg-back-pill-btn" type="button" data-launch-back>← MISSION SELECT</button>
+          <button class="svg-back-pill-btn" type="button" data-launch-back>← BACK TO HABITAT</button>
           <button class="svg-back-pill-btn is-cyan" type="button" data-launch-begin>BEGIN TRIAL · DAY 01 →</button>
         </footer>
       </article>
@@ -1946,9 +2038,10 @@ function showLaunch(): void {
     </section>
   `);
   wireUniversalTopBar();
+  screenRoot.querySelector<HTMLElement>('h1')?.focus();
   screenRoot.querySelector('[data-launch-back]')?.addEventListener('click', () => {
     sfx.click();
-    showLobby();
+    showHabitat();
   });
   screenRoot.querySelector('[data-launch-begin]')?.addEventListener('click', () => {
     sfx.launch();
@@ -2076,18 +2169,16 @@ function computeProjectedMetrics(): MissionMetrics {
 
 function renderProjectedGaugesMarkup(): string {
   const projected = computeProjectedMetrics();
-  const keys: (keyof MissionMetrics)[] = ['power', 'oxygen', 'water', 'starch', 'hull', 'research'];
+  const keys: (keyof MissionMetrics)[] = ['power', 'oxygen', 'water', 'starch', 'hull', 'morale', 'research'];
   return keys.map(key => {
     const before = Math.round(mission.metrics[key]);
     const after = Math.round(projected[key]);
-    const diff = after - before;
-    const diffLabel = diff > 0 ? `+${diff} ▲` : diff < 0 ? `${diff} ▼` : '0';
-    const diffColor = diff > 0 ? '#8fe6a8' : diff < 0 ? '#ff9e9e' : '#9aa6cb';
+    const label = key === 'hull' ? 'Hull' : METRIC_LABELS[key];
     return `
-      <div class="svg-stat-row" style="grid-template-columns:84px 1fr 78px;">
-        <span>${METRIC_LABELS[key].split(' ')[0]!.toUpperCase()}</span>
-        <div class="svg-stat-track"><div class="svg-stat-fill" style="width:${Math.min(100, Math.max(0, after))}%"></div></div>
-        <b style="text-align:right;color:${diffColor};">${before}→${after} <small>(${diffLabel})</small></b>
+      <div class="shift-gauge">
+        <span>${label}</span>
+        <div class="svg-stat-track" aria-hidden="true"><div class="svg-stat-fill" style="width:${after}%"></div></div>
+        <b class="${after > before ? 'is-gain' : ''}">${before} → ${after}</b>
       </div>
     `;
   }).join('');
@@ -2096,170 +2187,173 @@ function renderProjectedGaugesMarkup(): string {
 function startPlanning(): void {
   const event = mission.eventCard;
   const day = missionDayNumber();
-  const goal = mission.penaltyDay > 0 ? 'PENALTY SHIFT' : 'DAILY SHIFT';
-  let inspectedOfferId = mission.offers[0]?.taskId ?? '';
+  const goal = mission.penaltyDay > 0 ? 'Penalty shift' : 'Daily shift';
+  const required = DAY.assignmentsPerDay;
+  const duration = Math.ceil(dayDurationMs() / 1000);
+  const shiftTime = `${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, '0')}`;
+  let inspectedOfferId = mission.offers[0]?.taskId;
 
-  const renderFocusedOfferBox = (taskId: string): string => {
-    const offer = mission.offers.find(item => item.taskId === taskId) ?? mission.offers[0];
-    if (!offer) return '<div class="svg-inspector-box"><strong>ASSIGNMENT</strong><p>No offer available.</p></div>';
-    const sysHealth = offer.system === 'science' ? Math.round(mission.metrics.research) : systemHealth(mission.metrics, offer.system);
+  const renderFocusedOfferBox = (): string => {
+    const offer = mission.offers.find(item => item.taskId === inspectedOfferId);
+    if (!offer) return '<p>No assignment to preview.</p>';
     return `
-      <div class="svg-inspector-preview">
-        <img src="/assets/ui/icons/${offer.icon}.png" alt="" />
-        <div class="svg-inspector-title">
-          <span>${escapeHtml(getRoomName(offer.roomId))} · ${offer.system.toUpperCase()} (${sysHealth}%)</span>
-          <h3>${escapeHtml(offer.name)}</h3>
-          <small>${escapeHtml(offer.blurb)}</small>
-        </div>
-      </div>
-      <div class="svg-inspector-box">
-        <strong>ASSIGNMENT TELEMETRY</strong>
-        <div style="margin-top:4px;">${assignmentPreview(offer.taskId)}</div>
-      </div>
+      <h3>${escapeHtml(offer.name)}</h3>
+      <p>${escapeHtml(getRoomName(offer.roomId))} · ${escapeHtml(offer.blurb)}</p>
+      <div class="shift-telemetry">${assignmentPreview(offer.taskId)}</div>
     `;
   };
 
   overlayRoot.innerHTML = `
-    <section class="universal-duelyst-screen is-zoomed-vista planning-panel" style="background:rgba(6,10,22,0.72);">
-      ${renderUniversalBackdrop()}
-      <article class="svg-inventory-window">
-        <header class="svg-inventory-topbar">
-          <div class="svg-inventory-title">
-            <span>${goal} · DAY ${String(day).padStart(2, '0')} · ${ebbOptionsSummary()}</span>
-            <h1>SHIFT PLANNING</h1>
-          </div>
-          <span class="svg-section-pill is-gold">CHOOSE ${DAY.assignmentsPerDay} OF ${mission.offers.length}</span>
-        </header>
+    <dialog class="svg-inventory-window shift-planner" aria-labelledby="shift-planning-title">
+      <header class="svg-inventory-topbar">
+        <div class="svg-inventory-title">
+          <span>${goal} · Day ${String(day).padStart(2, '0')} · ${escapeHtml(destinationById(lobby.destination).name)}</span>
+          <h1 id="shift-planning-title" tabindex="-1" autofocus>Shift planning</h1>
+        </div>
+        <span class="svg-section-pill is-gold">${shiftTime} SHIFT</span>
+      </header>
 
-        <div class="svg-master-detail-body">
-          <div class="svg-slot-well">
-            <div class="svg-inspector-box event-brief" style="margin:0;">
-              <strong>EVENT CARD · ${event ? event.kind.toUpperCase() : 'ROUTINE'} — ${escapeHtml(event?.name ?? 'Routine Shift')}</strong>
-              <p style="margin:4px 0 6px;">${escapeHtml(event?.description ?? 'The habitat is quiet. Keep the systems steady.')}</p>
-              <p class="story-note" id="event-effect" style="margin:0 0 8px;color:#9beeff;">${escapeHtml(event?.responses?.find(choice => choice.id === selectedEventChoice)?.description ?? event?.effect ?? 'No event effects today.')}</p>
-              ${event?.responses?.length ? `
-                <div class="event-response-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-bottom:8px;">
-                  ${event.responses.map(choice => `
-                    <button type="button" class="svg-diff-btn event-response ${selectedEventChoice === choice.id ? 'selected' : ''}" data-event-choice="${choice.id}" style="text-align:left;">
-                      <strong>${escapeHtml(choice.label)}</strong>
-                      <small>${escapeHtml(choice.description)}</small>
-                    </button>
-                  `).join('')}
-                </div>
-              ` : ''}
-              ${event ? `<div class="event-deltas" id="event-deltas" style="display:flex;flex-wrap:wrap;gap:6px;">${metricChips(metricDeltas(eventBaseMetrics(), mission.metrics))}</div>` : ''}
+      <div class="shift-planning-body">
+        <section class="shift-card shift-event" aria-labelledby="shift-event-title">
+          <span class="shift-kicker">${escapeHtml(event?.kind ?? 'routine')} · Shift event</span>
+          <h2 id="shift-event-title">${escapeHtml(event?.name ?? 'Routine Shift')}</h2>
+          <p>${escapeHtml(event?.description ?? 'The habitat is quiet. Keep the systems steady.')}</p>
+          ${event?.responses?.length ? `
+            <div class="shift-responses" role="group" aria-label="Event response">
+              ${event.responses.map(choice => `
+                <button type="button" class="event-response" data-event-choice="${choice.id}" aria-pressed="${selectedEventChoice === choice.id}">
+                  <strong>${escapeHtml(choice.label)}</strong>
+                  <small>${escapeHtml(choice.description)}</small>
+                  <span class="shift-response-active" aria-hidden="true">✓ Active</span>
+                </button>
+              `).join('')}
             </div>
+          ` : `<p class="shift-event-effect">${escapeHtml(event?.effect ?? 'No event effects today.')}</p>`}
+          ${event ? `
+            <div class="shift-event-impact">
+              <span class="shift-kicker">Applied impact</span>
+              <div class="shift-chips" id="event-deltas" aria-live="polite">${metricChips(metricDeltas(eventBaseMetrics(), mission.metrics))}</div>
+            </div>
+          ` : ''}
+        </section>
 
-            <div class="svg-slot-grid" id="offers-grid">
-              ${mission.offers.map(offer => {
-                const selected = mission.selected.includes(offer.taskId);
-                const urgent = offer.system !== 'science' && systemHealth(mission.metrics, offer.system) < 55;
-                return `
-                  <button type="button" class="svg-slot-card offer-card ${selected ? 'selected' : ''}" data-offer="${offer.taskId}" style="--accent:${offer.accent}">
-                    <span class="svg-slot-status-dot offer-mark">${selected ? '✓' : '○'}</span>
-                    <span class="svg-slot-badge ${urgent ? 'is-urgent' : ''}">${urgent ? 'CRITICAL' : offer.system.toUpperCase()}</span>
-                    <img src="/assets/ui/icons/${offer.icon}.png" alt="" />
+        <div class="shift-workspace">
+          <section class="shift-card" aria-labelledby="shift-assignments-title">
+            <h2 id="shift-assignments-title">Assignments</h2>
+            <p>Choose ${required} of ${mission.offers.length} for this shift.</p>
+            <div class="shift-offers" role="group" aria-labelledby="shift-assignments-title">
+              ${mission.offers.map(offer => `
+                <button type="button" class="shift-offer" data-offer="${offer.taskId}" aria-pressed="false" style="--offer-accent:${offer.accent}">
+                  <img src="/assets/ui/icons/${offer.icon}.png" width="32" height="32" alt="" />
+                  <span class="shift-offer-info">
                     <strong>${escapeHtml(offer.name)}</strong>
                     <small>${escapeHtml(getRoomName(offer.roomId))}</small>
-                  </button>
-                `;
-              }).join('')}
-              <div class="svg-slot-card is-empty" aria-hidden="true">
-                <span style="font-size:20px;line-height:1;">+</span>
-                <small>MAX ${DAY.assignmentsPerDay} / SHIFT</small>
-              </div>
+                    <span class="shift-offer-system">${escapeHtml(SYSTEMS.find(system => system.id === offer.system)?.name ?? 'Science')}<span class="shift-urgent" hidden> · Critical</span></span>
+                  </span>
+                  <span class="shift-offer-check" aria-hidden="true">✓</span>
+                </button>
+              `).join('')}
             </div>
+          </section>
 
-            <div class="svg-slot-footer-bar">
-              <span id="planning-count">${mission.selected.length} / ${DAY.assignmentsPerDay} SELECTED</span>
-              <span>DAILY DRIFT: ${metricChips(DAILY_OPERATIONS_DRIFT)}</span>
-            </div>
-          </div>
-
-          <aside class="svg-inspector-card">
-            <div id="planning-offer-inspector" style="display:grid;gap:10px;">
-              ${renderFocusedOfferBox(inspectedOfferId)}
-            </div>
-            <div class="svg-inspector-box">
-              <strong>PROJECTED END-OF-SHIFT GAUGES</strong>
-              <div class="svg-stat-bars" id="planning-projected-gauges" style="margin-top:8px;">
-                ${renderProjectedGaugesMarkup()}
-              </div>
-            </div>
+          <aside class="shift-sidebar" aria-label="Planning details">
+            <section class="shift-card">
+              <h2>Assignment preview</h2>
+              <div id="planning-offer-inspector">${renderFocusedOfferBox()}</div>
+            </section>
+            <section class="shift-card">
+              <h2>Shift forecast</h2>
+              <p>Current → projected if all selected assignments succeed.</p>
+              <div id="planning-projected-gauges">${renderProjectedGaugesMarkup()}</div>
+              <details class="shift-drift">
+                <summary>Daily operating costs</summary>
+                <div class="shift-chips">${metricChips(DAILY_OPERATIONS_DRIFT)}</div>
+              </details>
+            </section>
           </aside>
         </div>
+      </div>
 
-        <footer class="svg-window-footer">
-          <span class="story-note">Select ${DAY.assignmentsPerDay} assignments to unlock the airlock &amp; station shift.</span>
-          <button class="svg-back-pill-btn is-cyan" type="button" data-planning-confirm ${mission.selected.length === DAY.assignmentsPerDay ? '' : 'disabled'}>START SHIFT →</button>
-        </footer>
-      </article>
-      ${renderPotatoOverride(true)}
-    </section>
+      <footer class="svg-window-footer shift-planning-footer">
+        <div class="shift-selection-status" role="status">
+          <strong id="planning-count"></strong>
+          <span id="planning-instruction"></span>
+        </div>
+        <button class="svg-back-pill-btn is-cyan" type="button" data-planning-confirm disabled>Start shift →</button>
+      </footer>
+    </dialog>
   `;
 
-  const refreshPlanning = (): void => {
-    overlayRoot.querySelectorAll<HTMLButtonElement>('[data-offer]').forEach(button => {
-      const id = button.dataset.offer ?? '';
-      const selected = mission.selected.includes(id);
-      button.classList.toggle('selected', selected);
-      const mark = button.querySelector('.offer-mark');
-      if (mark) mark.textContent = selected ? '✓' : '○';
-    });
-    const count = overlayRoot.querySelector('#planning-count');
-    if (count) count.textContent = `${mission.selected.length} / ${DAY.assignmentsPerDay} SELECTED`;
-    const confirm = overlayRoot.querySelector<HTMLButtonElement>('[data-planning-confirm]');
-    if (confirm) confirm.disabled = mission.selected.length !== DAY.assignmentsPerDay;
-    const gauges = overlayRoot.querySelector<HTMLElement>('#planning-projected-gauges');
-    if (gauges) gauges.innerHTML = renderProjectedGaugesMarkup();
-    const inspector = overlayRoot.querySelector<HTMLElement>('#planning-offer-inspector');
-    if (inspector && inspectedOfferId) inspector.innerHTML = renderFocusedOfferBox(inspectedOfferId);
+  const dialog = overlayRoot.querySelector<HTMLDialogElement>('.shift-planner')!;
+  const count = dialog.querySelector<HTMLElement>('#planning-count')!;
+  const instruction = dialog.querySelector<HTMLElement>('#planning-instruction')!;
+  const confirm = dialog.querySelector<HTMLButtonElement>('[data-planning-confirm]')!;
+  const gauges = dialog.querySelector<HTMLElement>('#planning-projected-gauges')!;
+  const inspector = dialog.querySelector<HTMLElement>('#planning-offer-inspector')!;
+  const offers = Array.from(dialog.querySelectorAll<HTMLButtonElement>('[data-offer]'));
+
+  const inspectOffer = (id: string): void => {
+    if (id === inspectedOfferId) return;
+    inspectedOfferId = id;
+    inspector.innerHTML = renderFocusedOfferBox();
   };
 
-  overlayRoot.querySelectorAll<HTMLButtonElement>('[data-offer]').forEach(button => {
-    button.addEventListener('pointerenter', () => {
-      const id = button.dataset.offer;
-      if (!id) return;
-      inspectedOfferId = id;
-      const inspector = overlayRoot.querySelector<HTMLElement>('#planning-offer-inspector');
-      if (inspector) inspector.innerHTML = renderFocusedOfferBox(inspectedOfferId);
-    });
+  const refreshPlanning = (): void => {
+    for (const button of offers) {
+      const offer = mission.offers.find(item => item.taskId === button.dataset.offer)!;
+      button.setAttribute('aria-pressed', String(mission.selected.includes(offer.taskId)));
+      button.querySelector<HTMLElement>('.shift-urgent')!.hidden = offer.system === 'science' || systemHealth(mission.metrics, offer.system) >= 55;
+    }
+    const remaining = required - mission.selected.length;
+    count.textContent = `${mission.selected.length} of ${required} selected`;
+    instruction.textContent = remaining === 0
+      ? 'Ready. The timer starts when you begin.'
+      : `Select ${remaining} more ${remaining === 1 ? 'assignment' : 'assignments'}.`;
+    confirm.disabled = remaining !== 0;
+    gauges.innerHTML = renderProjectedGaugesMarkup();
+    inspector.innerHTML = renderFocusedOfferBox();
+  };
+
+  for (const button of offers) {
+    const id = button.dataset.offer!;
+    button.addEventListener('pointerenter', () => inspectOffer(id));
+    button.addEventListener('focus', () => inspectOffer(id));
     button.addEventListener('click', () => {
-      const id = button.dataset.offer;
-      if (!id) return;
-      inspectedOfferId = id;
+      inspectOffer(id);
       if (mission.selected.includes(id)) {
         mission.selected = mission.selected.filter(item => item !== id);
-      } else if (mission.selected.length < DAY.assignmentsPerDay) {
+      } else if (mission.selected.length < required) {
         mission.selected = [...mission.selected, id];
       } else {
-        showToast(`Only ${DAY.assignmentsPerDay} assignments can be scheduled today.`);
+        instruction.textContent = 'Plan full. Deselect an assignment to make a swap.';
         return;
       }
       sfx.click();
       refreshPlanning();
     });
-  });
+  }
 
-  overlayRoot.querySelectorAll<HTMLButtonElement>('[data-event-choice]').forEach(button => button.addEventListener('click', () => {
-    const choiceId = button.dataset.eventChoice;
-    if (!choiceId) return;
-    selectedEventChoice = choiceId;
-    applyPlanningEventChoice(choiceId);
-    overlayRoot.querySelectorAll<HTMLButtonElement>('[data-event-choice]').forEach(item => item.classList.toggle('selected', item === button));
-    const deltas = overlayRoot.querySelector('#event-deltas');
+  const responses = dialog.querySelectorAll<HTMLButtonElement>('[data-event-choice]');
+  responses.forEach(button => button.addEventListener('click', () => {
+    selectedEventChoice = button.dataset.eventChoice!;
+    applyPlanningEventChoice(selectedEventChoice);
+    responses.forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+    const deltas = dialog.querySelector('#event-deltas');
     if (deltas) deltas.innerHTML = metricChips(metricDeltas(eventBaseMetrics(), mission.metrics));
-    const effect = overlayRoot.querySelector('#event-effect');
-    if (effect) effect.textContent = mission.eventCard?.responses?.find(item => item.id === choiceId)?.description ?? mission.eventCard?.effect ?? '';
+    sfx.click();
     refreshPlanning();
     updateHUD();
   }));
 
-  overlayRoot.querySelector('[data-planning-confirm]')?.addEventListener('click', () => {
-    if (mission.selected.length !== DAY.assignmentsPerDay) return;
+  confirm.addEventListener('click', () => {
+    if (mission.selected.length !== required) return;
     sfx.launch();
+    dialog.close();
     commitAssignments();
   });
+  dialog.addEventListener('cancel', event => event.preventDefault());
+  refreshPlanning();
+  dialog.showModal();
 }
 
 function assignmentPreview(taskId: string): string {
@@ -2289,10 +2383,6 @@ function metricChips(deltas: Partial<MissionMetrics>): string {
     const color = delta >= 0 ? '#8fe6a8' : '#ff9e9e';
     return `<span class="metric-chip" style="padding:6px 12px;border:1px solid rgba(150,190,240,0.3);font-size:11px;letter-spacing:0.16em;">${METRIC_LABELS[key as keyof MissionMetrics].toUpperCase()} <b style="color:${color}">${delta >= 0 ? '+' : ''}${delta}</b></span>`;
   }).join('');
-}
-
-function ebbOptionsSummary(): string {
-  return `${SYSTEMS.length} SYSTEMS · ${DAY.assignmentsPerDay} TASKS / TIMED SHIFT`;
 }
 
 function commitAssignments(): void {
@@ -2640,16 +2730,19 @@ function systemsMarkup(): string {
 function updateHUD(): void {
   if (currentScreen !== 'mission') return;
   const dayPill = document.querySelector<HTMLDivElement>('#trial-day');
-  if (dayPill) dayPill.textContent = `DAY ${String(missionDayNumber()).padStart(2, '0')} / ${TRIAL_MAX_DAY + PENALTY_MAX_DAY}`;
+  if (dayPill) dayPill.textContent = mission.penaltyDay
+    ? `EXT. ${mission.penaltyDay} / ${PENALTY_MAX_DAY}`
+    : `DAY ${String(mission.day).padStart(2, '0')} / ${TRIAL_MAX_DAY}`;
   const taskLabel = document.querySelector<HTMLSpanElement>('#task-label');
-  if (taskLabel) taskLabel.textContent = mission.tasks.length ? `TODAY ${mission.completed.length} / ${mission.tasks.length}` : 'PLANNING';
+  const taskStatus = mission.tasks.length ? `TASKS ${mission.completed.length} / ${mission.tasks.length}` : 'PLANNING';
+  if (taskLabel && taskLabel.textContent !== taskStatus) taskLabel.textContent = taskStatus;
   const fill = document.querySelector<HTMLSpanElement>('#task-fill');
   if (fill) {
     const pct = mission.tasks.length ? (mission.completed.length / mission.tasks.length) * 100 : 0;
     fill.style.width = `${pct}%`;
   }
   const crew = document.querySelector<HTMLSpanElement>('#crew-progress');
-  if (crew) crew.textContent = mission.penaltyDay ? `PENALTY SHIFT ${mission.penaltyDay} / ${PENALTY_MAX_DAY}` : `COOPERATIVE TRIAL · MISSED ${mission.missedDays}`;
+  if (crew) crew.textContent = `MISSED SHIFTS ${mission.missedDays}`;
   const name = document.querySelector<HTMLElement>('#hud-player-name');
   if (name) name.textContent = save.name.toUpperCase();
   const meta = document.querySelector<HTMLElement>('#hud-player-meta');
@@ -2696,6 +2789,30 @@ function showToast(message: string): void {
   }, 3400);
 }
 
+function gameMenuClose(label: string): string {
+  return `<button class="game-menu-close" type="button" data-close aria-label="Close ${label}"><span aria-hidden="true">×</span> Close <kbd aria-hidden="true">Esc</kbd></button>`;
+}
+
+function showGameMenu(): () => void {
+  const dialog = modalRoot.querySelector<HTMLDialogElement>('.game-menu-dialog')!;
+  const close = (): void => {
+    dialog.close();
+    modalRoot.replaceChildren();
+    resumeFromModal();
+  };
+  dialog.querySelector('[data-close]')?.addEventListener('click', close);
+  dialog.addEventListener('cancel', event => {
+    event.preventDefault();
+    close();
+  });
+  dialog.addEventListener('click', event => {
+    if (event.target === dialog) close();
+  });
+  pauseForModal();
+  dialog.showModal();
+  return close;
+}
+
 function openMap(): void {
   if (currentScreen !== 'training' && currentScreen !== 'mission') return;
   const map = activeMap();
@@ -2707,11 +2824,11 @@ function openMap(): void {
     return `<button type="button" class="map-marker" data-map-walk-x="${Math.round(x)}" data-map-walk-y="${Math.round(y)}" data-map-walk-label="${escapeHtml(label ?? 'Waypoint')}" title="${escapeHtml(label ? `Walk to ${label}` : 'You')}" style="left:${(x / map.width) * 100}%;top:${(y / map.height) * 100}%;background:${tone};cursor:pointer;border:2px solid #fff;"></button>`;
   };
   modalRoot.innerHTML = `
-    <div class="modal-shade">
-      <section class="svg-options-window map-card" style="width:min(820px,calc(100vw - 24px));">
-        <header class="svg-window-header" style="display:flex;justify-content:space-between;align-items:center;text-align:left;padding:16px 24px;">
-          <div><span class="svg-kicker">${escapeHtml(map.subtitle)} · CLICK ANY ROOM TO AUTO-PILOT</span><h2>${escapeHtml(map.title)}</h2></div>
-          <button class="svg-tab-pill" data-close aria-label="Close map">✕ CLOSE</button>
+    <dialog class="game-menu-dialog game-map-dialog" aria-labelledby="game-map-title">
+      <section class="svg-options-window map-card">
+        <header class="svg-window-header game-menu-header">
+          <div><span class="svg-kicker">${escapeHtml(map.subtitle)} · SELECT A ROOM TO AUTO-PILOT</span><h2 id="game-map-title">${escapeHtml(map.title)}</h2></div>
+          ${gameMenuClose('map')}
         </header>
         <div class="svg-options-body" style="padding:18px 24px;">
           <div class="map-canvas" style="position:relative;width:100%;height:${height}px;max-height:56vh;background:rgba(10,16,32,0.92);border:2px solid #566080;border-radius:12px;overflow:hidden;">
@@ -2732,18 +2849,10 @@ function openMap(): void {
             <span>TIP: CLICK ANY ROOM OR MARKER TO WALK THERE</span>
           </div>
         </div>
-        <footer class="svg-window-footer" style="justify-content:flex-end;">
-          <button class="svg-back-pill-btn" type="button" data-close>CLOSE MAP</button>
-        </footer>
       </section>
-    </div>
+    </dialog>
   `;
-  const close = (): void => {
-    modalRoot.replaceChildren();
-    if (currentScreen === 'training') resumeTraining();
-    else resumeMissionAfterModal();
-  };
-  pauseForModal();
+  const close = showGameMenu();
   modalRoot.querySelectorAll<HTMLButtonElement>('[data-map-walk-x]').forEach(btn => {
     btn.addEventListener('click', () => {
       const x = Number(btn.dataset.mapWalkX);
@@ -2754,10 +2863,6 @@ function openMap(): void {
       walkStationTo(x, y, label);
     });
   });
-  modalRoot.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', close));
-  modalRoot.querySelector('.modal-shade')?.addEventListener('click', event => {
-    if (event.target === event.currentTarget) close();
-  });
 }
 
 function openTaskList(): void {
@@ -2765,7 +2870,6 @@ function openTaskList(): void {
     if (currentScreen === 'training') renderTrainingHud();
     return;
   }
-  pauseMissionForModal();
   let selectedTaskId = mission.tasks[0] ?? '';
 
   const renderTaskInspector = (taskId: string): string => {
@@ -2799,14 +2903,14 @@ function openTaskList(): void {
   };
 
   modalRoot.innerHTML = `
-    <div class="modal-shade">
+    <dialog class="game-menu-dialog" aria-labelledby="game-tasks-title">
       <section class="svg-inventory-window task-list-card">
-        <header class="svg-inventory-topbar">
+        <header class="svg-inventory-topbar game-menu-header">
           <div class="svg-inventory-title">
             <span>DAY ${String(missionDayNumber()).padStart(2, '0')} · ${escapeHtml(mission.eventCard?.name ?? 'ROUTINE SHIFT')}</span>
-            <h2>TODAY'S ASSIGNMENTS</h2>
+            <h2 id="game-tasks-title">TODAY'S ASSIGNMENTS</h2>
           </div>
-          <button class="svg-tab-pill" data-close aria-label="Close tasks">✕ CLOSE</button>
+          ${gameMenuClose('tasks')}
         </header>
         <div class="svg-master-detail-body">
           <div class="svg-slot-well">
@@ -2828,23 +2932,16 @@ function openTaskList(): void {
             </div>
             <div class="svg-slot-footer-bar">
               <span>COMPLETED: ${mission.completed.length} / ${mission.tasks.length}</span>
-              <span>PRESS TAB TO TOGGLE</span>
             </div>
           </div>
           <aside class="svg-inspector-card" id="task-modal-inspector">
             ${renderTaskInspector(selectedTaskId)}
           </aside>
         </div>
-        <footer class="svg-window-footer" style="justify-content:flex-end;">
-          <button class="svg-back-pill-btn" type="button" data-close>CLOSE</button>
-        </footer>
       </section>
-    </div>
+    </dialog>
   `;
-  const close = (): void => {
-    modalRoot.replaceChildren();
-    resumeMissionAfterModal();
-  };
+  const close = showGameMenu();
   const wireWalkBtn = (): void => {
     modalRoot.querySelector<HTMLButtonElement>('[data-walk-task]')?.addEventListener('click', event => {
       const id = (event.currentTarget as HTMLButtonElement).dataset.walkTask ?? '';
@@ -2868,12 +2965,10 @@ function openTaskList(): void {
       }
     });
   });
-  modalRoot.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', close));
 }
 
 function openMissionLog(): void {
   if (currentScreen !== 'mission') return;
-  pauseMissionForModal();
   const reports = [...mission.reports].reverse();
   let selectedDay = reports[0]?.day ?? -1;
 
@@ -2910,14 +3005,14 @@ function openMissionLog(): void {
   };
 
   modalRoot.innerHTML = `
-    <div class="modal-shade">
-      <section class="svg-inventory-window help-card" role="dialog" aria-modal="true" aria-labelledby="mission-log-title">
-        <header class="svg-inventory-topbar">
+    <dialog class="game-menu-dialog" aria-labelledby="mission-log-title">
+      <section class="svg-inventory-window help-card">
+        <header class="svg-inventory-topbar game-menu-header">
           <div class="svg-inventory-title">
             <span>${escapeHtml(destinationById(lobby.destination).name)} · DAY ${missionDayNumber()}</span>
             <h2 id="mission-log-title">MISSION LOG ARCHIVE</h2>
           </div>
-          <button class="svg-tab-pill" data-close aria-label="Close mission log">✕ CLOSE</button>
+          ${gameMenuClose('mission log')}
         </header>
         <div class="svg-master-detail-body">
           <div class="svg-slot-well">
@@ -2939,12 +3034,9 @@ function openMissionLog(): void {
             ${renderLogInspector(selectedDay)}
           </aside>
         </div>
-        <footer class="svg-window-footer" style="justify-content:flex-end;">
-          <button class="svg-back-pill-btn" type="button" data-close>CLOSE</button>
-        </footer>
       </section>
-    </div>`;
-  const close = (): void => { modalRoot.replaceChildren(); resumeMissionAfterModal(); };
+    </dialog>`;
+  showGameMenu();
   modalRoot.querySelectorAll<HTMLButtonElement>('[data-log-day]').forEach(btn => {
     btn.addEventListener('click', () => {
       selectedDay = Number(btn.dataset.logDay);
@@ -2954,23 +3046,21 @@ function openMissionLog(): void {
       if (inspector) inspector.innerHTML = renderLogInspector(selectedDay);
     });
   });
-  modalRoot.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', close));
 }
 
 function openHelp(): void {
-  pauseForModal();
   modalRoot.innerHTML = `
-    <div class="modal-shade">
-      <section class="svg-options-window help-card" style="width:min(740px,calc(100vw - 24px));">
-        <header class="svg-window-header" style="display:flex;justify-content:space-between;align-items:center;text-align:left;padding:16px 24px;">
-          <div><span class="svg-kicker">S.P.U.D.I.E. · FIELD MANUAL</span><h2>CONTROLS &amp; SYSTEMS</h2></div>
-          <button class="svg-tab-pill" data-close aria-label="Close help">✕ CLOSE</button>
+    <dialog class="game-menu-dialog game-help-dialog" aria-labelledby="game-help-title">
+      <section class="svg-options-window help-card">
+        <header class="svg-window-header game-menu-header">
+          <div><span class="svg-kicker">S.P.U.D.I.E. · FIELD MANUAL</span><h2 id="game-help-title">CONTROLS &amp; SYSTEMS</h2></div>
+          ${gameMenuClose('help')}
         </header>
         <div class="svg-options-body">
           <div class="svg-subcard" style="padding:18px 22px;display:grid;gap:14px;">
             <div>
               <strong style="color:#9beeff;letter-spacing:0.12em;">01 · MOVEMENT &amp; AUTO-PILOT</strong>
-              <p style="margin:4px 0 0;color:#fff3d8;">Use <b>WASD</b> or <b>Arrow keys</b> to walk, or <b>Click / Tap</b> any room on the deck or inside the <b>MAP (M)</b> and <b>TASKS (Tab)</b> modals to auto-pilot.</p>
+              <p style="margin:4px 0 0;color:#fff3d8;">Use <b>WASD</b> or the <b>arrow keys</b> to walk. Click or tap the deck, a room in <b>Map (M)</b>, or a destination in <b>Tasks (T)</b> to auto-pilot.</p>
             </div>
             <div style="border-top:1px solid #343c5b;padding-top:12px;">
               <strong style="color:#c8baff;letter-spacing:0.12em;">02 · DAILY SHIFT LOOP</strong>
@@ -2982,17 +3072,10 @@ function openHelp(): void {
             </div>
           </div>
         </div>
-        <footer class="svg-window-footer" style="justify-content:flex-end;">
-          <button class="svg-back-pill-btn is-cyan" type="button" data-close>UNDERSTOOD</button>
-        </footer>
       </section>
-    </div>
+    </dialog>
   `;
-  const close = (): void => {
-    modalRoot.replaceChildren();
-    resumeFromModal();
-  };
-  modalRoot.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', close));
+  showGameMenu();
 }
 
 function applyOptions(): void {
@@ -3026,13 +3109,18 @@ function wireControls(): void {
     if (document.hidden && isMissionActive()) {
       pauseMissionForModal();
       saveTrialProgress();
-    } else if (!document.hidden && mission.modalOpen && !modalRoot.childElementCount) {
+    } else if (!document.hidden && currentScreen === 'mission' && mission.modalOpen && !modalRoot.childElementCount) {
       resumeMissionAfterModal();
     }
   });
   document.addEventListener('keydown', event => {
     const target = event.target as HTMLElement | null;
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+    if (target?.closest('dialog[open]')) return;
+    if (event.key === 'Escape' && currentScreen === 'options') {
+      screenRoot.querySelector<HTMLButtonElement>('[data-game-return]')?.click();
+      return;
+    }
+    if (target?.closest('input, textarea')) return;
 
     if (currentScreen === 'menu' && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
       const items = Array.from(screenRoot.querySelectorAll<HTMLButtonElement>('.duelyst-nav-item'));
@@ -3073,13 +3161,17 @@ function wireControls(): void {
       return;
     }
     if (currentScreen !== 'mission' && currentScreen !== 'training') return;
+    if (modalRoot.childElementCount || event.ctrlKey || event.altKey || event.metaKey || event.repeat) return;
     const key = event.key.toLowerCase();
     if (key === 'm') {
       event.preventDefault();
       openMap();
-    } else if (event.key === 'Tab') {
+    } else if (key === 't' && currentScreen === 'mission') {
       event.preventDefault();
-      if (currentScreen === 'mission') openTaskList();
+      openTaskList();
+    } else if (key === 'o' && currentScreen === 'mission') {
+      event.preventDefault();
+      showOptions();
     } else if (key === '?' || key === 'h') {
       event.preventDefault();
       openHelp();

@@ -177,7 +177,6 @@ export function advanceWaypoint(state: PlayerState): boolean {
  * - farmer: 1.0
  * - traveller: 1.18 (18% faster - matches original design)
  * - researcher: 1.0
- * - shield: 1.0
  * 
  * This can be expanded with perks that modify other aspects too.
  */
@@ -190,7 +189,6 @@ export function applySpecialistSpeed(
     farmer: 1.0,
     traveller: 1.18,
     researcher: 1.0,
-    shield: 1.0,
     // Add new specialists here as the game grows
   };
 

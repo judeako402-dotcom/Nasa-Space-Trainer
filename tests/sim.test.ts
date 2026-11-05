@@ -224,7 +224,7 @@ describe('mission simulation', () => {
   it('awards system progress for a completed assignment', () => {
     const metrics = createMetrics();
     const task = taskById('shields')!;
-    const next = applyTaskCompletion(metrics, task, 'shield');
+    const next = applyTaskCompletion(metrics, task, 'repairman');
     expect(next.hull).toBeGreaterThan(metrics.hull);
     expect(systemHealth(next, 'shielding')).toBeGreaterThan(systemHealth(metrics, 'shielding'));
   });
