@@ -20,7 +20,7 @@ export function renderTaskGame(kind: TaskKind, host: HTMLElement, complete: Comp
       duration: 2200,
       className: 'garbage',
     }); break;
-    case 'cards': renderCards(host, complete, taskName ?? 'Complete the task'); break;
+    case 'cards': renderCards(host, complete); break;
   }
 }
 
@@ -360,74 +360,45 @@ function renderHold(
   });
 }
 
-function renderCards(host: HTMLElement, complete: Complete, taskName?: string): void {
-  header(host, 'Match the symbols to complete the task.');
-  const card = document.createElement('div');
-  card.className = 'task-card-kenney';
-  card.innerHTML = `
-    <div class="card-head">
-      <div class="eyebrow">TASK</div>
-      <h2>${taskName ?? 'Cards Task'}</h2>
-      <button class="close-btn" aria-label="Close task">×</button>
+function renderCards(host: HTMLElement, complete: Complete): void {
+  header(host, 'Select any three matching containment seals to complete the sequence.');
+  const task = document.createElement('div');
+  task.className = 'spud-cards-task';
+  task.innerHTML = `
+    <div class="spud-symbols-grid">
+      <button class="spud-symbol-tile" type="button" aria-pressed="false"><span>□</span></button>
+      <button class="spud-symbol-tile" type="button" aria-pressed="false"><span>◉</span></button>
+      <button class="spud-symbol-tile" type="button" aria-pressed="false"><span>✚</span></button>
+      <button class="spud-symbol-tile" type="button" aria-pressed="false"><span>△</span></button>
     </div>
-    <div class="card-body">
-      <div class="symbols-grid">
-        <div class="symbol-box"><span>□</span></div>
-        <div class="symbol-box"><span>◉</span></div>
-        <div class="symbol-box"><span>✚</span></div>
-        <div class="symbol-box"><span>△</span></div>
-      </div>
-      <p class="help-text">Match three symbols in a row to complete.</p>
-    </div>
-    <div class="card-footer">
-      <span class="progress">0 / 3 MATCHED</span>
-      <button class="primary-button">COMPLETE</button>
+    <div class="spud-cards-footer">
+      <span class="task-status">0 / 3 MATCHED</span>
+      <button class="task-primary" type="button">COMPLETE</button>
     </div>
   `;
-  host.append(card);
-  const symbols = card.querySelectorAll('.symbol-box');
-  let matched = 0;
-  const targetCount = 3;
+  host.append(task);
 
-  // Make symbols clickable
-  symbols.forEach((symbol, _index) => {
-    symbol.addEventListener('click', () => {
-      symbol.classList.toggle('selected');
-      if (symbol.classList.contains('selected')) {
-        matched += 1;
-        const progress = card.querySelector('.progress');
-        if (progress) progress.textContent = `${matched} / ${targetCount} MATCHED`;
-      } else {
-        matched -= 1;
-        const progress = card.querySelector('.progress');
-        if (progress) progress.textContent = `${matched} / ${targetCount} MATCHED`;
-      }
+  const tiles = [...task.querySelectorAll<HTMLButtonElement>('.spud-symbol-tile')];
+  const statusEl = task.querySelector<HTMLElement>('.task-status')!;
+  const submitBtn = task.querySelector<HTMLButtonElement>('.task-primary')!;
+  const targetCount = 3;
+  let matched = 0;
+
+  tiles.forEach((tile) => {
+    tile.addEventListener('click', () => {
+      const next = !tile.classList.contains('selected');
+      tile.classList.toggle('selected', next);
+      tile.setAttribute('aria-pressed', String(next));
+      matched += next ? 1 : -1;
+      statusEl.textContent = `${matched} / ${targetCount} MATCHED`;
     });
   });
 
-  card.querySelector('.primary-button')?.addEventListener('click', () => {
+  submitBtn.addEventListener('click', () => {
     if (matched >= targetCount) {
       complete();
-    } else {
-      // Show toast directly
-      const toast = document.querySelector('#toast');
-      if (toast) {
-        toast.textContent = `Match ${targetCount} symbols to complete. Only ${matched} matched.`;
-        toast.classList.add('visible');
-        setTimeout(() => toast.classList.remove('visible'), 3400);
-      }
+      return;
     }
-  });
-
-  card.querySelector('.close-btn')?.addEventListener('click', () => {
-    card.remove();
-    complete();
-  });
-
-  card.addEventListener('click', event => {
-    if (event.target === card) {
-      card.remove();
-      complete();
-    }
+    statusEl.textContent = `SELECT ${targetCount - matched} MORE (${matched} / ${targetCount})`;
   });
 }

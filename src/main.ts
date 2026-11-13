@@ -97,13 +97,63 @@ function ensureStationGame(): Promise<PhaserGame> {
 const app = document.querySelector<HTMLDivElement>('#app');
 if (!app) throw new Error('Missing #app root element.');
 
-const GAME_MENU_BUTTONS = [
-  { action: 'map', label: 'Map', key: 'M', icon: '<path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2zM9 3v16m6-14v16"/>' },
-  { action: 'tasks', label: 'Tasks', key: 'T', icon: '<path d="m3 6 2 2 3-4m-5 9 2 2 3-4m-5 9 2 2 3-4M12 6h9m-9 7h9m-9 7h9"/>' },
-  { action: 'log', label: 'Log', key: '', icon: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6m-6 4h6m-6 4h4"/>' },
-  { action: 'help', label: 'Help', key: 'H', icon: '<circle cx="12" cy="12" r="9"/><path d="M9 9a3 3 0 1 1 5 2.2c-1.4 1-2 1.4-2 2.8m0 3h.01"/>' },
-  { action: 'options', label: 'Settings', key: 'O', icon: '<path d="M4 6h16M4 12h16M4 18h16M8 4v4m8 2v4m-6 2v4"/>' },
-] as const;
+type ConstellationIconId =
+  | 'play'
+  | 'training'
+  | 'options'
+  | 'back'
+  | 'masterVolume'
+  | 'musicVolume'
+  | 'sfxVolume'
+  | 'reset'
+  | 'abort'
+  | 'map'
+  | 'tasks'
+  | 'log'
+  | 'help'
+  | 'close'
+  | 'skip'
+  | 'randomize'
+  | 'vision'
+  | 'cert'
+  | 'launch'
+  | 'forward';
+
+const CONSTELLATION_ICON_MARKUP: Record<ConstellationIconId, string> = {
+  play: '<line x1="8" y1="10" x2="26" y2="16" /><line x1="26" y1="16" x2="14" y2="27" /><line x1="14" y1="27" x2="8" y2="10" /><circle cx="8" cy="10" r="2.5" /><circle cx="26" cy="16" r="3" /><circle cx="14" cy="27" r="2.2" />',
+  training: '<line x1="9" y1="9" x2="27" y2="27" /><line x1="27" y1="9" x2="9" y2="27" /><circle cx="9" cy="9" r="2.2" /><circle cx="27" cy="27" r="2.2" /><circle cx="27" cy="9" r="2.2" /><circle cx="9" cy="27" r="2.2" /><circle cx="18" cy="18" r="2.6" />',
+  options: '<circle cx="18" cy="18" r="5" fill="none" /><line x1="18" y1="5" x2="18" y2="10" /><line x1="18" y1="26" x2="18" y2="31" /><line x1="5" y1="18" x2="10" y2="18" /><line x1="26" y1="18" x2="31" y2="18" />',
+  back: '<line x1="21" y1="8" x2="9" y2="18" /><line x1="9" y1="18" x2="21" y2="28" /><line x1="9" y1="18" x2="27" y2="18" /><circle cx="21" cy="8" r="2.2" /><circle cx="9" cy="18" r="2.8" /><circle cx="21" cy="28" r="2.2" /><circle cx="27" cy="18" r="2.1" />',
+  masterVolume: '<line x1="7" y1="14" x2="12" y2="14" /><line x1="12" y1="14" x2="19" y2="8" /><line x1="19" y1="8" x2="19" y2="28" /><line x1="19" y1="28" x2="12" y2="22" /><line x1="12" y1="22" x2="7" y2="22" /><line x1="7" y1="22" x2="7" y2="14" /><line x1="24" y1="12" x2="28" y2="18" /><line x1="28" y1="18" x2="24" y2="24" /><circle cx="7" cy="14" r="1.9" /><circle cx="19" cy="8" r="2.3" /><circle cx="19" cy="28" r="2.3" /><circle cx="7" cy="22" r="1.9" /><circle cx="24" cy="12" r="2.0" /><circle cx="28" cy="18" r="2.5" /><circle cx="24" cy="24" r="2.0" />',
+  musicVolume: '<line x1="13" y1="10" x2="27" y2="7" /><line x1="13" y1="10" x2="13" y2="25" /><line x1="27" y1="7" x2="27" y2="22" /><circle cx="13" cy="10" r="2.0" /><circle cx="27" cy="7" r="2.0" /><circle cx="11.5" cy="25" r="3.0" /><circle cx="25.5" cy="22" r="3.0" />',
+  sfxVolume: '<line x1="5" y1="18" x2="10" y2="18" /><line x1="10" y1="18" x2="15" y2="8" /><line x1="15" y1="8" x2="21" y2="28" /><line x1="21" y1="28" x2="26" y2="12" /><line x1="26" y1="12" x2="31" y2="18" /><circle cx="5" cy="18" r="1.9" /><circle cx="15" cy="8" r="2.4" /><circle cx="21" cy="28" r="2.4" /><circle cx="26" cy="12" r="2.2" /><circle cx="31" cy="18" r="1.9" />',
+  reset: '<line x1="18" y1="8" x2="26" y2="13" /><line x1="26" y1="13" x2="26" y2="23" /><line x1="26" y1="23" x2="18" y2="28" /><line x1="18" y1="28" x2="10" y2="23" /><line x1="10" y1="23" x2="10" y2="13" /><line x1="10" y1="13" x2="15" y2="10" /><line x1="10" y1="13" x2="15" y2="16" /><circle cx="18" cy="8" r="2.0" /><circle cx="26" cy="13" r="2.0" /><circle cx="26" cy="23" r="2.0" /><circle cx="18" cy="28" r="2.0" /><circle cx="10" cy="23" r="2.0" /><circle cx="10" cy="13" r="2.5" />',
+  abort: '<polygon points="18,6 30,18 18,30 6,18" fill="none" /><circle cx="18" cy="6" r="2.2" /><circle cx="30" cy="18" r="2.2" /><circle cx="18" cy="30" r="2.2" /><circle cx="6" cy="18" r="2.2" />',
+  map: '<line x1="7" y1="11" x2="15" y2="8" /><line x1="15" y1="8" x2="22" y2="12" /><line x1="22" y1="12" x2="29" y2="9" /><line x1="7" y1="26" x2="15" y2="23" /><line x1="15" y1="23" x2="22" y2="27" /><line x1="22" y1="27" x2="29" y2="24" /><line x1="7" y1="11" x2="7" y2="26" /><line x1="15" y1="8" x2="15" y2="23" /><line x1="22" y1="12" x2="22" y2="27" /><line x1="29" y1="9" x2="29" y2="24" /><circle cx="7" cy="11" r="1.9" /><circle cx="15" cy="8" r="2.2" /><circle cx="22" cy="12" r="2.0" /><circle cx="29" cy="9" r="1.9" /><circle cx="15" cy="23" r="2.1" /><circle cx="22" cy="27" r="2.2" />',
+  tasks: '<line x1="7" y1="10" x2="11" y2="13" /><line x1="11" y1="13" x2="15" y2="8" /><line x1="18" y1="11" x2="29" y2="11" /><line x1="7" y1="19" x2="11" y2="22" /><line x1="11" y1="22" x2="15" y2="17" /><line x1="18" y1="20" x2="29" y2="20" /><line x1="18" y1="28" x2="29" y2="28" /><circle cx="7" cy="10" r="1.8" /><circle cx="11" cy="13" r="2.1" /><circle cx="15" cy="8" r="1.9" /><circle cx="11" cy="22" r="2.1" /><circle cx="11" cy="28" r="2.2" /><circle cx="29" cy="11" r="1.7" /><circle cx="29" cy="20" r="1.7" /><circle cx="29" cy="28" r="1.7" />',
+  log: '<line x1="10" y1="7" x2="26" y2="7" /><line x1="26" y1="7" x2="26" y2="29" /><line x1="26" y1="29" x2="10" y2="29" /><line x1="10" y1="29" x2="10" y2="7" /><line x1="14" y1="13" x2="22" y2="13" /><line x1="14" y1="18" x2="22" y2="18" /><line x1="14" y1="23" x2="19" y2="23" /><circle cx="10" cy="7" r="2.0" /><circle cx="26" cy="7" r="2.0" /><circle cx="26" cy="29" r="2.0" /><circle cx="10" cy="29" r="2.0" /><circle cx="14" cy="13" r="1.7" /><circle cx="14" cy="18" r="1.7" />',
+  help: '<circle cx="18" cy="18" r="11" fill="none" /><line x1="18" y1="7" x2="18" y2="11" /><line x1="18" y1="25" x2="18" y2="29" /><line x1="7" y1="18" x2="11" y2="18" /><line x1="25" y1="18" x2="29" y2="18" /><circle cx="18" cy="18" r="2.6" />',
+  close: '<line x1="10" y1="10" x2="26" y2="26" /><line x1="26" y1="10" x2="10" y2="26" /><circle cx="10" cy="10" r="2.1" /><circle cx="26" cy="26" r="2.1" /><circle cx="26" cy="10" r="2.1" /><circle cx="10" cy="26" r="2.1" /><circle cx="18" cy="18" r="2.3" />',
+  skip: '<line x1="8" y1="10" x2="16" y2="18" /><line x1="16" y1="18" x2="8" y2="26" /><line x1="18" y1="10" x2="26" y2="18" /><line x1="26" y1="18" x2="18" y2="26" /><line x1="28" y1="10" x2="28" y2="26" /><circle cx="8" cy="10" r="1.9" /><circle cx="16" cy="18" r="2.3" /><circle cx="8" cy="26" r="1.9" /><circle cx="26" cy="18" r="2.4" /><circle cx="28" cy="10" r="1.9" /><circle cx="28" cy="26" r="1.9" />',
+  randomize: '<line x1="7" y1="12" x2="15" y2="12" /><line x1="15" y1="12" x2="21" y2="24" /><line x1="21" y1="24" x2="29" y2="24" /><line x1="7" y1="24" x2="15" y2="24" /><line x1="15" y1="24" x2="21" y2="12" /><line x1="21" y1="12" x2="29" y2="12" /><circle cx="7" cy="12" r="2.0" /><circle cx="29" cy="12" r="2.2" /><circle cx="7" cy="24" r="2.0" /><circle cx="29" cy="24" r="2.2" /><circle cx="18" cy="18" r="2.1" />',
+  vision: '<line x1="6" y1="18" x2="18" y2="10" /><line x1="18" y1="10" x2="30" y2="18" /><line x1="30" y1="18" x2="18" y2="26" /><line x1="18" y1="26" x2="6" y2="18" /><circle cx="6" cy="18" r="2.0" /><circle cx="30" cy="18" r="2.0" /><circle cx="18" cy="10" r="2.0" /><circle cx="18" cy="26" r="2.0" /><circle cx="18" cy="18" r="3.1" />',
+  cert: '<circle cx="18" cy="15" r="8" fill="none" /><line x1="14" y1="22" x2="12" y2="30" /><line x1="12" y1="30" x2="18" y2="26" /><line x1="18" y1="26" x2="24" y2="30" /><line x1="24" y1="30" x2="22" y2="22" /><circle cx="18" cy="15" r="2.5" /><circle cx="12" cy="30" r="1.9" /><circle cx="24" cy="30" r="1.9" />',
+  launch: '<line x1="18" y1="6" x2="11" y2="24" /><line x1="18" y1="6" x2="25" y2="24" /><line x1="11" y1="24" x2="18" y2="20" /><line x1="25" y1="24" x2="18" y2="20" /><line x1="18" y1="20" x2="18" y2="30" /><circle cx="18" cy="6" r="2.7" /><circle cx="11" cy="24" r="2.0" /><circle cx="25" cy="24" r="2.0" /><circle cx="18" cy="30" r="2.1" />',
+  forward: '<line x1="15" y1="8" x2="27" y2="18" /><line x1="27" y1="18" x2="15" y2="28" /><line x1="9" y1="18" x2="27" y2="18" /><circle cx="15" cy="8" r="2.2" /><circle cx="27" cy="18" r="2.8" /><circle cx="15" cy="28" r="2.2" /><circle cx="9" cy="18" r="2.1" />',
+};
+
+function renderConstellationIcon(id: ConstellationIconId, extraClass = ''): string {
+  const cls = extraClass ? `spud-menu-icon ${extraClass}` : 'spud-menu-icon';
+  return `<svg class="${cls}" viewBox="0 0 36 36" aria-hidden="true">${CONSTELLATION_ICON_MARKUP[id]}</svg>`;
+}
+
+const GAME_MENU_BUTTONS: ReadonlyArray<{ action: string; label: string; key: string; icon: ConstellationIconId }> = [
+  { action: 'map', label: 'Map', key: 'M', icon: 'map' },
+  { action: 'tasks', label: 'Tasks', key: 'T', icon: 'tasks' },
+  { action: 'log', label: 'Log', key: '', icon: 'log' },
+  { action: 'help', label: 'Help', key: 'H', icon: 'help' },
+  { action: 'options', label: 'Settings', key: 'O', icon: 'options' },
+];
 
 app.innerHTML = `
   <div class="game-frame">
@@ -126,7 +176,7 @@ app.innerHTML = `
             ${GAME_MENU_BUTTONS.map(({ action, label, key, icon }) => `
               <button type="button" class="mission-menu-button" data-action="${action}" title="${label}${key ? ` (${key})` : ''}"
                 ${key ? `aria-keyshortcuts="${key}"` : ''} ${action === 'options' ? '' : 'aria-haspopup="dialog"'}>
-                <svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg>
+                ${renderConstellationIcon(icon, 'spud-hud-icon')}
                 <span>${label}</span>
                 ${key ? `<kbd aria-hidden="true">${key}</kbd>` : ''}
               </button>
@@ -199,128 +249,94 @@ const SPECIALIST_STATS: Record<SpecialistId, { label: string; value: number }[]>
   ],
 };
 
-function renderVistaFxLayer(): string {
+function renderConstellationBack(label = 'BACK', attrs = 'data-back', ariaLabel = 'Back'): string {
   return `
-    <div class="vista-fx-layer" aria-hidden="true">
-      <div class="vista-rocket-glow"></div>
-      <div class="vista-dome-pulse"></div>
-      <div class="vista-beacon-dot"></div>
-      <div class="vista-star-motes"></div>
-    </div>
+    <button
+      class="spud-constellation-back"
+      type="button"
+      ${attrs}
+      aria-label="${escapeHtml(ariaLabel)}"
+    >
+      ${renderConstellationIcon('back', 'spud-back-constellation')}
+      <span class="spud-menu-label">${escapeHtml(label)}</span>
+    </button>
   `;
 }
 
-function renderUniversalBackdrop(): string {
+function renderConstellationTitle(title: string, titleId: string, kicker?: string): string {
   return `
-    <div class="menu-backdrop" aria-hidden="true">
-      <img class="menu-bg" src="/assets/menu-bg.jpg" alt="" />
-      <div class="menu-veil"></div>
-      ${renderVistaFxLayer()}
-      <div class="menu-grain"></div>
-      <div class="menu-zoom-flash"></div>
-    </div>
-  `;
-}
-
-function renderPotatoOverride(showSuitBadge = false): string {
-  const color = getColor(lobby.colorId || save.colorId);
-  const spec = specialistById(lobby.specialist || save.specialist);
-  const callsign = (lobby.playerName || save.name || 'Spudnaut').trim() || 'Spudnaut';
-  return `
-    <div class="menu-potato-override" aria-hidden="true">
-      <img class="menu-potato-fg" src="/assets/menu-potato-fg.png" alt="" />
-      ${showSuitBadge ? `
-        <div class="potato-suit-badge" id="potato-suit-badge">
-          <span class="potato-suit-dot" id="potato-suit-dot" style="background:${color.css};color:${color.css}"></span>
-          <span id="potato-suit-label">${escapeHtml(callsign)} · ${escapeHtml(spec.shortName)}</span>
-        </div>
-      ` : ''}
-    </div>
-  `;
-}
-
-function renderUniversalTopBar(activeNav: 'play' | 'training' | 'options' | 'credits' | '' = ''): string {
-  const certLabel = save.certified
-    ? 'CERTIFIED'
-    : save.trainingComplete ? `RANK ${save.trainingRank ?? 'B'}` : 'CADET';
-  return `
-    <header class="universal-top-bar" aria-label="Universal navigation">
-      <button class="universal-brand-mini" type="button" data-universal-home title="Return to Main Menu">
-        <span>◁ SPUDNAUT · MENU</span>
-      </button>
-      <nav class="duelyst-hex-bar" aria-label="Quick navigation">
-        <button class="duelyst-hex-btn ${activeNav === 'play' ? 'is-certified' : ''}" type="button" data-universal-nav="play" title="Mission Loadout">
-          <span class="hex-shape">
-            <svg viewBox="0 0 64 64" aria-hidden="true">
-              <polygon class="hex-outer" points="32,3 58,18 58,46 32,61 6,46 6,18" />
-              <polygon class="hex-inner" points="32,8 53,20.5 53,43.5 32,56 11,43.5 11,20.5" />
-              <path class="hex-glyph" d="M32 18L36 27L46 28L38.5 35L40.5 45L32 40L23.5 45L25.5 35L18 28L28 27Z" />
-            </svg>
-          </span>
-          <span class="hex-label">TRIALS (${save.games})</span>
-        </button>
-        <button class="duelyst-hex-btn ${activeNav === 'training' || save.certified ? 'is-certified' : ''}" type="button" data-universal-nav="training" title="Training Deck">
-          <span class="hex-shape">
-            <svg viewBox="0 0 64 64" aria-hidden="true">
-              <polygon class="hex-outer" points="32,3 58,18 58,46 32,61 6,46 6,18" />
-              <polygon class="hex-inner" points="32,8 53,20.5 53,43.5 32,56 11,43.5 11,20.5" />
-              <circle class="hex-glyph" cx="32" cy="26" r="7" />
-              <path class="hex-glyph" d="M20 44C20 37.5 25.4 34 32 34C38.6 34 44 37.5 44 44" />
-            </svg>
-          </span>
-          <span class="hex-label">${certLabel}</span>
-        </button>
-        <button class="duelyst-hex-btn ${activeNav === 'options' ? 'is-certified' : ''}" type="button" data-universal-nav="options" title="Options">
-          <span class="hex-shape">
-            <svg viewBox="0 0 64 64" aria-hidden="true">
-              <polygon class="hex-outer" points="32,3 58,18 58,46 32,61 6,46 6,18" />
-              <polygon class="hex-inner" points="32,8 53,20.5 53,43.5 32,56 11,43.5 11,20.5" />
-              <circle class="hex-glyph-stroke" cx="32" cy="32" r="6" />
-              <path class="hex-glyph-stroke" d="M32 17V22M32 42V47M17 32H22M42 32H47M21.4 21.4L25 25M39 39L42.6 42.6M42.6 21.4L39 25M25 39L21.4 42.6" />
-            </svg>
-          </span>
-          <span class="hex-label">SETTINGS</span>
-        </button>
-        <button class="duelyst-hex-btn ${activeNav === 'credits' ? 'is-certified' : ''}" type="button" data-universal-nav="credits" title="Mission Brief & Science">
-          <span class="hex-shape">
-            <svg viewBox="0 0 64 64" aria-hidden="true">
-              <polygon class="hex-outer" points="32,3 58,18 58,46 32,61 6,46 6,18" />
-              <polygon class="hex-inner" points="32,8 53,20.5 53,43.5 32,56 11,43.5 11,20.5" />
-              <circle class="hex-glyph" cx="32" cy="23" r="4" />
-              <circle class="hex-glyph" cx="23" cy="38" r="4" />
-              <circle class="hex-glyph" cx="41" cy="38" r="4" />
-              <path class="hex-glyph-stroke" d="M32 27L25 35M32 27L39 35M27 38H37" />
-            </svg>
-          </span>
-          <span class="hex-label">RETURNS (${save.wins})</span>
-        </button>
-      </nav>
+    <header class="spud-options-header">
+      ${kicker ? `<span class="spud-constellation-kicker is-centered">${escapeHtml(kicker)}</span>` : ''}
+      <div class="spud-options-title-row">
+        <span class="spud-constellation-rule" aria-hidden="true"></span>
+        <h1 id="${escapeHtml(titleId)}" tabindex="-1">${escapeHtml(title)}</h1>
+        <span class="spud-constellation-rule is-right" aria-hidden="true"></span>
+      </div>
     </header>
   `;
 }
 
-function wireUniversalTopBar(root: ParentNode = screenRoot): void {
-  root.querySelector<HTMLButtonElement>('[data-universal-home]')?.addEventListener('click', () => {
-    sfx.click();
-    showMenu();
-  });
-  root.querySelectorAll<HTMLButtonElement>('[data-universal-nav]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      sfx.click();
-      const target = btn.dataset.universalNav;
-      if (target === 'play') {
-        if (save.activeTrial) resumeTrial();
-        else showLobby();
-      } else if (target === 'training') {
-        if (!save.trainingComplete) showStory(0);
-        else showTraining();
-      } else if (target === 'options') {
-        showOptions();
-      } else if (target === 'credits') {
-        showCredits();
-      }
-    });
-  });
+function renderConstellationAction(opts: {
+  icon: ConstellationIconId;
+  label: string;
+  attrs?: string;
+  variant?: 'default' | 'primary' | 'danger';
+  disabled?: boolean;
+}): string {
+  const variantCls = opts.variant === 'primary' ? ' is-primary' : opts.variant === 'danger' ? ' is-danger' : '';
+  return `
+    <button
+      class="spud-constellation-action${variantCls}"
+      type="button"
+      ${opts.attrs ?? ''}
+      ${opts.disabled ? 'disabled' : ''}
+    >
+      ${renderConstellationIcon(opts.icon)}
+      <span class="spud-menu-label">${escapeHtml(opts.label)}</span>
+    </button>
+  `;
+}
+
+function renderConstellationVideoScreen(opts: {
+  ariaLabel: string;
+  bodyMarkup: string;
+  backLabel?: string;
+  backAttrs?: string;
+  backAriaLabel?: string;
+  utilityMarkup?: string;
+  narrow?: boolean;
+  extraClass?: string;
+}): string {
+  const reduced = save.options.reducedMotion ? 'reduce-motion' : '';
+  const extra = opts.extraClass ? ` ${opts.extraClass}` : '';
+  const narrowCls = opts.narrow ? ' is-narrow' : '';
+  return `
+    <section class="screen-menu spud-video-menu spud-constellation-screen ${reduced}${extra}" aria-label="${escapeHtml(opts.ariaLabel)}">
+      <img class="menu-ambient-backdrop" src="/assets/main-menu-poster.jpg" alt="" aria-hidden="true" />
+      <div class="video-menu-stage">
+        <video
+          class="menu-video-player"
+          src="/assets/main-menu.mp4"
+          poster="/assets/main-menu-poster.jpg"
+          autoplay
+          loop
+          muted
+          playsinline
+          preload="auto"
+          aria-hidden="true"
+        ></video>
+        <img class="menu-video-poster" src="/assets/main-menu-poster.jpg" alt="" aria-hidden="true" />
+        <div class="menu-video-vignette" aria-hidden="true"></div>
+        ${opts.backAttrs === '' ? '' : renderConstellationBack(opts.backLabel ?? 'BACK', opts.backAttrs ?? 'data-back', opts.backAriaLabel ?? 'Back')}
+        ${opts.utilityMarkup ? `<div class="spud-utility-bar">${opts.utilityMarkup}</div>` : ''}
+        <div class="spud-constellation-stage">
+          <div class="spud-constellation-body${narrowCls}">
+            ${opts.bodyMarkup}
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
 }
 
 function walkStationTo(x: number, y: number, label?: string): void {
@@ -376,7 +392,7 @@ function showSplash(): void {
       <div class="opening-copy"><span>HEXABYTE INTERACTIVE · YEAR 3042</span><strong>THE GREAT STARCH MIGRATION</strong><small>Earth's future is out there.</small></div>
       <div class="intro-accessibility">
         <span>HEXABYTE INTERACTIVE · YEAR 3042</span>
-        <button class="intro-skip" type="button">SKIP INTRO <kbd>ENTER</kbd></button>
+        <button class="intro-skip" type="button">${renderConstellationIcon('skip')} <span>SKIP INTRO</span> <kbd>ENTER</kbd></button>
       </div>
     </section>
   `);
@@ -406,14 +422,30 @@ function showSplash(): void {
   splashTimer = window.setTimeout(finish, 30000);
 }
 
+let optionsHideTimer = 0;
+
 function showMenu(): void {
+  window.clearTimeout(optionsHideTimer);
   startMusic();
-  const startCopy = save.activeTrial
-    ? 'RESUME'
-    : 'PLAY';
-  const badgeMain = save.activeTrial
-    ? `DAY ${String(save.activeTrial.penaltyDay ? TRIAL_MAX_DAY + save.activeTrial.penaltyDay : save.activeTrial.day).padStart(2, '0')} / ${TRIAL_MAX_DAY}`
-    : '30 DAYS';
+  const savedTrial = save.activeTrial;
+  const badgeMain = savedTrial
+    ? `DAY ${String(savedTrial.penaltyDay ? TRIAL_MAX_DAY + savedTrial.penaltyDay : savedTrial.day).padStart(2, '0')} / ${TRIAL_MAX_DAY}`
+    : '';
+  const playActionMarkup = savedTrial
+    ? `
+            <button class="spud-menu-item" type="button" data-menu="resume" aria-label="Resume Mission ${badgeMain}">
+              ${renderConstellationIcon('forward')}
+              <span class="spud-menu-label">RESUME</span><small class="spud-menu-tag">${badgeMain}</small>
+            </button>
+            <button class="spud-menu-item" type="button" data-menu="play" aria-label="New Mission Loadout and Setup">
+              ${renderConstellationIcon('play')}
+              <span class="spud-menu-label">PLAY</span><small class="spud-menu-tag">NEW TRIAL</small>
+            </button>`
+    : `
+            <button class="spud-menu-item" type="button" data-menu="play" aria-label="Play Mission">
+              ${renderConstellationIcon('play')}
+              <span class="spud-menu-label">PLAY</span>
+            </button>`;
 setScreen('menu', `
     <section class="screen-menu spud-video-menu ${save.options.reducedMotion ? 'reduce-motion' : ''}">
       <img class="menu-ambient-backdrop" src="/assets/main-menu-poster.jpg" alt="" aria-hidden="true" />
@@ -442,25 +474,19 @@ setScreen('menu', `
           </h1>
 
           <nav class="spud-center-nav" aria-label="Spudnaut Main Menu">
-            <span class="spud-menu-light" aria-hidden="true"></span>
-            <button class="spud-menu-item" type="button" data-menu="play" aria-label="${startCopy} Mission">
-              <svg class="spud-menu-icon" viewBox="0 0 36 36" aria-hidden="true"><line x1="8" y1="10" x2="26" y2="16" /><line x1="26" y1="16" x2="14" y2="27" /><line x1="14" y1="27" x2="8" y2="10" /><circle cx="8" cy="10" r="2.5" /><circle cx="26" cy="16" r="3" /><circle cx="14" cy="27" r="2.2" /></svg>
-              <span class="spud-menu-label">${startCopy}</span>${save.activeTrial ? `<small class="spud-menu-tag">${badgeMain}</small>` : ''}
-            </button>
+            <span class="spud-menu-light" aria-hidden="true"></span>${playActionMarkup}
             <button class="spud-menu-item" type="button" data-menu="training" aria-label="Cadet Training">
-              <svg class="spud-menu-icon" viewBox="0 0 36 36" aria-hidden="true"><line x1="9" y1="9" x2="27" y2="27" /><line x1="27" y1="9" x2="9" y2="27" /><circle cx="9" cy="9" r="2.2" /><circle cx="27" cy="27" r="2.2" /><circle cx="27" cy="9" r="2.2" /><circle cx="9" cy="27" r="2.2" /><circle cx="18" cy="18" r="2.6" /></svg>
+              ${renderConstellationIcon('training')}
               <span class="spud-menu-label">TRAINING</span>
             </button>
-            <button class="spud-menu-item" type="button" data-menu="credits" aria-label="Mission Brief">
-              <svg class="spud-menu-icon" viewBox="0 0 36 36" aria-hidden="true"><polygon points="18,6 30,18 18,30 6,18" fill="none" /><circle cx="18" cy="6" r="2.2" /><circle cx="30" cy="18" r="2.2" /><circle cx="18" cy="30" r="2.2" /><circle cx="6" cy="18" r="2.2" /></svg>
-              <span class="spud-menu-label">MISSION BRIEF</span>
-            </button>
             <button class="spud-menu-item" type="button" data-menu="options" aria-label="Game Settings">
-              <svg class="spud-menu-icon" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="5" fill="none" /><line x1="18" y1="5" x2="18" y2="10" /><line x1="18" y1="26" x2="18" y2="31" /><line x1="5" y1="18" x2="10" y2="18" /><line x1="26" y1="18" x2="31" y2="18" /></svg>
+              ${renderConstellationIcon('options')}
               <span class="spud-menu-label">OPTIONS</span>
             </button>
           </nav>
         </div>
+
+        <div class="spud-options-overlay" hidden></div>
       </div>
     </section>
   `);
@@ -468,7 +494,7 @@ setScreen('menu', `
   // Moving blue selection light: follows hover, focus, and arrow-key navigation
   const menuNav = screenRoot.querySelector<HTMLElement>('.spud-center-nav');
   const menuLight = screenRoot.querySelector<HTMLElement>('.spud-menu-light');
-  const menuItems = Array.from(screenRoot.querySelectorAll<HTMLButtonElement>('.spud-menu-item'));
+  const menuItems = Array.from(screenRoot.querySelectorAll<HTMLButtonElement>('.spud-center-nav .spud-menu-item'));
   const setActiveMenuItem = (target: HTMLButtonElement | undefined, withSound = false): void => {
     if (!target || target.classList.contains('is-active')) return;
     menuItems.forEach(el => el.classList.toggle('is-active', el === target));
@@ -489,27 +515,33 @@ setScreen('menu', `
     requestAnimationFrame(() => menuLight?.classList.remove('no-transition'));
   });
 
+  const launchMenuTransition = (proceed: () => void): void => {
+    const menuEl = screenRoot.querySelector<HTMLElement>('.screen-menu');
+    if (menuEl && !menuEl.classList.contains('is-zooming')) {
+      menuEl.classList.add('is-zooming');
+      sfx.launch();
+      const delay = save.options.reducedMotion ? 180 : 1050;
+      window.setTimeout(proceed, delay);
+    } else {
+      proceed();
+    }
+  };
+
   screenRoot.querySelectorAll<HTMLButtonElement>('[data-menu]').forEach(button => button.addEventListener('click', () => {
     switch (button.dataset.menu) {
-      case 'play':
-      case 'start': {
-        const menuEl = screenRoot.querySelector<HTMLElement>('.screen-menu');
-        const proceed = (): void => {
-          if (save.activeTrial) resumeTrial();
-          else showLobby();
-        };
-
-        if (menuEl && !menuEl.classList.contains('is-zooming')) {
-          menuEl.classList.add('is-zooming');
-          
-          sfx.launch();
-          const delay = save.options.reducedMotion ? 180 : 1050;
-          window.setTimeout(proceed, delay);
-        } else {
-          proceed();
-        }
+      case 'resume':
+        launchMenuTransition(() => {
+          syncLobbyFromSave();
+          showResumeStaging();
+        });
         break;
-      }
+      case 'play':
+      case 'start':
+        launchMenuTransition(() => {
+          syncLobbyFromSave();
+          showLobby();
+        });
+        break;
       case 'options':
         sfx.click();
         showOptions();
@@ -533,56 +565,73 @@ function showStory(index: number): void {
     showTraining();
     return;
   }
-  setScreen('story', `
-    <section class="universal-duelyst-screen story-screen" data-cutscene="${escapeHtml(panel.cutscene)}">
-      ${renderUniversalBackdrop()}
-      ${renderUniversalTopBar('training')}
-      <article class="svg-inventory-window">
-        <header class="svg-inventory-topbar">
-          <div class="svg-inventory-title">
-            <span>${escapeHtml(panel.kicker)}</span>
-            <h1>${escapeHtml(panel.title)}</h1>
-          </div>
-          <div class="svg-tab-strip">
-            ${STORY_BEATS.map((beat, idx) => `
-              <button type="button" class="svg-tab-pill ${idx === index ? 'active' : ''}" data-story-jump="${idx}">
-                0${idx + 1} · ${escapeHtml(beat.cutscene.toUpperCase())}
-              </button>
-            `).join('')}
-          </div>
-        </header>
-        <div class="svg-master-detail-body">
-          <div class="svg-slot-well" style="justify-content:center;align-items:center;">
-            <img src="${escapeHtml(panel.art)}" alt="" style="width:100%;max-height:320px;object-fit:cover;border-radius:12px;border:2px solid #566080;" />
-            <div class="svg-slot-footer-bar" style="width:100%;">
-              <span>TRANSMISSION LOG ${String(index + 1).padStart(2, '0')} / ${String(STORY_BEATS.length).padStart(2, '0')}</span>
-              <span>HEXABYTE ARCHIVE · 3042</span>
-            </div>
-          </div>
-          <aside class="svg-inspector-card">
-            <div class="svg-inspector-box" style="font-size:14px;line-height:1.65;">
-              <strong>MISSION BRIEFING</strong>
-              <p style="margin:6px 0 0;">${escapeHtml(panel.body)}</p>
-            </div>
-            <div class="svg-inspector-box">
-              <strong>OPERATIONAL NOTE</strong>
-              <p style="margin:4px 0 0;">${escapeHtml(panel.note)}</p>
-            </div>
-            <button class="svg-tab-pill" type="button" data-story-skip style="justify-content:center;width:100%;">
-              SKIP BRIEFING → BOARD TRAINING DECK
-            </button>
-          </aside>
+  const stepsMarkup = STORY_BEATS.map((beat, idx) => `
+    <button type="button" class="spud-step-node ${idx === index ? 'active' : ''}" data-story-jump="${idx}">
+      <span class="spud-step-dot" aria-hidden="true"></span>
+      <span>0${idx + 1} · ${escapeHtml(beat.cutscene.toUpperCase())}</span>
+    </button>
+  `).join('<span class="spud-step-bridge" aria-hidden="true"></span>');
+
+  const utilityMarkup = `
+    <button class="spud-text-toggle" type="button" data-story-skip>
+      ${renderConstellationIcon('skip')}
+      <span>SKIP TO DECK</span>
+    </button>
+  `;
+
+  const bodyMarkup = `
+    ${renderConstellationTitle(panel.title, 'story-screen-title', panel.kicker)}
+    <nav class="spud-step-chain" aria-label="Transmission sequence">${stepsMarkup}</nav>
+    <div class="spud-constellation-divider" aria-hidden="true"></div>
+    <div class="spud-split-columns">
+      <div class="spud-copy-stack">
+        <div class="spud-art-frame">
+          <img src="${escapeHtml(panel.art)}" alt="" />
         </div>
-        <footer class="svg-window-footer">
-          <button class="svg-back-pill-btn" type="button" data-story-back>← MENU</button>
-          <button class="svg-back-pill-btn is-cyan" type="button" data-story-next>${index === STORY_BEATS.length - 1 ? 'BOARD TRAINING DECK →' : 'CONTINUE →'}</button>
-        </footer>
-      </article>
-      ${renderPotatoOverride(true)}
-    </section>
-  `);
-  wireUniversalTopBar();
-  screenRoot.querySelector('[data-story-back]')?.addEventListener('click', showMenu);
+        <div class="spud-meta-inline">
+          <span>TRANSMISSION LOG ${String(index + 1).padStart(2, '0')} / ${String(STORY_BEATS.length).padStart(2, '0')}</span>
+          <span>HEXABYTE ARCHIVE · 3042</span>
+        </div>
+      </div>
+      <div class="spud-vertical-rule" aria-hidden="true"></div>
+      <aside class="spud-copy-stack">
+        <div class="spud-copy-block">
+          <h2>MISSION BRIEFING</h2>
+          <p>${escapeHtml(panel.body)}</p>
+        </div>
+        <div class="spud-copy-block">
+          <h2>OPERATIONAL NOTE</h2>
+          <p>${escapeHtml(panel.note)}</p>
+        </div>
+      </aside>
+    </div>
+    <footer class="spud-constellation-actions">
+      ${index > 0
+        ? renderConstellationAction({ icon: 'back', label: 'PREVIOUS LOG', attrs: `data-story-jump="${index - 1}"` })
+        : renderConstellationAction({ icon: 'back', label: 'MAIN MENU', attrs: 'data-story-back' })}
+      ${renderConstellationAction({
+        icon: index === STORY_BEATS.length - 1 ? 'training' : 'forward',
+        label: index === STORY_BEATS.length - 1 ? 'BOARD TRAINING DECK' : 'CONTINUE',
+        attrs: 'data-story-next',
+        variant: 'primary',
+      })}
+    </footer>
+  `;
+
+  setScreen('story', renderConstellationVideoScreen({
+    ariaLabel: panel.title,
+    bodyMarkup,
+    backLabel: 'BACK',
+    backAttrs: 'data-story-back',
+    backAriaLabel: 'Back to Main Menu',
+    utilityMarkup,
+    extraClass: 'story-screen',
+  }));
+  screenRoot.querySelector('.screen-menu')?.setAttribute('data-cutscene', panel.cutscene);
+  screenRoot.querySelectorAll('[data-story-back]').forEach(el => el.addEventListener('click', () => {
+    sfx.click();
+    showMenu();
+  }));
   screenRoot.querySelectorAll<HTMLButtonElement>('[data-story-jump]').forEach(btn => {
     btn.addEventListener('click', () => {
       sfx.click();
@@ -632,8 +681,8 @@ function renderTrainingHud(): void {
       <header class="training-head">
         <div><span class="training-kicker">EARTH SIMULATOR</span><strong>TRAINING DECK</strong></div>
         <div class="training-head-actions">
-          <button class="training-map" type="button" data-training-map aria-haspopup="dialog" aria-keyshortcuts="M">Map <kbd aria-hidden="true">M</kbd></button>
-          <button class="training-exit" type="button" data-training-exit>Exit</button>
+          <button class="training-map" type="button" data-training-map aria-haspopup="dialog" aria-keyshortcuts="M">${renderConstellationIcon('map')}<span>Map</span><kbd aria-hidden="true">M</kbd></button>
+          <button class="training-exit" type="button" data-training-exit>${renderConstellationIcon('back')}<span>Exit</span></button>
         </div>
       </header>
       <div class="training-controls">Move <kbd>WASD</kbd> / <kbd>ARROWS</kbd> <span aria-hidden="true">·</span> Click to walk <span aria-hidden="true">·</span> <kbd>E</kbd> interact</div>
@@ -857,23 +906,39 @@ function finishTraining(): void {
   pauseTrainingForModal();
   trainingHud.hidden = true;
   overlayRoot.innerHTML = `
-    <section class="training-report-screen">
-      <div class="report-stars" aria-hidden="true"></div>
-      <article class="training-report-card holo-panel">
-        <span class="holo-kicker">S.P.U.D.I.E. · TRAINING EVALUATION</span>
-        <h1>TRAINING COMPLETE</h1>
-        <div class="training-rank-seal">${rank}<small>RANK</small></div>
-        <p>Four survival systems inspected. ${training.crew.length} crew conversation${training.crew.length === 1 ? '' : 's'} logged. ${
-          systemsDone ? 'Commander Russet has cleared you for the certification exam.' : 'Some checkpoints remain, but the exam console is unlocked for review.'
-        }</p>
-        <div class="training-report-grid">
-          <span><b>${TRAINING_SYSTEM_IDS.filter(id => training.completed.includes(id)).length} / 4</b><small>SYSTEMS</small></span>
-          <span><b>${Math.min(2, training.crew.length)} / 2</b><small>CREW TALKS</small></span>
-          <span><b>${training.completed.includes('sample') ? 'YES' : 'NO'}</b><small>SAMPLE</small></span>
+    <section class="spud-canvas-overlay training-report-screen ${save.options.reducedMotion ? 'reduce-motion' : ''}" aria-labelledby="training-complete-title">
+      <div class="spud-canvas-inner is-narrow">
+        ${renderConstellationTitle('TRAINING COMPLETE', 'training-complete-title', 'S.P.U.D.I.E. · TRAINING EVALUATION')}
+        <div class="spud-orbital-seal">${escapeHtml(rank)}<small>RANK</small></div>
+        <div class="spud-copy-block" style="text-align:center;">
+          <p>Four survival systems inspected. ${training.crew.length} crew conversation${training.crew.length === 1 ? '' : 's'} logged. ${
+            systemsDone ? 'Commander Russet has cleared you for the certification exam.' : 'Some checkpoints remain, but the exam console is unlocked for review.'
+          }</p>
         </div>
-        <p class="story-note">Rank S requires all four systems and two crew conversations. Your rank is recorded on the final certificate.</p>
-        <button class="primary-button" data-training-report-next>TAKE THE SPUD EXAM →</button>
-      </article>
+        <div class="spud-telemetry-grid">
+          <div class="spud-telemetry-cell">
+            <span>SYSTEMS</span>
+            <strong>${TRAINING_SYSTEM_IDS.filter(id => training.completed.includes(id)).length} / 4</strong>
+            <small>CONSOLE TELEMETRY</small>
+          </div>
+          <div class="spud-telemetry-cell">
+            <span>CREW TALKS</span>
+            <strong>${Math.min(2, training.crew.length)} / 2</strong>
+            <small>COMMAND BRIEF</small>
+          </div>
+          <div class="spud-telemetry-cell">
+            <span>SAMPLE</span>
+            <strong>${training.completed.includes('sample') ? 'LOGGED' : 'PENDING'}</strong>
+            <small>CORE SPECIMEN</small>
+          </div>
+        </div>
+        <div class="spud-copy-block" style="text-align:center;">
+          <small>Rank S requires all four systems and two crew conversations. Your rank is recorded on the final certificate.</small>
+        </div>
+        <footer class="spud-constellation-actions is-centered">
+          ${renderConstellationAction({ icon: 'cert', label: 'TAKE THE SPUD EXAM', attrs: 'data-training-report-next', variant: 'primary' })}
+        </footer>
+      </div>
     </section>
   `;
   overlayRoot.querySelector('[data-training-report-next]')?.addEventListener('click', () => {
@@ -937,14 +1002,30 @@ function showDialogue(options: {
     const line = options.lines[index] ?? '';
     modalRoot.innerHTML = `
       <div class="modal-shade">
-        <section class="modal-card dialogue-card kenney-panel" style="--accent:${options.accent}">
-          <div class="dialogue-head">
-            <img src="${options.art}" alt="" />
-            <div><span class="eyebrow">${escapeHtml(options.role)}</span><h2>${escapeHtml(options.speaker)}</h2></div>
-            <button class="modal-close" data-close aria-label="Close dialogue">×</button>
+        <section class="spud-modal-frame dialogue-card" style="--accent:${options.accent}" role="dialog" aria-modal="true" aria-label="${escapeHtml(options.speaker)}">
+          <div class="spud-modal-top">
+            <div class="spud-dialogue-head" style="border-bottom:none;padding-bottom:0;">
+              <img src="${options.art}" alt="" />
+              <div>
+                <span class="spud-constellation-kicker" style="margin-bottom:2px;">${escapeHtml(options.role)}</span>
+                <h2>${escapeHtml(options.speaker)}</h2>
+              </div>
+            </div>
+            <button class="spud-constellation-close" type="button" data-close aria-label="Close dialogue">
+              ${renderConstellationIcon('close')}
+              <span>CLOSE</span>
+            </button>
           </div>
           <p class="dialogue-line">${escapeHtml(line)}</p>
-          <footer class="dialogue-footer"><span>${index + 1} / ${options.lines.length}</span><button class="primary-button" data-dialogue-next>${index >= options.lines.length - 1 ? 'CLOSE' : 'NEXT →'}</button></footer>
+          <footer class="dialogue-footer">
+            <span>${index + 1} / ${options.lines.length}</span>
+            ${renderConstellationAction({
+              icon: index >= options.lines.length - 1 ? 'close' : 'forward',
+              label: index >= options.lines.length - 1 ? 'CLOSE' : 'NEXT',
+              attrs: 'data-dialogue-next',
+              variant: 'primary',
+            })}
+          </footer>
         </section>
       </div>
     `;
@@ -980,12 +1061,21 @@ function openMinigameModal(options: {
   const shade = document.createElement('div');
   shade.className = 'modal-shade';
   const box = document.createElement('section');
-  box.className = 'modal-card task-card kenney-panel';
+  box.className = 'spud-modal-frame task-card';
   box.setAttribute('role', 'dialog');
   box.setAttribute('aria-modal', 'true');
   box.setAttribute('aria-label', options.title);
   box.innerHTML = `
-    <div class="modal-head"><div><span class="eyebrow">${escapeHtml(options.eyebrow)}</span><h2>${escapeHtml(options.title)}</h2></div><button class="modal-close" data-close aria-label="Close task">×</button></div>
+    <div class="spud-modal-top">
+      <div>
+        <span class="spud-constellation-kicker" style="margin-bottom:2px;">${escapeHtml(options.eyebrow)}</span>
+        <h2>${escapeHtml(options.title)}</h2>
+      </div>
+      <button class="spud-constellation-close" type="button" data-close aria-label="Close task">
+        ${renderConstellationIcon('close')}
+        <span>ABORT</span>
+      </button>
+    </div>
     <div class="task-body" id="task-body"></div>
   `;
   shade.append(box);
@@ -1036,12 +1126,25 @@ function showTaskResult(taskName: string, before: MissionMetrics): void {
   const lastTask = mission.completed.length >= mission.tasks.length;
   modalRoot.innerHTML = `
     <div class="modal-shade">
-      <section class="modal-card task-result-card kenney-panel" role="dialog" aria-modal="true" aria-labelledby="task-result-title">
-        <span class="eyebrow">SYSTEMS REPORT · ${escapeHtml(getRoomName(mission.room))}</span>
-        <h2 id="task-result-title">${escapeHtml(taskName)} COMPLETE</h2>
-        <p class="story-note">The crew logged the maintenance result. Habitat gauge changes are simplified game units.</p>
-        <div class="event-deltas">${metricChips(changes)}</div>
-        <footer class="modal-actions"><button class="primary-button" data-result-continue>${lastTask ? 'SEND EARTH REPORT' : 'CONTINUE SHIFT'}</button></footer>
+      <section class="spud-modal-frame task-result-card" role="dialog" aria-modal="true" aria-labelledby="task-result-title">
+        <div class="spud-modal-top">
+          <div>
+            <span class="spud-constellation-kicker" style="margin-bottom:2px;">SYSTEMS REPORT · ${escapeHtml(getRoomName(mission.room))}</span>
+            <h2 id="task-result-title">${escapeHtml(taskName)} COMPLETE</h2>
+          </div>
+        </div>
+        <div class="spud-copy-block">
+          <p>The crew logged the maintenance result. Habitat gauge changes reflect simplified simulation units.</p>
+        </div>
+        <div class="spud-telemetry-grid" style="display:flex;flex-wrap:wrap;gap:10px 18px;">${metricChips(changes)}</div>
+        <footer class="spud-constellation-actions is-centered">
+          ${renderConstellationAction({
+            icon: lastTask ? 'cert' : 'forward',
+            label: lastTask ? 'SEND EARTH REPORT' : 'CONTINUE SHIFT',
+            attrs: 'data-result-continue',
+            variant: 'primary',
+          })}
+        </footer>
       </section>
     </div>`;
   modalRoot.querySelector('[data-result-continue]')?.addEventListener('click', () => {
@@ -1058,40 +1161,54 @@ function showTaskResult(taskName: string, before: MissionMetrics): void {
 }
 
 function showExamIntro(): void {
-  setScreen('exam', `
-    <section class="universal-duelyst-screen exam-screen">
-      ${renderUniversalBackdrop()}
-      ${renderUniversalTopBar('training')}
-      <article class="svg-options-window">
-        <header class="svg-window-header">
-          <span class="svg-kicker">EARTH TRAINING FACILITY · CERTIFICATION</span>
-          <h1>THE SPUD EXAM</h1>
-        </header>
-        <div class="svg-options-body">
-          <div class="svg-section-block">
-            <span class="svg-section-pill">FLIGHT QUALIFICATION</span>
-            <div class="svg-subcard" style="padding:18px 22px;display:grid;gap:12px;">
-              <p style="margin:0;color:#fff3d8;line-height:1.6;">
-                Eight questions on pressure, life support, tools, farming, and crew safety. Score at least ${Math.round(EXAM_PASS_RATIO * 100)}% to earn your flight certification.
-              </p>
-              <div class="svg-slot-footer-bar">
-                <span>TRAINING RANK: ${save.trainingRank ?? 'B'}</span>
-                <span>EXAM BEST: ${save.examBest}%</span>
-              </div>
-            </div>
-          </div>
+  const bodyMarkup = `
+    ${renderConstellationTitle('THE SPUD EXAM', 'exam-intro-title', 'EARTH TRAINING FACILITY · CERTIFICATION')}
+    <div class="spud-copy-stack">
+      <div class="spud-copy-block">
+        <h2>FLIGHT QUALIFICATION</h2>
+        <p>
+          Eight questions on pressure, life support, tools, farming, and crew safety. Score at least ${Math.round(EXAM_PASS_RATIO * 100)}% to earn your flight certification.
+        </p>
+      </div>
+      <div class="spud-telemetry-grid">
+        <div class="spud-telemetry-cell">
+          <span>TRAINING RANK</span>
+          <strong>${escapeHtml(save.trainingRank ?? 'B')}</strong>
+          <small>DECK EVALUATION</small>
         </div>
-        <footer class="svg-window-footer">
-          <button class="svg-back-pill-btn" type="button" data-exam-back-menu>← MENU</button>
-          <button class="svg-back-pill-btn is-cyan" type="button" data-exam-start>TAKE THE EXAM →</button>
-        </footer>
-      </article>
-      ${renderPotatoOverride(true)}
-    </section>
-  `);
-  wireUniversalTopBar();
-  screenRoot.querySelector('[data-exam-back-menu]')?.addEventListener('click', showMenu);
-  screenRoot.querySelector('[data-exam-start]')?.addEventListener('click', startExam);
+        <div class="spud-telemetry-cell">
+          <span>PASS TARGET</span>
+          <strong>${Math.round(EXAM_PASS_RATIO * 100)}%</strong>
+          <small>${EXAM_QUESTION_COUNT} QUESTIONS</small>
+        </div>
+        <div class="spud-telemetry-cell">
+          <span>EXAM BEST</span>
+          <strong>${save.examBest}%</strong>
+          <small>RECORDED SCORE</small>
+        </div>
+      </div>
+    </div>
+    <footer class="spud-constellation-actions is-centered">
+      ${renderConstellationAction({ icon: 'cert', label: 'TAKE THE EXAM', attrs: 'data-exam-start', variant: 'primary' })}
+    </footer>
+  `;
+  setScreen('exam', renderConstellationVideoScreen({
+    ariaLabel: 'Spud Certification Exam Introduction',
+    bodyMarkup,
+    backLabel: 'BACK',
+    backAttrs: 'data-exam-back-menu',
+    backAriaLabel: 'Back to Main Menu',
+    narrow: true,
+    extraClass: 'exam-screen',
+  }));
+  screenRoot.querySelector('[data-exam-back-menu]')?.addEventListener('click', () => {
+    sfx.click();
+    showMenu();
+  });
+  screenRoot.querySelector('[data-exam-start]')?.addEventListener('click', () => {
+    sfx.click();
+    startExam();
+  });
 }
 
 function startExam(): void {
@@ -1106,74 +1223,95 @@ function renderExamQuestion(): void {
     return;
   }
   const pct = Math.round(((exam.index + (exam.submitted ? 1 : 0)) / exam.questions.length) * 100);
-  setScreen('exam', `
-    <section class="universal-duelyst-screen exam-screen">
-      ${renderUniversalBackdrop()}
-      ${renderUniversalTopBar('training')}
-      <article class="svg-inventory-window">
-        <header class="svg-inventory-topbar">
-          <div class="svg-inventory-title">
-            <span>${escapeHtml(question.topic)} · QUESTION ${exam.index + 1} OF ${exam.questions.length}</span>
-            <h1>${escapeHtml(question.prompt)}</h1>
-          </div>
-          <span class="svg-section-pill is-blue">SCORE ${exam.score} / ${exam.questions.length}</span>
-        </header>
-        <div class="svg-master-detail-body">
-          <div class="svg-slot-well">
-            <div style="display:grid;gap:10px;">
-              ${question.options.map((option, index) => `
-                <button class="svg-slot-card exam-option ${exam.selected.includes(index) ? 'selected' : ''}"
-                  style="min-height:64px;flex-direction:row;justify-content:flex-start;padding:14px 16px;text-align:left;gap:14px;"
-                  data-exam-option="${index}" ${exam.submitted ? 'disabled' : ''}>
-                  <span class="svg-pct-pill" style="min-width:36px;">${String.fromCharCode(65 + index)}</span>
-                  <strong style="font-size:13px;line-height:1.4;">${escapeHtml(option)}</strong>
-                </button>
-              `).join('')}
-            </div>
-            <div class="svg-slot-footer-bar">
-              <span>${question.correct.length > 1 ? 'MULTI-SELECT: CHOOSE ALL CORRECT ANSWERS' : 'SINGLE-SELECT: CHOOSE ONE ANSWER'}</span>
-              <span>PROGRESS ${pct}%</span>
-            </div>
-          </div>
-          <aside class="svg-inspector-card">
-            <div class="svg-inspector-preview">
-              <img src="/assets/potato-researcher.png" alt="" />
-              <div class="svg-inspector-title">
-                <span>S.P.U.D.I.E. PROCTOR</span>
-                <h3>${escapeHtml(question.topic.toUpperCase())}</h3>
-                <small>Question ${exam.index + 1} of ${exam.questions.length}</small>
-              </div>
-            </div>
-            <div class="svg-inspector-box" ${exam.submitted ? '' : 'hidden'}>
-              <strong>${exam.missed.includes(question) ? 'REVIEW REQUIRED' : 'VERIFIED CORRECT'}</strong>
-              <p style="margin:6px 0 0;">${escapeHtml(question.explanation)}</p>
-            </div>
-            <div class="svg-inspector-box" ${exam.submitted ? 'hidden' : ''}>
-              <strong>CADET GUIDANCE</strong>
-              <p style="margin:6px 0 0;">Select your response on the left panel, then lock in your answer to receive immediate telemetry verification.</p>
-            </div>
-          </aside>
+  const utilityMarkup = `
+    <span class="spud-metric-chip">SCORE <b>${exam.score} / ${exam.questions.length}</b></span>
+    <span class="spud-metric-chip">PROGRESS <b>${pct}%</b></span>
+  `;
+  const bodyMarkup = `
+    ${renderConstellationTitle(
+      `QUESTION ${String(exam.index + 1).padStart(2, '0')} OF ${String(exam.questions.length).padStart(2, '0')}`,
+      'exam-question-title',
+      `${question.topic} · SPUD CERTIFICATION`,
+    )}
+    <div class="spud-copy-block">
+      <p style="font-size:clamp(15px,1.5vw,18px);color:#ffffff;">${escapeHtml(question.prompt)}</p>
+    </div>
+    <div class="spud-constellation-divider" aria-hidden="true"></div>
+    <div class="spud-split-columns">
+      <div class="spud-copy-stack">
+        <div class="spud-constellation-heading">
+          ${question.correct.length > 1 ? 'MULTI-SELECT · CHOOSE ALL CORRECT ANSWERS' : 'SINGLE-SELECT · CHOOSE ONE ANSWER'}
         </div>
-        <footer class="svg-window-footer">
-          <button class="svg-back-pill-btn" type="button" data-exam-exit>EXIT EXAM</button>
-          <button class="svg-back-pill-btn is-cyan" type="button" data-exam-submit>${exam.submitted ? (exam.index + 1 === exam.questions.length ? 'SEE RESULT →' : 'NEXT QUESTION →') : 'SUBMIT ANSWER'}</button>
-        </footer>
-      </article>
-      ${renderPotatoOverride(true)}
-    </section>
-  `);
-  wireUniversalTopBar();
-  screenRoot.querySelector('[data-exam-exit]')?.addEventListener('click', showMenu);
+        <div class="spud-exam-options">
+          ${question.options.map((option, index) => `
+            <button
+              class="spud-exam-choice exam-option ${exam.selected.includes(index) ? 'selected' : ''}"
+              type="button"
+              data-exam-option="${index}"
+              ${exam.submitted ? 'disabled' : ''}
+            >
+              <span class="spud-choice-letter">${String.fromCharCode(65 + index)}</span>
+              <strong>${escapeHtml(option)}</strong>
+            </button>
+          `).join('')}
+        </div>
+      </div>
+      <div class="spud-vertical-rule" aria-hidden="true"></div>
+      <aside class="spud-copy-stack">
+        <div class="spud-loadout-portrait">
+          <div class="spud-portrait-ring"><img src="/assets/potato-researcher.png" alt="" /></div>
+          <div class="spud-loadout-meta">
+            <span>S.P.U.D.I.E. PROCTOR</span>
+            <h3>${escapeHtml(question.topic.toUpperCase())}</h3>
+            <small>Question ${exam.index + 1} of ${exam.questions.length}</small>
+          </div>
+        </div>
+        <div class="spud-copy-block" ${exam.submitted ? '' : 'hidden'}>
+          <h2>${exam.missed.includes(question) ? 'REVIEW REQUIRED' : 'VERIFIED CORRECT'}</h2>
+          <p>${escapeHtml(question.explanation)}</p>
+        </div>
+        <div class="spud-copy-block" ${exam.submitted ? 'hidden' : ''}>
+          <h2>CADET GUIDANCE</h2>
+          <p>Select your response on the left, then lock in your answer to receive immediate telemetry verification.</p>
+        </div>
+      </aside>
+    </div>
+    <footer class="spud-constellation-actions">
+      ${renderConstellationAction({ icon: 'back', label: 'EXIT EXAM', attrs: 'data-exam-exit' })}
+      ${renderConstellationAction({
+        icon: exam.submitted ? 'forward' : 'cert',
+        label: exam.submitted ? (exam.index + 1 === exam.questions.length ? 'SEE RESULT' : 'NEXT QUESTION') : 'SUBMIT ANSWER',
+        attrs: 'data-exam-submit',
+        variant: 'primary',
+      })}
+    </footer>
+  `;
+
+  setScreen('exam', renderConstellationVideoScreen({
+    ariaLabel: 'Spud Certification Exam Question',
+    bodyMarkup,
+    backLabel: 'BACK',
+    backAttrs: 'data-exam-exit',
+    backAriaLabel: 'Exit Exam to Main Menu',
+    utilityMarkup,
+    extraClass: 'exam-screen',
+  }));
+  screenRoot.querySelectorAll('[data-exam-exit]').forEach(el => el.addEventListener('click', () => {
+    sfx.click();
+    showMenu();
+  }));
   screenRoot.querySelectorAll<HTMLButtonElement>('[data-exam-option]').forEach(button => button.addEventListener('click', () => {
     if (exam.submitted) return;
     const option = Number(button.dataset.examOption);
     if (!Number.isInteger(option)) return;
+    sfx.click();
     if (question.correct.length === 1) exam.selected = [option];
     else exam.selected = exam.selected.includes(option) ? exam.selected.filter(item => item !== option) : [...exam.selected, option];
     renderExamQuestion();
   }));
   screenRoot.querySelector('[data-exam-submit]')?.addEventListener('click', () => {
     if (exam.submitted) {
+      sfx.click();
       exam.index += 1;
       exam.selected = [];
       exam.submitted = false;
@@ -1200,34 +1338,50 @@ function finishExam(): void {
   save.certified = percentage >= EXAM_PASS_RATIO * 100;
   saveSettings();
   if (save.certified) {
-    setScreen('graduation', `
-      <section class="universal-duelyst-screen graduation-screen">
-        ${renderUniversalBackdrop()}
-        ${renderUniversalTopBar('training')}
-        <article class="svg-options-window">
-          <header class="svg-window-header">
-            <span class="svg-kicker">CERTIFICATION RESULT · ${percentage}%</span>
-            <h1>FLIGHT APPROVED</h1>
-          </header>
-          <div class="svg-options-body" style="text-align:center;">
-            <div class="svg-subcard" style="padding:24px;display:grid;gap:14px;justify-items:center;">
-              <div class="diploma-seal" style="margin:0 auto;">✦<small>SPUDNAUT</small></div>
-              <p style="margin:0;color:#fff3d8;">S.P.U.D.I.E. has certified you for the 30-day cooperative habitat trial.</p>
-              <div class="svg-slot-footer-bar" style="width:100%;">
-                <span>TRAINING RANK: ${save.trainingRank ?? 'B'}</span>
-                <span>EXAM BEST: ${save.examBest}%</span>
-              </div>
-            </div>
-          </div>
-          <footer class="svg-window-footer" style="justify-content:center;">
-            <button class="svg-back-pill-btn is-cyan" type="button" data-graduate>CHOOSE YOUR MISSION →</button>
-          </footer>
-        </article>
-        ${renderPotatoOverride(true)}
-      </section>
-    `);
-    wireUniversalTopBar();
-    screenRoot.querySelector('[data-graduate]')?.addEventListener('click', showLobby);
+    const bodyMarkup = `
+      ${renderConstellationTitle('FLIGHT APPROVED', 'graduation-title', `CERTIFICATION RESULT · ${percentage}%`)}
+      <div class="spud-orbital-seal">✦<small>SPUDNAUT</small></div>
+      <div class="spud-copy-block" style="text-align:center;">
+        <p>S.P.U.D.I.E. has certified you for the 30-day cooperative habitat trial.</p>
+      </div>
+      <div class="spud-telemetry-grid">
+        <div class="spud-telemetry-cell">
+          <span>TRAINING RANK</span>
+          <strong>${escapeHtml(save.trainingRank ?? 'B')}</strong>
+          <small>DECK RECORD</small>
+        </div>
+        <div class="spud-telemetry-cell">
+          <span>THIS ATTEMPT</span>
+          <strong>${percentage}%</strong>
+          <small>FLIGHT SCORE</small>
+        </div>
+        <div class="spud-telemetry-cell">
+          <span>EXAM BEST</span>
+          <strong>${save.examBest}%</strong>
+          <small>CERTIFIED</small>
+        </div>
+      </div>
+      <footer class="spud-constellation-actions is-centered">
+        ${renderConstellationAction({ icon: 'play', label: 'CHOOSE YOUR MISSION', attrs: 'data-graduate', variant: 'primary' })}
+      </footer>
+    `;
+    setScreen('graduation', renderConstellationVideoScreen({
+      ariaLabel: 'Flight Approved Certification',
+      bodyMarkup,
+      backLabel: 'MENU',
+      backAttrs: 'data-graduate-menu',
+      backAriaLabel: 'Back to Main Menu',
+      narrow: true,
+      extraClass: 'graduation-screen',
+    }));
+    screenRoot.querySelector('[data-graduate-menu]')?.addEventListener('click', () => {
+      sfx.click();
+      showMenu();
+    });
+    screenRoot.querySelector('[data-graduate]')?.addEventListener('click', () => {
+      sfx.click();
+      showLobby();
+    });
   } else {
     remediationIndex = 0;
     showRemedial();
@@ -1238,39 +1392,53 @@ function showRemedial(): void {
   const lessons = exam.missed.length ? exam.missed : exam.questions;
   const question = lessons[remediationIndex % lessons.length];
   if (!question) return showExamIntro();
-  setScreen('remedial', `
-    <section class="universal-duelyst-screen remedial-screen">
-      ${renderUniversalBackdrop()}
-      ${renderUniversalTopBar('training')}
-      <article class="svg-options-window">
-        <header class="svg-window-header">
-          <span class="svg-kicker">REMEDIAL SPUD ACADEMY · ${remediationIndex + 1} / ${lessons.length}</span>
-          <h1>REVIEW: ${escapeHtml(question.topic.toUpperCase())}</h1>
-        </header>
-        <div class="svg-options-body">
-          <div class="svg-subcard" style="padding:20px;display:grid;gap:14px;">
-            <p style="margin:0;color:#fff3d8;line-height:1.6;">${escapeHtml(question.lesson)}</p>
-            <div class="svg-inspector-box">
-              <strong>THE QUESTION</strong>
-              <p style="margin:4px 0 8px;">${escapeHtml(question.prompt)}</p>
-              <span style="color:#9beeff;font-size:11px;">Correct answer${question.correct.length > 1 ? 's' : ''}: ${question.correct.map(index => question.options[index]).map(escapeHtml).join(' · ')}</span>
-            </div>
-          </div>
-        </div>
-        <footer class="svg-window-footer">
-          <button class="svg-back-pill-btn" type="button" data-remedial-next>NEXT LESSON</button>
-          <button class="svg-back-pill-btn is-cyan" type="button" data-retake>RETAKE EXAM →</button>
-        </footer>
-      </article>
-      ${renderPotatoOverride(true)}
-    </section>
-  `);
-  wireUniversalTopBar();
+  const bodyMarkup = `
+    ${renderConstellationTitle(
+      `REVIEW: ${question.topic.toUpperCase()}`,
+      'remedial-title',
+      `REMEDIAL SPUD ACADEMY · ${remediationIndex + 1} / ${lessons.length}`,
+    )}
+    <div class="spud-copy-stack">
+      <div class="spud-copy-block">
+        <h2>FIELD PRINCIPLE</h2>
+        <p>${escapeHtml(question.lesson)}</p>
+      </div>
+      <div class="spud-constellation-divider" aria-hidden="true"></div>
+      <div class="spud-copy-block">
+        <h2>MISSED QUESTION</h2>
+        <p>${escapeHtml(question.prompt)}</p>
+        <small style="color:var(--spud-ice);">
+          Correct answer${question.correct.length > 1 ? 's' : ''}: ${question.correct.map(index => question.options[index]).map(escapeHtml).join(' · ')}
+        </small>
+      </div>
+    </div>
+    <footer class="spud-constellation-actions">
+      ${renderConstellationAction({ icon: 'forward', label: 'NEXT LESSON', attrs: 'data-remedial-next' })}
+      ${renderConstellationAction({ icon: 'cert', label: 'RETAKE EXAM', attrs: 'data-retake', variant: 'primary' })}
+    </footer>
+  `;
+  setScreen('remedial', renderConstellationVideoScreen({
+    ariaLabel: 'Remedial Academy Review',
+    bodyMarkup,
+    backLabel: 'BACK',
+    backAttrs: 'data-remedial-back',
+    backAriaLabel: 'Back to Main Menu',
+    narrow: true,
+    extraClass: 'remedial-screen',
+  }));
+  screenRoot.querySelector('[data-remedial-back]')?.addEventListener('click', () => {
+    sfx.click();
+    showMenu();
+  });
   screenRoot.querySelector('[data-remedial-next]')?.addEventListener('click', () => {
+    sfx.click();
     remediationIndex = (remediationIndex + 1) % lessons.length;
     showRemedial();
   });
-  screenRoot.querySelector('[data-retake]')?.addEventListener('click', startExam);
+  screenRoot.querySelector('[data-retake]')?.addEventListener('click', () => {
+    sfx.click();
+    startExam();
+  });
 }
 
 let preMuteMaster = 80;
@@ -1278,200 +1446,214 @@ let preMuteMusic = 70;
 let preMuteSfx = 80;
 let lastPreviewTick = 0;
 
+interface VolumeControlSpec {
+  sliderKey: 'masterVolume' | 'musicVolume' | 'volume';
+  muteKey: 'master' | 'music' | 'sound';
+  inputId: string;
+  pillId: string;
+  outputId: string;
+  icon: ConstellationIconId;
+  label: string;
+  sub: string;
+  muteTitle: string;
+  isMuted: (opts: PlayerSave['options']) => boolean;
+  displayVal: (opts: PlayerSave['options']) => number;
+  sliderVal: (opts: PlayerSave['options']) => number;
+}
+
+const VOLUME_CONTROLS: readonly VolumeControlSpec[] = [
+  {
+    sliderKey: 'masterVolume',
+    muteKey: 'master',
+    inputId: 'opt-master-volume',
+    pillId: 'opt-master-volume-pill',
+    outputId: 'opt-master-volume-value',
+    icon: 'masterVolume',
+    label: 'Master Volume',
+    sub: 'Scales all station & soundtrack audio',
+    muteTitle: 'Click to mute/unmute Master',
+    isMuted: opts => (opts.masterVolume ?? 80) === 0,
+    displayVal: opts => opts.masterVolume ?? 80,
+    sliderVal: opts => opts.masterVolume ?? 80,
+  },
+  {
+    sliderKey: 'musicVolume',
+    muteKey: 'music',
+    inputId: 'opt-music-volume',
+    pillId: 'opt-music-volume-pill',
+    outputId: 'opt-music-volume-value',
+    icon: 'musicVolume',
+    label: 'Music Volume',
+    sub: 'Orbital synth & menu theme',
+    muteTitle: 'Click to mute/unmute Music',
+    isMuted: opts => !opts.music || opts.musicVolume === 0,
+    displayVal: opts => (opts.music ? opts.musicVolume : 0),
+    sliderVal: opts => opts.musicVolume,
+  },
+  {
+    sliderKey: 'volume',
+    muteKey: 'sound',
+    inputId: 'opt-volume',
+    pillId: 'opt-volume-pill',
+    outputId: 'opt-volume-value',
+    icon: 'sfxVolume',
+    label: 'Sound / SFX Volume',
+    sub: 'Interface chimes, airlocks & alerts',
+    muteTitle: 'Click to mute/unmute SFX',
+    isMuted: opts => !opts.sound || opts.volume === 0,
+    displayVal: opts => (opts.sound ? opts.volume : 0),
+    sliderVal: opts => opts.volume,
+  },
+];
+
+function renderOptionsContentMarkup(returnScreen: 'menu' | 'training' | 'mission', options: PlayerSave['options']): string {
+  return `
+    <button
+      class="spud-menu-item spud-constellation-back"
+      type="button"
+      data-options-back
+      ${returnScreen === 'menu' ? '' : 'data-game-return'}
+      aria-label="${returnScreen === 'menu' ? 'Back to Main Menu' : 'Return to Game'}"
+    >
+      ${renderConstellationIcon('back', 'spud-back-constellation')}
+      <span class="spud-menu-label">BACK</span>
+    </button>
+
+    <article class="spud-options-panel" aria-labelledby="options-window-title">
+      <header class="spud-options-header">
+        <div class="spud-options-title-row">
+          <span class="spud-constellation-rule" aria-hidden="true"></span>
+          <h1 id="options-window-title" tabindex="-1">OPTIONS</h1>
+          <span class="spud-constellation-rule is-right" aria-hidden="true"></span>
+        </div>
+      </header>
+
+      <div class="spud-options-body">
+        <section class="spud-volume-section" aria-label="Volume Settings">
+          <div class="spud-section-heading">VOLUME</div>
+          <div class="spud-volume-list">
+            ${VOLUME_CONTROLS.map(ctrl => {
+              const shown = ctrl.displayVal(options);
+              const val = ctrl.sliderVal(options);
+              const muted = ctrl.isMuted(options);
+              return `
+                <div class="spud-vol-row">
+                  <div class="spud-vol-icon-wrap">${renderConstellationIcon(ctrl.icon, 'spud-vol-icon')}</div>
+                  <div class="spud-vol-main">
+                    <div class="spud-vol-top">
+                      <div class="spud-vol-copy">
+                        <label class="spud-vol-label" for="${ctrl.inputId}">${ctrl.label}</label>
+                        <small class="spud-vol-sub">${ctrl.sub}</small>
+                      </div>
+                      <button
+                        type="button"
+                        class="spud-pct-readout ${muted ? 'is-muted' : ''}"
+                        id="${ctrl.pillId}"
+                        data-mute-pill="${ctrl.muteKey}"
+                        title="${ctrl.muteTitle}"
+                      >
+                        <output id="${ctrl.outputId}">${shown}%</output>
+                      </button>
+                    </div>
+                    <input
+                      class="spud-range"
+                      id="${ctrl.inputId}"
+                      data-slider="${ctrl.sliderKey}"
+                      type="range"
+                      min="0"
+                      max="100"
+                      value="${val}"
+                      style="--fill:${val}%"
+                    />
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </section>
+      </div>
+
+      <footer class="spud-options-footer">
+        ${returnScreen === 'mission' ? `
+          <button class="spud-menu-item spud-options-action is-warn" type="button" data-abort-mission aria-haspopup="dialog">
+            ${renderConstellationIcon('abort')}
+            <span class="spud-menu-label">ABORT MISSION</span>
+          </button>
+        ` : ''}
+        <button class="spud-menu-item spud-options-action is-reset" type="button" data-options-reset aria-label="Reset progress and settings">
+          ${renderConstellationIcon('reset', 'spud-reset-constellation')}
+          <span class="spud-menu-label">RESET</span>
+        </button>
+      </footer>
+    </article>
+  `;
+}
+
 function showOptions(): void {
+  window.clearTimeout(optionsHideTimer);
   const options = save.options;
   if (typeof options.masterVolume !== 'number') options.masterVolume = 80;
   const returnScreen = currentScreen === 'training' || currentScreen === 'mission' ? currentScreen : 'menu';
   if (returnScreen === 'training') pauseTrainingForModal();
   if (returnScreen === 'mission') pauseMissionForModal();
-  const difficulties: DifficultyId[] = ['cadet', 'crew', 'veteran'];
 
-  setScreen('options', `
-    <section class="universal-duelyst-screen screen-options">
-      ${renderUniversalBackdrop()}
-      ${renderUniversalTopBar('options')}
-      <article class="svg-options-window" aria-labelledby="options-window-title">
-        <header class="svg-window-header">
-          <span class="svg-kicker">S.P.U.D.I.E. · CREW CONFIGURATION</span>
-          <h1 id="options-window-title" tabindex="-1">OPTIONS</h1>
-        </header>
+  const existingMenuStage = returnScreen === 'menu'
+    ? screenRoot.querySelector<HTMLElement>('.screen-menu.spud-video-menu')
+    : null;
+  const existingOverlayHost = existingMenuStage?.querySelector<HTMLElement>('.spud-options-overlay') ?? null;
 
-        <div class="svg-options-body">
-          ${returnScreen === 'mission' ? `
-            <section class="svg-section-block" aria-label="Active mission">
-              <span class="svg-section-pill is-gold">ACTIVE MISSION</span>
-              <div class="svg-subcard mission-exit-row">
-                <p>End this trial and return to the main menu.</p>
-                <button class="game-menu-close mission-abort-button" type="button" data-abort-mission aria-haspopup="dialog">Abort mission</button>
-              </div>
-            </section>
-          ` : ''}
-          <!-- VOLUME SECTION (Options panel.svg Archetype B) -->
-          <section class="svg-section-block" aria-label="Volume Settings">
-            <span class="svg-section-pill">VOLUME</span>
-            <div class="svg-subcard">
-              <div class="svg-slider-row">
-                <div class="svg-slider-top">
-                  <div>
-                    <label class="svg-row-label" for="opt-master-volume">Master Volume</label>
-                    <small class="svg-row-sub">Scales all station &amp; soundtrack audio</small>
-                  </div>
-                  <button type="button" class="svg-pct-pill ${options.masterVolume === 0 ? 'is-muted' : ''}" id="opt-master-volume-pill" data-mute-pill="master" title="Click to mute/unmute Master">
-                    <output id="opt-master-volume-value">${options.masterVolume}%</output>
-                  </button>
-                </div>
-                <input class="svg-range" id="opt-master-volume" data-slider="masterVolume" type="range" min="0" max="100" value="${options.masterVolume}" style="--fill:${options.masterVolume}%" />
-              </div>
+  let optionsRoot: HTMLElement;
 
-              <div class="svg-slider-row">
-                <div class="svg-slider-top">
-                  <div>
-                    <label class="svg-row-label" for="opt-music-volume">Music Volume</label>
-                    <small class="svg-row-sub">Orbital synth &amp; menu theme</small>
-                  </div>
-                  <button type="button" class="svg-pct-pill ${!options.music || options.musicVolume === 0 ? 'is-muted' : ''}" id="opt-music-volume-pill" data-mute-pill="music" title="Click to mute/unmute Music">
-                    <output id="opt-music-volume-value">${options.music ? options.musicVolume : 0}%</output>
-                  </button>
-                </div>
-                <input class="svg-range" id="opt-music-volume" data-slider="musicVolume" type="range" min="0" max="100" value="${options.musicVolume}" style="--fill:${options.musicVolume}%" />
-              </div>
-
-              <div class="svg-slider-row">
-                <div class="svg-slider-top">
-                  <div>
-                    <label class="svg-row-label" for="opt-volume">Sound / SFX Volume</label>
-                    <small class="svg-row-sub">Interface chimes, airlocks &amp; alerts</small>
-                  </div>
-                  <button type="button" class="svg-pct-pill ${!options.sound || options.volume === 0 ? 'is-muted' : ''}" id="opt-volume-pill" data-mute-pill="sound" title="Click to mute/unmute SFX">
-                    <output id="opt-volume-value">${options.sound ? options.volume : 0}%</output>
-                  </button>
-                </div>
-                <input class="svg-range" id="opt-volume" data-slider="volume" type="range" min="0" max="100" value="${options.volume}" style="--fill:${options.volume}%" />
-              </div>
-            </div>
-          </section>
-
-          <!-- OTHER / SIMULATION SECTION (Options panel.svg Archetype B) -->
-          <section class="svg-section-block" aria-label="Other and Simulation Settings">
-            <span class="svg-section-pill is-blue">OTHER &amp; SIMULATION</span>
-            <div class="svg-subcard">
-              <div class="svg-toggle-row">
-                <div>
-                  <label class="svg-row-label" for="opt-sound">Interface Sound</label>
-                  <small class="svg-row-sub">Enable button &amp; console audio cues</small>
-                </div>
-                <div class="svg-toggle-control">
-                  <span class="svg-toggle-state ${options.sound ? 'is-on' : ''}" data-state-for="sound">${options.sound ? 'ON' : 'OFF'}</span>
-                  <button class="svg-pill-switch toggle ${options.sound ? 'on' : ''}" id="opt-sound" data-toggle="sound" aria-label="Interface sound" aria-pressed="${options.sound}"></button>
-                </div>
-              </div>
-
-              <div class="svg-toggle-row">
-                <div>
-                  <label class="svg-row-label" for="opt-music">Intro &amp; Menu Music</label>
-                  <small class="svg-row-sub">Ambient orbital background score</small>
-                </div>
-                <div class="svg-toggle-control">
-                  <span class="svg-toggle-state ${options.music ? 'is-on' : ''}" data-state-for="music">${options.music ? 'ON' : 'OFF'}</span>
-                  <button class="svg-pill-switch toggle ${options.music ? 'on' : ''}" id="opt-music" data-toggle="music" aria-label="Intro music" aria-pressed="${options.music}"></button>
-                </div>
-              </div>
-
-              <div class="svg-toggle-row">
-                <div>
-                  <label class="svg-row-label" for="opt-vision">Line-of-Sight Vision</label>
-                  <small class="svg-row-sub">Dynamic bulkhead shadow casting</small>
-                </div>
-                <div class="svg-toggle-control">
-                  <span class="svg-toggle-state ${options.lineOfSight ? 'is-on' : ''}" data-state-for="lineOfSight">${options.lineOfSight ? 'ON' : 'OFF'}</span>
-                  <button class="svg-pill-switch toggle ${options.lineOfSight ? 'on' : ''}" id="opt-vision" data-toggle="lineOfSight" aria-label="Line-of-sight vision" aria-pressed="${options.lineOfSight}"></button>
-                </div>
-              </div>
-
-              <div class="svg-toggle-row">
-                <div>
-                  <label class="svg-row-label" for="opt-motion">Reduced Motion</label>
-                  <small class="svg-row-sub">Disable camera zoom, parallax &amp; pulses</small>
-                </div>
-                <div class="svg-toggle-control">
-                  <span class="svg-toggle-state ${options.reducedMotion ? 'is-on' : ''}" data-state-for="reducedMotion">${options.reducedMotion ? 'ON' : 'OFF'}</span>
-                  <button class="svg-pill-switch toggle ${options.reducedMotion ? 'on' : ''}" id="opt-motion" data-toggle="reducedMotion" aria-label="Reduced motion" aria-pressed="${options.reducedMotion}"></button>
-                </div>
-              </div>
-
-              <div class="svg-difficulty-pills" role="group" aria-label="Simulation Difficulty">
-                ${difficulties.map(id => `
-                  <button type="button" class="svg-diff-btn difficulty-card ${options.difficulty === id ? 'selected' : ''}" data-difficulty="${id}" aria-pressed="${options.difficulty === id}">
-                    <strong>${DIFFICULTY_INFO[id].name}</strong>
-                    <small>${escapeHtml(DIFFICULTY_INFO[id].description)}</small>
-                  </button>
-                `).join('')}
-              </div>
-            </div>
-          </section>
+  if (existingMenuStage && existingOverlayHost) {
+    currentScreen = 'options';
+    document.body.dataset.screen = 'options';
+    existingOverlayHost.innerHTML = renderOptionsContentMarkup(returnScreen, options);
+    existingOverlayHost.hidden = false;
+    void existingOverlayHost.offsetWidth;
+    existingMenuStage.classList.add('is-options-open');
+    optionsRoot = existingOverlayHost;
+  } else {
+    setScreen('options', `
+      <section class="screen-menu spud-video-menu is-options-open is-standalone-options ${options.reducedMotion ? 'reduce-motion' : ''}">
+        <img class="menu-ambient-backdrop" src="/assets/main-menu-poster.jpg" alt="" aria-hidden="true" />
+        <div class="video-menu-stage">
+          <video
+            class="menu-video-player"
+            src="/assets/main-menu.mp4"
+            poster="/assets/main-menu-poster.jpg"
+            autoplay
+            loop
+            muted
+            playsinline
+            preload="auto"
+            aria-hidden="true"
+          ></video>
+          <img class="menu-video-poster" src="/assets/main-menu-poster.jpg" alt="" aria-hidden="true" />
+          <div class="menu-video-vignette" aria-hidden="true"></div>
+          <div class="spud-options-overlay">${renderOptionsContentMarkup(returnScreen, options)}</div>
         </div>
+      </section>
+    `);
+    optionsRoot = screenRoot;
+  }
 
-        <footer class="svg-window-footer">
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="svg-tab-pill" type="button" data-options-credits>CREDITS &amp; SCIENCE</button>
-            <button class="svg-tab-pill" type="button" data-options-reset style="border-color:rgba(255,130,130,0.5);color:#ffb4b4;">RESET SAVE</button>
-          </div>
-          <button class="svg-back-pill-btn ${returnScreen === 'menu' ? '' : 'is-cyan'}" type="button" data-options-back ${returnScreen === 'menu' ? '' : 'data-game-return'}>${returnScreen === 'menu' ? '← BACK' : '← RETURN TO GAME · ESC'}</button>
-        </footer>
-      </article>
-      ${renderPotatoOverride(true)}
-    </section>
-  `);
-
-  wireUniversalTopBar();
-
-  if (returnScreen !== 'menu') screenRoot.querySelector<HTMLElement>('#options-window-title')?.focus();
-  screenRoot.querySelector('[data-abort-mission]')?.addEventListener('click', showAbortMissionConfirmation);
+  optionsRoot.querySelector<HTMLElement>('#options-window-title')?.focus();
+  optionsRoot.querySelector('[data-abort-mission]')?.addEventListener('click', showAbortMissionConfirmation);
 
   const syncOptionVisuals = (): void => {
-    const masterVal = options.masterVolume ?? 80;
-    const masterOut = screenRoot.querySelector<HTMLOutputElement>('#opt-master-volume-value');
-    const masterPill = screenRoot.querySelector<HTMLElement>('#opt-master-volume-pill');
-    const masterInput = screenRoot.querySelector<HTMLInputElement>('#opt-master-volume');
-    if (masterOut) masterOut.value = `${masterVal}%`;
-    if (masterPill) masterPill.classList.toggle('is-muted', masterVal === 0);
-    if (masterInput) {
-      masterInput.value = String(masterVal);
-      masterInput.style.setProperty('--fill', `${masterVal}%`);
-    }
-
-    const musicOut = screenRoot.querySelector<HTMLOutputElement>('#opt-music-volume-value');
-    const musicPill = screenRoot.querySelector<HTMLElement>('#opt-music-volume-pill');
-    const musicInput = screenRoot.querySelector<HTMLInputElement>('#opt-music-volume');
-    if (musicOut) musicOut.value = `${options.music ? options.musicVolume : 0}%`;
-    if (musicPill) musicPill.classList.toggle('is-muted', !options.music || options.musicVolume === 0);
-    if (musicInput) {
-      musicInput.value = String(options.musicVolume);
-      musicInput.style.setProperty('--fill', `${options.musicVolume}%`);
-    }
-
-    const sfxOut = screenRoot.querySelector<HTMLOutputElement>('#opt-volume-value');
-    const sfxPill = screenRoot.querySelector<HTMLElement>('#opt-volume-pill');
-    const sfxInput = screenRoot.querySelector<HTMLInputElement>('#opt-volume');
-    if (sfxOut) sfxOut.value = `${options.sound ? options.volume : 0}%`;
-    if (sfxPill) sfxPill.classList.toggle('is-muted', !options.sound || options.volume === 0);
-    if (sfxInput) {
-      sfxInput.value = String(options.volume);
-      sfxInput.style.setProperty('--fill', `${options.volume}%`);
-    }
-
-    (['sound', 'music', 'lineOfSight', 'reducedMotion'] as const).forEach(key => {
-      const btn = screenRoot.querySelector<HTMLButtonElement>(`[data-toggle="${key}"]`);
-      const stateSpan = screenRoot.querySelector<HTMLElement>(`[data-state-for="${key}"]`);
-      if (btn) {
-        btn.classList.toggle('on', options[key]);
-        btn.setAttribute('aria-pressed', String(options[key]));
+    for (const ctrl of VOLUME_CONTROLS) {
+      const shown = ctrl.displayVal(options);
+      const val = ctrl.sliderVal(options);
+      const out = optionsRoot.querySelector<HTMLOutputElement>(`#${ctrl.outputId}`);
+      const pill = optionsRoot.querySelector<HTMLElement>(`#${ctrl.pillId}`);
+      const input = optionsRoot.querySelector<HTMLInputElement>(`#${ctrl.inputId}`);
+      if (out) out.value = `${shown}%`;
+      if (pill) pill.classList.toggle('is-muted', ctrl.isMuted(options));
+      if (input) {
+        input.value = String(val);
+        input.style.setProperty('--fill', `${val}%`);
       }
-      if (stateSpan) {
-        stateSpan.textContent = options[key] ? 'ON' : 'OFF';
-        stateSpan.classList.toggle('is-on', options[key]);
-      }
-    });
+    }
   };
 
   const refresh = (): void => {
@@ -1480,15 +1662,7 @@ function showOptions(): void {
     saveSettings();
   };
 
-  screenRoot.querySelectorAll<HTMLButtonElement>('[data-toggle]').forEach(button => button.addEventListener('click', () => {
-    const key = button.dataset.toggle;
-    if (key !== 'sound' && key !== 'music' && key !== 'lineOfSight' && key !== 'reducedMotion') return;
-    options[key] = !options[key];
-    sfx.click();
-    refresh();
-  }));
-
-  screenRoot.querySelectorAll<HTMLButtonElement>('[data-mute-pill]').forEach(pill => pill.addEventListener('click', () => {
+  optionsRoot.querySelectorAll<HTMLButtonElement>('[data-mute-pill]').forEach(pill => pill.addEventListener('click', () => {
     const target = pill.dataset.mutePill;
     if (target === 'master') {
       const current = options.masterVolume ?? 80;
@@ -1519,7 +1693,7 @@ function showOptions(): void {
     refresh();
   }));
 
-  screenRoot.querySelectorAll<HTMLInputElement>('[data-slider]').forEach(input => input.addEventListener('input', () => {
+  optionsRoot.querySelectorAll<HTMLInputElement>('[data-slider]').forEach(input => input.addEventListener('input', () => {
     const key = input.dataset.slider;
     if (key !== 'volume' && key !== 'musicVolume' && key !== 'masterVolume') return;
     const val = Number(input.value);
@@ -1533,20 +1707,7 @@ function showOptions(): void {
     }
   }));
 
-  screenRoot.querySelectorAll<HTMLButtonElement>('[data-difficulty]').forEach(button => button.addEventListener('click', () => {
-    const id = button.dataset.difficulty;
-    if (id !== 'cadet' && id !== 'crew' && id !== 'veteran') return;
-    options.difficulty = id;
-    screenRoot.querySelectorAll<HTMLButtonElement>('[data-difficulty]').forEach(item => {
-      const selected = item === button;
-      item.classList.toggle('selected', selected);
-      item.setAttribute('aria-pressed', String(selected));
-    });
-    sfx.click();
-    refresh();
-  }));
-
-  screenRoot.querySelector('[data-options-back]')?.addEventListener('click', () => {
+  optionsRoot.querySelector('[data-options-back]')?.addEventListener('click', () => {
     sfx.click();
     if (returnScreen === 'mission') {
       showMissionShell();
@@ -1564,68 +1725,141 @@ function showOptions(): void {
       renderTrainingHud();
       applyOptions();
       resumeTraining();
+    } else if (existingMenuStage && existingOverlayHost) {
+      currentScreen = 'menu';
+      document.body.dataset.screen = 'menu';
+      existingMenuStage.classList.remove('is-options-open');
+      window.clearTimeout(optionsHideTimer);
+      optionsHideTimer = window.setTimeout(() => {
+        if (currentScreen === 'menu') {
+          existingOverlayHost.hidden = true;
+          existingOverlayHost.replaceChildren();
+        }
+      }, options.reducedMotion ? 0 : 280);
+      existingMenuStage.querySelector<HTMLButtonElement>('.spud-center-nav [data-menu="options"]')?.focus();
     } else {
       showMenu();
     }
   });
-  screenRoot.querySelector('[data-options-credits]')?.addEventListener('click', () => {
-    sfx.click();
-    showCredits();
-  });
-  screenRoot.querySelector('[data-options-reset]')?.addEventListener('click', () => {
+
+  optionsRoot.querySelector('[data-options-reset]')?.addEventListener('click', () => {
     if (!window.confirm('Reset training progress, settings, and active mission save? This cannot be undone.')) return;
     save = defaultSave();
     lobby = { ...DEFAULT_LOBBY, playerName: save.name, colorId: save.colorId, specialist: save.specialist, destination: save.destination };
     try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem(SAVE_BACKUP_KEY); } catch { /* Storage may be unavailable. */ }
     persistSave(save);
+    applyOptions();
     showMenu();
   });
 }
 
-function showAbortMissionConfirmation(): void {
+function openConstellationConfirmDialog(opts: {
+  kicker: string;
+  title: string;
+  description: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  confirmIcon: ConstellationIconId;
+  confirmVariant?: 'primary' | 'danger';
+  errorText?: string;
+  onConfirm: (ctx: { close: () => void; showError: () => void }) => void;
+}): void {
   sfx.click();
   modalRoot.innerHTML = `
-    <dialog class="game-menu-dialog mission-abort-dialog" aria-labelledby="abort-mission-title" aria-describedby="abort-mission-description">
-      <section class="svg-options-window">
-        <header class="svg-window-header">
-          <h2 id="abort-mission-title">Abort this mission?</h2>
-        </header>
-        <div class="svg-options-body">
-          <p id="abort-mission-description">This ends your current trial and clears its shift progress and reports. Your training progress and settings are kept.</p>
-          <p class="mission-abort-error" role="alert" hidden>Could not clear the saved trial. Your mission is still active.</p>
+    <dialog class="game-menu-dialog mission-abort-dialog" aria-labelledby="confirm-modal-title" aria-describedby="confirm-modal-description">
+      <section class="spud-copy-stack">
+        <div class="spud-modal-top">
+          <div>
+            <span class="spud-constellation-kicker" style="margin-bottom:2px;">${escapeHtml(opts.kicker)}</span>
+            <h2 id="confirm-modal-title">${escapeHtml(opts.title)}</h2>
+          </div>
         </div>
-        <footer class="svg-window-footer">
-          <button class="game-menu-close" type="button" data-cancel-abort autofocus>Keep mission</button>
-          <button class="game-menu-close mission-abort-button" type="button" data-confirm-abort>Abort &amp; return to menu</button>
+        <div class="spud-copy-block">
+          <p id="confirm-modal-description">${escapeHtml(opts.description)}</p>
+          ${opts.errorText ? `<p class="mission-abort-error" style="color:var(--spud-danger);" role="alert" hidden>${escapeHtml(opts.errorText)}</p>` : ''}
+        </div>
+        <footer class="spud-constellation-actions">
+          ${renderConstellationAction({ icon: 'back', label: opts.cancelLabel, attrs: 'data-confirm-cancel autofocus' })}
+          ${renderConstellationAction({ icon: opts.confirmIcon, label: opts.confirmLabel, attrs: 'data-confirm-accept', variant: opts.confirmVariant ?? 'primary' })}
         </footer>
       </section>
     </dialog>
   `;
   const dialog = modalRoot.querySelector<HTMLDialogElement>('dialog')!;
-  const cancel = (): void => {
+  const close = (): void => {
     dialog.close();
     modalRoot.replaceChildren();
   };
-  dialog.querySelector('[data-cancel-abort]')?.addEventListener('click', cancel);
+  const showError = (): void => {
+    const errEl = dialog.querySelector<HTMLElement>('.mission-abort-error');
+    if (errEl) errEl.hidden = false;
+  };
+  dialog.querySelector('[data-confirm-cancel]')?.addEventListener('click', () => {
+    sfx.click();
+    close();
+  });
   dialog.addEventListener('cancel', event => {
     event.preventDefault();
-    cancel();
+    close();
   });
-  dialog.querySelector('[data-confirm-abort]')?.addEventListener('click', () => {
-    const nextSave: PlayerSave = { ...save, activeTrial: null, trialDay: 0 };
-    if (!persistSave(nextSave, { replaceBackup: true })) {
-      dialog.querySelector<HTMLElement>('.mission-abort-error')!.hidden = false;
-      return;
-    }
-    sfx.click();
-    save = nextSave;
-    mission = createMissionState();
-    planningEventBase = null;
-    selectedEventChoice = '';
-    dialog.close();
-    showMenu();
+  dialog.addEventListener('click', event => {
+    if (event.target === dialog) close();
+  });
+  dialog.querySelector('[data-confirm-accept]')?.addEventListener('click', () => {
+    opts.onConfirm({ close, showError });
   });
   dialog.showModal();
+}
+
+function showAbortMissionConfirmation(): void {
+  openConstellationConfirmDialog({
+    kicker: 'COMMAND OVERRIDE',
+    title: 'ABORT THIS MISSION?',
+    description: 'This ends your current trial and clears its shift progress and reports. Your training progress and settings are kept.',
+    cancelLabel: 'KEEP MISSION',
+    confirmLabel: 'ABORT & RETURN',
+    confirmIcon: 'abort',
+    confirmVariant: 'danger',
+    errorText: 'Could not clear the saved trial. Your mission is still active.',
+    onConfirm: ({ close, showError }) => {
+      const nextSave: PlayerSave = { ...save, activeTrial: null, trialDay: 0 };
+      if (!persistSave(nextSave, { replaceBackup: true })) {
+        showError();
+        return;
+      }
+      sfx.click();
+      save = nextSave;
+      mission = createMissionState();
+      planningEventBase = null;
+      selectedEventChoice = '';
+      close();
+      showMenu();
+    },
+  });
+}
+
+function confirmReplaceSavedTrial(opts: {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  confirmIcon?: ConstellationIconId;
+  variant?: 'primary' | 'danger';
+  onConfirm: () => void;
+}): void {
+  openConstellationConfirmDialog({
+    kicker: 'ACTIVE TRIAL IN PROGRESS',
+    title: opts.title,
+    description: opts.description,
+    cancelLabel: 'KEEP SAVED TRIAL',
+    confirmLabel: opts.confirmLabel,
+    confirmIcon: opts.confirmIcon ?? 'forward',
+    confirmVariant: opts.variant ?? 'primary',
+    onConfirm: ({ close }) => {
+      sfx.click();
+      close();
+      opts.onConfirm();
+    },
+  });
 }
 
 function showCredits(): void {
@@ -1674,59 +1908,55 @@ function showCredits(): void {
     },
   ];
   let activeId = archiveItems[0]!.id;
-
-  setScreen('credits', `
-    <section class="universal-duelyst-screen screen-credits">
-      ${renderUniversalBackdrop()}
-      ${renderUniversalTopBar('credits')}
-      <article class="svg-inventory-window">
-        <header class="svg-inventory-topbar">
-          <div class="svg-inventory-title">
-            <span>HEXABYTE INTERACTIVE · YEAR 3042</span>
-            <h1>MISSION BRIEF &amp; ARCHIVES</h1>
-          </div>
-          <span class="svg-section-pill">NASA FIELD SCIENCE</span>
-        </header>
-        <div class="svg-master-detail-body">
-          <div class="svg-slot-well">
-            <div class="svg-slot-grid">
-              ${archiveItems.map(item => `
-                <button type="button" class="svg-slot-card ${item.id === activeId ? 'selected' : ''}" data-archive-slot="${item.id}">
-                  <span class="svg-slot-badge">${item.badge}</span>
-                  <strong>${escapeHtml(item.title)}</strong>
-                  <small>${escapeHtml(item.sub)}</small>
-                </button>
-              `).join('')}
-            </div>
-            <div class="svg-slot-footer-bar">
-              <span>ARCHIVE SLOTS · ${archiveItems.length} / ${archiveItems.length} UNLOCKED</span>
-              <span>SIMULATION MODEL v3042</span>
-            </div>
-          </div>
-          <aside class="svg-inspector-card">
-            <div class="svg-inspector-box" id="credits-inspector-main">
-              <strong>${escapeHtml(archiveItems[0]!.badge)} · ${escapeHtml(archiveItems[0]!.title.toUpperCase())}</strong>
-              <p style="margin:6px 0 0;">${escapeHtml(archiveItems[0]!.body)}</p>
-            </div>
-            <div class="svg-inspector-box">
-              <strong>SCIENCE NOTES &amp; NASA REFERENCES</strong>
-              <p style="margin:4px 0 8px;">${escapeHtml(GAME_MODEL_NOTE)}</p>
-              <ul style="margin:0;padding-left:18px;display:grid;gap:4px;">
-                ${NASA_REFERENCES.map(source => `<li><a href="${source.url}" target="_blank" rel="noreferrer" style="color:#9beeff;">${escapeHtml(source.label)} ↗</a></li>`).join('')}
-              </ul>
-            </div>
-          </aside>
+  const bodyMarkup = `
+    ${renderConstellationTitle('MISSION BRIEF & ARCHIVES', 'credits-title', 'HEXABYTE INTERACTIVE · YEAR 3042')}
+    <div class="spud-split-columns">
+      <div class="spud-copy-stack">
+        <div class="spud-constellation-heading">ARCHIVE SLOTS · ${archiveItems.length} / ${archiveItems.length} UNLOCKED</div>
+        <div class="spud-slot-list">
+          ${archiveItems.map(item => `
+            <button type="button" class="spud-slot-row ${item.id === activeId ? 'selected' : ''}" data-archive-slot="${item.id}">
+              <div>
+                <strong>${escapeHtml(item.title)}</strong>
+                <small>${escapeHtml(item.sub)}</small>
+              </div>
+              <span class="spud-status-tag">${item.badge}</span>
+            </button>
+          `).join('')}
         </div>
-        <footer class="svg-window-footer">
-          <button class="svg-back-pill-btn" type="button" data-credits-back>← BACK TO MENU</button>
-          <button class="svg-back-pill-btn is-cyan" type="button" data-credits-options>OPTIONS →</button>
-        </footer>
-      </article>
-      ${renderPotatoOverride(true)}
-    </section>
-  `);
+      </div>
+      <div class="spud-vertical-rule" aria-hidden="true"></div>
+      <aside class="spud-copy-stack">
+        <div class="spud-copy-block" id="credits-inspector-main">
+          <h2>${escapeHtml(archiveItems[0]!.badge)} · ${escapeHtml(archiveItems[0]!.title.toUpperCase())}</h2>
+          <p>${escapeHtml(archiveItems[0]!.body)}</p>
+        </div>
+        <div class="spud-constellation-divider" aria-hidden="true"></div>
+        <div class="spud-copy-block">
+          <h2>SCIENCE NOTES &amp; NASA REFERENCES</h2>
+          <p>${escapeHtml(GAME_MODEL_NOTE)}</p>
+          <ul style="margin:6px 0 0;padding-left:18px;display:grid;gap:6px;">
+            ${NASA_REFERENCES.map(source => `<li><a href="${source.url}" target="_blank" rel="noreferrer" style="color:var(--spud-ice);">${escapeHtml(source.label)} ↗</a></li>`).join('')}
+          </ul>
+        </div>
+      </aside>
+    </div>
+    <footer class="spud-constellation-actions">
+      ${renderConstellationAction({ icon: 'back', label: 'BACK TO MENU', attrs: 'data-credits-back' })}
+      ${renderConstellationAction({ icon: 'options', label: 'OPTIONS', attrs: 'data-credits-options', variant: 'primary' })}
+    </footer>
+  `;
 
-  wireUniversalTopBar();
+  setScreen('credits', renderConstellationVideoScreen({
+    ariaLabel: 'Mission Brief & Archives',
+    bodyMarkup,
+    backLabel: 'BACK',
+    backAttrs: 'data-credits-back',
+    backAriaLabel: 'Back to Main Menu',
+    utilityMarkup: '<span class="spud-metric-chip">SIMULATION MODEL <b>v3042</b></span>',
+    extraClass: 'screen-credits',
+  }));
+
   screenRoot.querySelectorAll<HTMLButtonElement>('[data-archive-slot]').forEach(btn => {
     btn.addEventListener('click', () => {
       const id = btn.dataset.archiveSlot;
@@ -1737,18 +1967,147 @@ function showCredits(): void {
       screenRoot.querySelectorAll<HTMLButtonElement>('[data-archive-slot]').forEach(el => el.classList.toggle('selected', el === btn));
       const box = screenRoot.querySelector<HTMLElement>('#credits-inspector-main');
       if (box) {
-        box.innerHTML = `<strong>${escapeHtml(found.badge)} · ${escapeHtml(found.title.toUpperCase())}</strong><p style="margin:6px 0 0;">${escapeHtml(found.body)}</p>`;
+        box.innerHTML = `<h2>${escapeHtml(found.badge)} · ${escapeHtml(found.title.toUpperCase())}</h2><p>${escapeHtml(found.body)}</p>`;
       }
     });
   });
-  screenRoot.querySelector('[data-credits-back]')?.addEventListener('click', () => {
+  screenRoot.querySelectorAll('[data-credits-back]').forEach(el => el.addEventListener('click', () => {
     sfx.click();
     showMenu();
-  });
+  }));
   screenRoot.querySelector('[data-credits-options]')?.addEventListener('click', () => {
     sfx.click();
     showOptions();
   });
+}
+
+function syncLobbyFromSave(): void {
+  lobby = {
+    playerName: save.name,
+    colorId: save.colorId,
+    specialist: save.specialist,
+    destination: save.destination,
+  };
+}
+
+function renderSpecialistGrid(selectedSpecialist: SpecialistId): string {
+  return `
+    <div class="spud-loadout-classes" role="group" aria-labelledby="specialist-heading">
+      ${SPECIALISTS.map(specialist => `
+        <button
+          type="button"
+          class="spud-class-row loadout-choice loadout-class"
+          data-specialist="${specialist.id}"
+          aria-pressed="${selectedSpecialist === specialist.id}"
+          style="--choice-accent:${specialist.accent}"
+        >
+          <img src="${specialist.art}" alt="" />
+          <div>
+            <strong>${escapeHtml(specialist.name)}</strong>
+            <small>${escapeHtml(specialist.role)}</small>
+          </div>
+          <span class="spud-orbital-check" aria-hidden="true"></span>
+        </button>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderSuitColorNodes(selectedColorId: PlayerColorId): string {
+  return `
+    <div class="spud-color-nodes" role="group" aria-labelledby="suit-color-heading">
+      ${PLAYER_COLORS.map(color => `
+        <button
+          type="button"
+          class="spud-color-node loadout-choice loadout-color"
+          data-color="${color.id}"
+          aria-pressed="${selectedColorId === color.id}"
+          style="--choice-accent:${color.css}"
+        >
+          <i aria-hidden="true"></i>
+          <span>${escapeHtml(color.name)}</span>
+        </button>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderDifficultyStrip(selectedDifficulty: DifficultyId): string {
+  return `
+    <div class="spud-diff-strip" role="group" aria-labelledby="difficulty-heading">
+      ${(Object.keys(DIFFICULTY_INFO) as DifficultyId[]).map(diff => `
+        <button
+          type="button"
+          class="spud-diff-choice"
+          data-difficulty="${diff}"
+          aria-pressed="${selectedDifficulty === diff}"
+        >
+          <strong>${escapeHtml(DIFFICULTY_INFO[diff].name)}</strong>
+          <small>${escapeHtml(DIFFICULTY_INFO[diff].description)}</small>
+        </button>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderLoadoutUtilityToggles(randomizeAttr: string, suffix: string): string {
+  return `
+    <button type="button" class="spud-text-toggle" ${randomizeAttr} title="Randomize Loadout">
+      ${renderConstellationIcon('randomize')}
+      <span>RANDOMIZE</span>
+    </button>
+    <button type="button" class="spud-text-toggle ${save.options.sound ? 'active' : ''}" data-toggle="sound-${suffix}" aria-pressed="${save.options.sound}">
+      ${renderConstellationIcon('sfxVolume')}
+      <span class="spud-toggle-text">SOUND: ${save.options.sound ? 'ON' : 'OFF'}</span>
+    </button>
+    <button type="button" class="spud-text-toggle ${save.options.lineOfSight ? 'active' : ''}" data-toggle="vision-${suffix}" aria-pressed="${save.options.lineOfSight}">
+      ${renderConstellationIcon('vision')}
+      <span class="spud-toggle-text">VISION: ${save.options.lineOfSight ? 'ON' : 'OFF'}</span>
+    </button>
+  `;
+}
+
+function wireLoadoutAudioVisionToggles(root: HTMLElement, suffix: string): void {
+  root.querySelector<HTMLButtonElement>(`[data-toggle="sound-${suffix}"]`)?.addEventListener('click', event => {
+    const btn = event.currentTarget as HTMLButtonElement;
+    save.options.sound = !save.options.sound;
+    btn.classList.toggle('active', save.options.sound);
+    btn.setAttribute('aria-pressed', String(save.options.sound));
+    const txt = btn.querySelector<HTMLElement>('.spud-toggle-text');
+    if (txt) txt.textContent = `SOUND: ${save.options.sound ? 'ON' : 'OFF'}`;
+    applyOptions();
+    saveSettings();
+    sfx.click();
+  });
+
+  root.querySelector<HTMLButtonElement>(`[data-toggle="vision-${suffix}"]`)?.addEventListener('click', event => {
+    const btn = event.currentTarget as HTMLButtonElement;
+    save.options.lineOfSight = !save.options.lineOfSight;
+    btn.classList.toggle('active', save.options.lineOfSight);
+    btn.setAttribute('aria-pressed', String(save.options.lineOfSight));
+    const txt = btn.querySelector<HTMLElement>('.spud-toggle-text');
+    if (txt) txt.textContent = `VISION: ${save.options.lineOfSight ? 'ON' : 'OFF'}`;
+    applyOptions();
+    saveSettings();
+    sfx.click();
+  });
+}
+
+function wireDifficultyButtons(root: HTMLElement): void {
+  root.querySelectorAll<HTMLButtonElement>('[data-difficulty]').forEach(button => button.addEventListener('click', () => {
+    save.options.difficulty = button.dataset.difficulty as DifficultyId;
+    root.querySelectorAll<HTMLButtonElement>('[data-difficulty]').forEach(el => {
+      el.setAttribute('aria-pressed', String(el === button));
+    });
+    applyOptions();
+    saveSettings();
+    sfx.click();
+  }));
+}
+
+function randomCallsign(): string {
+  const callsigns = ['Cmdr. Yukon', 'Nova Spud', 'Russet-7', 'Tater Prime', 'Sol-Tuber', 'Orbit Mash', 'Kennebec'];
+  return callsigns[Math.floor(Math.random() * callsigns.length)] ?? 'Spudnaut';
 }
 
 function renderLobbyInspectorDetails(): string {
@@ -1756,23 +2115,23 @@ function renderLobbyInspectorDetails(): string {
   const color = getColor(lobby.colorId);
   const stats = SPECIALIST_STATS[lobby.specialist] ?? SPECIALIST_STATS.repairman;
   return `
-    <div class="loadout-preview" style="--choice-accent:${color.css}">
-      <div class="loadout-portrait"><img src="${spec.art}" alt="" /></div>
-      <div class="loadout-preview-copy">
+    <div class="spud-loadout-portrait" style="--choice-accent:${color.css}">
+      <div class="spud-portrait-ring"><img src="${spec.art}" alt="" /></div>
+      <div class="spud-loadout-meta">
         <span id="loadout-callsign">${escapeHtml(lobby.playerName.trim() || 'Spudnaut')}</span>
         <h3>${escapeHtml(spec.name)}</h3>
-        <span class="loadout-suit-label"><i aria-hidden="true"></i>${escapeHtml(color.name)} suit</span>
+        <small><i aria-hidden="true"></i>${escapeHtml(color.name)} suit</small>
       </div>
     </div>
-    <div class="svg-inspector-box">
-      <strong>Class perk</strong>
-      ${escapeHtml(spec.perk)}
+    <div class="spud-copy-block">
+      <h2>CLASS PERK</h2>
+      <p>${escapeHtml(spec.perk)}</p>
     </div>
-    <div class="svg-stat-bars">
+    <div class="spud-stat-bars">
       ${stats.map(row => `
-        <div class="svg-stat-row">
+        <div class="spud-stat-row">
           <span>${row.label}</span>
-          <div class="svg-stat-track"><div class="svg-stat-fill" style="width:${row.value}%"></div></div>
+          <div class="spud-stat-track"><div class="spud-stat-fill" style="width:${row.value}%"></div></div>
           <b>${row.value}</b>
         </div>
       `).join('')}
@@ -1781,80 +2140,52 @@ function renderLobbyInspectorDetails(): string {
 }
 
 function showLobby(): void {
-  setScreen('lobby', `
-    <section class="universal-duelyst-screen is-zoomed-vista lobby-screen">
-      ${renderUniversalBackdrop()}
-      ${renderUniversalTopBar('play')}
-      <article class="svg-inventory-window">
-        <header class="svg-inventory-topbar">
-          <div class="svg-inventory-title">
-            <span>MISSION SELECT · STEP 1 OF 2</span>
-            <h1 tabindex="-1">BUILD YOUR SPUDNAUT</h1>
-          </div>
-          <div class="svg-tab-strip">
-            <button type="button" class="svg-tab-pill" data-lobby-randomize title="Randomize Loadout">🎲 RANDOMIZE</button>
-            <button type="button" class="svg-tab-pill ${save.options.sound ? 'active' : ''}" data-toggle="sound-lobby" aria-pressed="${save.options.sound}">SOUND: ${save.options.sound ? 'ON' : 'OFF'}</button>
-            <button type="button" class="svg-tab-pill ${save.options.lineOfSight ? 'active' : ''}" data-toggle="vision-lobby" aria-pressed="${save.options.lineOfSight}">VISION: ${save.options.lineOfSight ? 'ON' : 'OFF'}</button>
-          </div>
-        </header>
+  const utilityMarkup = renderLoadoutUtilityToggles('data-lobby-randomize', 'lobby');
 
-        <div class="svg-master-detail-body">
-          <div class="svg-slot-well">
-            <div class="loadout-options">
-              <h2 id="specialist-heading">Specialist class</h2>
-              <div class="loadout-class-grid" role="group" aria-labelledby="specialist-heading">
-                ${SPECIALISTS.map(specialist => `
-                  <button type="button" class="loadout-choice loadout-class" data-specialist="${specialist.id}"
-                    aria-pressed="${lobby.specialist === specialist.id}" style="--choice-accent:${specialist.accent}">
-                    <span class="loadout-check" aria-hidden="true">✓</span>
-                    <img src="${specialist.art}" alt="" />
-                    <strong>${escapeHtml(specialist.name)}</strong>
-                    <small>${escapeHtml(specialist.role)}</small>
-                  </button>
-                `).join('')}
-              </div>
-            </div>
+  const bodyMarkup = `
+    ${renderConstellationTitle('BUILD YOUR SPUDNAUT', 'lobby-title', 'MISSION SELECT · STEP 1 OF 2')}
+    <div class="spud-split-columns">
+      <div class="spud-copy-stack">
+        <div class="spud-constellation-heading" id="specialist-heading">SPECIALIST CLASS</div>
+        ${renderSpecialistGrid(lobby.specialist)}
 
-            <div class="loadout-options">
-              <h2 id="suit-color-heading">Suit color</h2>
-              <div class="loadout-color-grid" role="group" aria-labelledby="suit-color-heading">
-                ${PLAYER_COLORS.map(color => `
-                  <button type="button" class="loadout-choice loadout-color" data-color="${color.id}"
-                    aria-pressed="${lobby.colorId === color.id}" style="--choice-accent:${color.css}">
-                    <span class="loadout-check" aria-hidden="true">✓</span>
-                    <i aria-hidden="true"></i>
-                    <span>${escapeHtml(color.name)}</span>
-                  </button>
-                `).join('')}
-              </div>
-            </div>
-          </div>
+        <div class="spud-constellation-heading" id="suit-color-heading">SUIT COLOR</div>
+        ${renderSuitColorNodes(lobby.colorId)}
 
-          <aside class="svg-inspector-card loadout-inspector" aria-label="Crew loadout preview">
-            <div>
-              <label class="svg-row-sub" for="lobby-name" style="margin-bottom:6px;">SPUDNAUT CALLSIGN</label>
-              <input class="lobby-input" id="lobby-name" maxlength="18" value="${escapeHtml(lobby.playerName)}" />
-            </div>
-            <div class="loadout-details">
-              ${renderLobbyInspectorDetails()}
-            </div>
-            <div class="svg-slot-footer-bar">
-              <span>DIFFICULTY</span>
-              <span>${escapeHtml(DIFFICULTY_INFO[save.options.difficulty].name)}</span>
-            </div>
-          </aside>
+        <div class="spud-constellation-heading" id="difficulty-heading">TRIAL DIFFICULTY</div>
+        ${renderDifficultyStrip(save.options.difficulty)}
+      </div>
+
+      <div class="spud-vertical-rule" aria-hidden="true"></div>
+
+      <aside class="spud-copy-stack loadout-inspector" aria-label="Crew loadout preview">
+        <div class="spud-copy-block">
+          <label class="spud-constellation-heading" for="lobby-name">SPUDNAUT CALLSIGN</label>
+          <input class="spud-line-input" id="lobby-name" maxlength="18" value="${escapeHtml(lobby.playerName)}" />
         </div>
+        <div class="loadout-details spud-copy-stack">
+          ${renderLobbyInspectorDetails()}
+        </div>
+      </aside>
+    </div>
 
-        <footer class="svg-window-footer">
-          <button class="svg-back-pill-btn" type="button" data-lobby-back>← BACK</button>
-          <button class="svg-back-pill-btn is-cyan" type="button" data-lobby-next>CHOOSE HABITAT →</button>
-        </footer>
-      </article>
-    </section>
-  `);
+    <footer class="spud-constellation-actions">
+      ${renderConstellationAction({ icon: 'back', label: 'MAIN MENU', attrs: 'data-lobby-back' })}
+      ${renderConstellationAction({ icon: 'forward', label: 'CHOOSE HABITAT', attrs: 'data-lobby-next', variant: 'primary' })}
+    </footer>
+  `;
 
-  wireUniversalTopBar();
-  screenRoot.querySelector<HTMLElement>('h1')?.focus();
+  setScreen('lobby', renderConstellationVideoScreen({
+    ariaLabel: 'Build Your Spudnaut',
+    bodyMarkup,
+    backLabel: 'BACK',
+    backAttrs: 'data-lobby-back',
+    backAriaLabel: 'Back to Main Menu',
+    utilityMarkup,
+    extraClass: 'lobby-screen',
+  }));
+
+  screenRoot.querySelector<HTMLElement>('#lobby-title')?.focus();
 
   const refreshLobbyInPlace = (): void => {
     screenRoot.querySelectorAll<HTMLButtonElement>('.loadout-choice').forEach(button => {
@@ -1883,9 +2214,11 @@ function showLobby(): void {
     refreshLobbyInPlace();
   }));
 
+  wireDifficultyButtons(screenRoot);
+  wireLoadoutAudioVisionToggles(screenRoot, 'lobby');
+
   screenRoot.querySelector('[data-lobby-randomize]')?.addEventListener('click', () => {
-    const callsigns = ['Cmdr. Yukon', 'Nova Spud', 'Russet-7', 'Tater Prime', 'Sol-Tuber', 'Orbit Mash', 'Kennebec'];
-    lobby.playerName = callsigns[Math.floor(Math.random() * callsigns.length)] ?? 'Spudnaut';
+    lobby.playerName = randomCallsign();
     lobby.colorId = PLAYER_COLORS[Math.floor(Math.random() * PLAYER_COLORS.length)]?.id ?? lobby.colorId;
     lobby.specialist = SPECIALISTS[Math.floor(Math.random() * SPECIALISTS.length)]?.id ?? lobby.specialist;
     const input = screenRoot.querySelector<HTMLInputElement>('#lobby-name');
@@ -1894,35 +2227,230 @@ function showLobby(): void {
     refreshLobbyInPlace();
   });
 
-  screenRoot.querySelector<HTMLButtonElement>('[data-toggle="sound-lobby"]')?.addEventListener('click', event => {
-    const btn = event.currentTarget as HTMLButtonElement;
-    save.options.sound = !save.options.sound;
-    btn.classList.toggle('active', save.options.sound);
-    btn.setAttribute('aria-pressed', String(save.options.sound));
-    btn.textContent = `SOUND: ${save.options.sound ? 'ON' : 'OFF'}`;
-    applyOptions();
-    saveSettings();
-    sfx.click();
-  });
-
-  screenRoot.querySelector<HTMLButtonElement>('[data-toggle="vision-lobby"]')?.addEventListener('click', event => {
-    const btn = event.currentTarget as HTMLButtonElement;
-    save.options.lineOfSight = !save.options.lineOfSight;
-    btn.classList.toggle('active', save.options.lineOfSight);
-    btn.setAttribute('aria-pressed', String(save.options.lineOfSight));
-    btn.textContent = `VISION: ${save.options.lineOfSight ? 'ON' : 'OFF'}`;
-    applyOptions();
-    saveSettings();
-    sfx.click();
-  });
-
-  screenRoot.querySelector('[data-lobby-back]')?.addEventListener('click', () => {
+  screenRoot.querySelectorAll('[data-lobby-back]').forEach(el => el.addEventListener('click', () => {
     sfx.click();
     showMenu();
-  });
+  }));
   screenRoot.querySelector('[data-lobby-next]')?.addEventListener('click', () => {
     sfx.click();
     showHabitat();
+  });
+}
+
+function showResumeStaging(): void {
+  const saved = save.activeTrial;
+  if (!saved) {
+    showLobby();
+    return;
+  }
+  syncLobbyFromSave();
+  const destination = destinationById(save.destination);
+  const effectiveDay = saved.penaltyDay ? TRIAL_MAX_DAY + saved.penaltyDay : saved.day;
+  const dayLabel = `DAY ${String(effectiveDay).padStart(2, '0')} / ${TRIAL_MAX_DAY}`;
+  const shiftStageLabel = saved.phase === 'report' && saved.report
+    ? 'SAVED SHIFT REPORT'
+    : saved.tasks.length > 0
+      ? `SHIFT IN PROGRESS · ${saved.completed.length} / ${saved.tasks.length} TASKS`
+      : 'SHIFT PLANNING READY';
+  const stageShort = saved.phase === 'report' && saved.report
+    ? 'REPORT'
+    : saved.tasks.length > 0
+      ? `${saved.completed.length} / ${saved.tasks.length} TASKS`
+      : 'PLANNING';
+  const metricOrder: (keyof MissionMetrics)[] = ['power', 'oxygen', 'water', 'starch', 'hull', 'morale', 'research'];
+  const utilityMarkup = renderLoadoutUtilityToggles('data-resume-randomize', 'resume');
+
+  const bodyMarkup = `
+    ${renderConstellationTitle('RESUME EXPEDITION', 'resume-title', `${dayLabel} · ${destination.name.toUpperCase()} · ${shiftStageLabel}`)}
+    <div class="spud-split-columns">
+      <div class="spud-copy-stack">
+        <div class="spud-copy-block">
+          <label class="spud-constellation-heading" for="resume-name">SPUDNAUT CALLSIGN (APPLIES LIVE)</label>
+          <input class="spud-line-input" id="resume-name" maxlength="18" value="${escapeHtml(lobby.playerName)}" />
+        </div>
+
+        <div class="spud-constellation-heading" id="suit-color-heading">SUIT COLOR (APPLIES LIVE)</div>
+        ${renderSuitColorNodes(lobby.colorId)}
+
+        <div class="spud-constellation-heading" id="difficulty-heading">TRIAL DIFFICULTY (APPLIES LIVE)</div>
+        ${renderDifficultyStrip(save.options.difficulty)}
+
+        <div class="spud-constellation-heading" id="specialist-heading">SPECIALIST CLASS · ACTIVE TRIAL (CHANGING OPENS NEW MISSION SETUP)</div>
+        ${renderSpecialistGrid(save.specialist)}
+
+        <div class="spud-constellation-heading" id="resume-habitat-heading">TARGET HABITAT · ACTIVE TRIAL (CHANGING OPENS NEW MISSION SETUP)</div>
+        <div class="spud-diff-strip" style="grid-template-columns:repeat(2,minmax(0,1fr));" role="group" aria-labelledby="resume-habitat-heading">
+          ${DESTINATIONS.map(dest => `
+            <button
+              type="button"
+              class="spud-diff-choice"
+              data-resume-destination="${dest.id}"
+              aria-pressed="${save.destination === dest.id}"
+            >
+              <strong>${escapeHtml(dest.name)}</strong>
+              <small>${escapeHtml(dest.gravity)} · ${escapeHtml(dest.hazard)}</small>
+            </button>
+          `).join('')}
+        </div>
+      </div>
+
+      <div class="spud-vertical-rule" aria-hidden="true"></div>
+
+      <aside class="spud-copy-stack loadout-inspector" aria-label="Saved expedition status">
+        <div class="loadout-details spud-copy-stack">
+          ${renderLobbyInspectorDetails()}
+        </div>
+        <div class="spud-constellation-heading">SAVED HABITAT TELEMETRY</div>
+        <div class="spud-telemetry-grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 16px;">
+          <div class="spud-telemetry-cell">
+            <span>TRIAL DAY</span>
+            <strong>${dayLabel}</strong>
+            <small>${escapeHtml(destination.name.toUpperCase())}</small>
+          </div>
+          <div class="spud-telemetry-cell">
+            <span>SHIFT STAGE</span>
+            <strong>${stageShort}</strong>
+            <small>${saved.missedDays} MISSED SHIFTS</small>
+          </div>
+        </div>
+        <div class="spud-stat-bars">
+          ${metricOrder.map(metric => {
+            const val = Math.round(saved.metrics[metric]);
+            return `
+              <div class="spud-stat-row">
+                <span>${METRIC_LABELS[metric].split(' ')[0]!.toUpperCase()}</span>
+                <div class="spud-stat-track"><div class="spud-stat-fill" style="width:${Math.min(100, Math.max(0, val))}%"></div></div>
+                <b>${val}%</b>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </aside>
+    </div>
+
+    <footer class="spud-constellation-actions">
+      ${renderConstellationAction({ icon: 'back', label: 'MAIN MENU', attrs: 'data-resume-back' })}
+      ${renderConstellationAction({ icon: 'play', label: 'NEW MISSION', attrs: 'data-resume-new' })}
+      ${renderConstellationAction({ icon: 'abort', label: 'ABORT TRIAL', attrs: 'data-resume-abort', variant: 'danger' })}
+      ${renderConstellationAction({ icon: 'forward', label: 'CONTINUE SHIFT', attrs: 'data-resume-go', variant: 'primary' })}
+    </footer>
+  `;
+
+  setScreen('lobby', renderConstellationVideoScreen({
+    ariaLabel: 'Resume Expedition Loadout and Choices',
+    bodyMarkup,
+    backLabel: 'BACK',
+    backAttrs: 'data-resume-back',
+    backAriaLabel: 'Back to Main Menu',
+    utilityMarkup,
+    extraClass: 'resume-staging-screen',
+  }));
+
+  screenRoot.querySelector<HTMLElement>('#resume-title')?.focus();
+
+  const persistResumeCustomizations = (): void => {
+    save.name = lobby.playerName.trim() || 'Spudnaut';
+    save.colorId = lobby.colorId;
+    persistSave(save);
+  };
+
+  const refreshResumeLoadoutInPlace = (): void => {
+    screenRoot.querySelectorAll<HTMLButtonElement>('[data-color]').forEach(button => {
+      button.setAttribute('aria-pressed', String(button.dataset.color === lobby.colorId));
+    });
+    const details = screenRoot.querySelector<HTMLElement>('.loadout-details');
+    if (details) details.innerHTML = renderLobbyInspectorDetails();
+  };
+
+  screenRoot.querySelector<HTMLInputElement>('#resume-name')?.addEventListener('input', event => {
+    lobby.playerName = (event.target as HTMLInputElement).value;
+    persistResumeCustomizations();
+    const callsign = screenRoot.querySelector<HTMLElement>('#loadout-callsign');
+    if (callsign) callsign.textContent = lobby.playerName.trim() || 'Spudnaut';
+  });
+
+  screenRoot.querySelectorAll<HTMLButtonElement>('[data-color]').forEach(button => button.addEventListener('click', () => {
+    lobby.colorId = button.dataset.color as PlayerColorId;
+    persistResumeCustomizations();
+    sfx.click();
+    refreshResumeLoadoutInPlace();
+  }));
+
+  wireDifficultyButtons(screenRoot);
+  wireLoadoutAudioVisionToggles(screenRoot, 'resume');
+
+  screenRoot.querySelector('[data-resume-randomize]')?.addEventListener('click', () => {
+    lobby.playerName = randomCallsign();
+    lobby.colorId = PLAYER_COLORS[Math.floor(Math.random() * PLAYER_COLORS.length)]?.id ?? lobby.colorId;
+    persistResumeCustomizations();
+    const input = screenRoot.querySelector<HTMLInputElement>('#resume-name');
+    if (input) input.value = lobby.playerName;
+    sfx.click();
+    refreshResumeLoadoutInPlace();
+  });
+
+  screenRoot.querySelectorAll<HTMLButtonElement>('[data-specialist]').forEach(button => button.addEventListener('click', () => {
+    const chosenId = button.dataset.specialist as SpecialistId;
+    if (chosenId === save.specialist) {
+      sfx.click();
+      return;
+    }
+    const spec = specialistById(chosenId);
+    confirmReplaceSavedTrial({
+      title: `SWITCH TO ${spec.name.toUpperCase()}?`,
+      description: `Changing your Specialist Class starts a new Day 01 expedition setup. Your saved ${dayLabel} mission stays safe until you confirm launch on Flight Check.`,
+      confirmLabel: 'OPEN LOADOUT SETUP',
+      onConfirm: () => {
+        syncLobbyFromSave();
+        lobby.specialist = chosenId;
+        showLobby();
+      },
+    });
+  }));
+
+  screenRoot.querySelectorAll<HTMLButtonElement>('[data-resume-destination]').forEach(button => button.addEventListener('click', () => {
+    const chosenDest = button.dataset.resumeDestination as DestinationId;
+    if (chosenDest === save.destination) {
+      sfx.click();
+      return;
+    }
+    const dest = destinationById(chosenDest);
+    confirmReplaceSavedTrial({
+      title: `SWITCH TO ${dest.name.toUpperCase()}?`,
+      description: `Changing your Target Habitat starts a new Day 01 expedition setup. Your saved ${dayLabel} mission stays safe until you confirm launch on Flight Check.`,
+      confirmLabel: 'OPEN HABITAT SETUP',
+      onConfirm: () => {
+        syncLobbyFromSave();
+        lobby.destination = chosenDest;
+        showHabitat();
+      },
+    });
+  }));
+
+  screenRoot.querySelectorAll('[data-resume-back]').forEach(el => el.addEventListener('click', () => {
+    sfx.click();
+    showMenu();
+  }));
+
+  screenRoot.querySelector('[data-resume-new]')?.addEventListener('click', () => {
+    confirmReplaceSavedTrial({
+      title: 'START A NEW MISSION SETUP?',
+      description: `Opens full Loadout and Habitat selection for a fresh Day 01 trial. Your saved ${dayLabel} mission stays intact until you confirm Launch.`,
+      confirmLabel: 'GO TO LOADOUT',
+      confirmIcon: 'play',
+      onConfirm: () => {
+        syncLobbyFromSave();
+        showLobby();
+      },
+    });
+  });
+
+  screenRoot.querySelector('[data-resume-abort]')?.addEventListener('click', showAbortMissionConfirmation);
+
+  screenRoot.querySelector('[data-resume-go]')?.addEventListener('click', () => {
+    persistResumeCustomizations();
+    sfx.launch();
+    resumeTrial();
   });
 }
 
@@ -1930,8 +2458,8 @@ function renderHabitatBrief(): string {
   const destination = destinationById(lobby.destination);
   const brief = scienceBrief(destination.id);
   return `
-    <div class="svg-inspector-box">
-      <strong>FIELD SCIENCE · ${escapeHtml(destination.name.toUpperCase())}</strong>
+    <div class="spud-copy-block">
+      <h2>FIELD SCIENCE · ${escapeHtml(destination.name.toUpperCase())}</h2>
       <p>${escapeHtml(brief.fact)}</p>
       <small>${escapeHtml(brief.operationsNote)}</small>
     </div>
@@ -1939,45 +2467,47 @@ function renderHabitatBrief(): string {
 }
 
 function showHabitat(): void {
-  setScreen('lobby', `
-    <section class="universal-duelyst-screen is-zoomed-vista habitat-screen">
-      ${renderUniversalBackdrop()}
-      ${renderUniversalTopBar('play')}
-      <article class="svg-inventory-window">
-        <header class="svg-inventory-topbar">
-          <div class="svg-inventory-title">
-            <span>MISSION SELECT · STEP 2 OF 2</span>
-            <h1 tabindex="-1">CHOOSE YOUR TARGET HABITAT</h1>
-          </div>
-        </header>
-        <div class="svg-master-detail-body habitat-body">
-          <div class="habitat-choices" role="group" aria-label="Target habitat">
-            ${DESTINATIONS.map(destination => `
-              <button type="button" class="habitat-choice" data-destination="${destination.id}"
-                aria-pressed="${lobby.destination === destination.id}" style="--habitat-accent:${destination.accent}">
-                <span class="habitat-art">
-                  <img src="/assets/habitats/${destination.id}.png" alt="" width="1254" height="1254" />
-                </span>
-                <strong>${escapeHtml(destination.name)}</strong>
-                <small>${escapeHtml(destination.gravity)} · ${escapeHtml(destination.hazard)}</small>
-                <span class="habitat-selected" aria-hidden="true">✓ Selected</span>
-              </button>
-            `).join('')}
-          </div>
-          <aside class="svg-inspector-card habitat-brief" aria-live="polite">
-            ${renderHabitatBrief()}
-          </aside>
-        </div>
-        <footer class="svg-window-footer">
-          <button class="svg-back-pill-btn" type="button" data-habitat-back>← BACK TO CLASS</button>
-          <button class="svg-back-pill-btn is-cyan" type="button" data-habitat-next>CONTINUE TO LAUNCH →</button>
-        </footer>
-      </article>
-    </section>
-  `);
+  const bodyMarkup = `
+    ${renderConstellationTitle('CHOOSE YOUR TARGET HABITAT', 'habitat-title', 'MISSION SELECT · STEP 2 OF 2')}
+    <div class="spud-split-columns">
+      <div class="spud-habitat-grid" role="group" aria-label="Target habitat">
+        ${DESTINATIONS.map(destination => `
+          <button
+            type="button"
+            class="spud-habitat-node habitat-choice"
+            data-destination="${destination.id}"
+            aria-pressed="${lobby.destination === destination.id}"
+            style="--habitat-accent:${destination.accent}"
+          >
+            <span class="spud-habitat-orb">
+              <img src="/assets/habitats/${destination.id}.png" alt="" width="1254" height="1254" />
+            </span>
+            <strong>${escapeHtml(destination.name)}</strong>
+            <small>${escapeHtml(destination.gravity)} · ${escapeHtml(destination.hazard)}</small>
+          </button>
+        `).join('')}
+      </div>
+      <div class="spud-vertical-rule" aria-hidden="true"></div>
+      <aside class="spud-copy-stack habitat-brief" aria-live="polite">
+        ${renderHabitatBrief()}
+      </aside>
+    </div>
+    <footer class="spud-constellation-actions">
+      ${renderConstellationAction({ icon: 'back', label: 'BACK TO CLASS', attrs: 'data-habitat-back' })}
+      ${renderConstellationAction({ icon: 'forward', label: 'CONTINUE TO LAUNCH', attrs: 'data-habitat-next', variant: 'primary' })}
+    </footer>
+  `;
 
-  wireUniversalTopBar();
-  screenRoot.querySelector<HTMLElement>('h1')?.focus();
+  setScreen('lobby', renderConstellationVideoScreen({
+    ariaLabel: 'Choose Target Habitat',
+    bodyMarkup,
+    backLabel: 'BACK',
+    backAttrs: 'data-habitat-back',
+    backAriaLabel: 'Back to Class Selection',
+    extraClass: 'habitat-screen',
+  }));
+
+  screenRoot.querySelector<HTMLElement>('#habitat-title')?.focus();
 
   const choices = screenRoot.querySelectorAll<HTMLButtonElement>('[data-destination]');
   const brief = screenRoot.querySelector<HTMLElement>('.habitat-brief');
@@ -1988,10 +2518,10 @@ function showHabitat(): void {
     if (brief) brief.innerHTML = renderHabitatBrief();
   }));
 
-  screenRoot.querySelector('[data-habitat-back]')?.addEventListener('click', () => {
+  screenRoot.querySelectorAll('[data-habitat-back]').forEach(el => el.addEventListener('click', () => {
     sfx.click();
     showLobby();
-  });
+  }));
   screenRoot.querySelector('[data-habitat-next]')?.addEventListener('click', () => {
     sfx.click();
     showLaunch();
@@ -2002,50 +2532,87 @@ function showLaunch(): void {
   const specialist = specialistById(lobby.specialist);
   const destination = destinationById(lobby.destination);
   const name = lobby.playerName.trim() || 'Spudnaut';
-  setScreen('launch', `
-    <section class="universal-duelyst-screen is-zoomed-vista launch-screen">
-      ${renderUniversalBackdrop()}
-      ${renderUniversalTopBar('play')}
-      <article class="svg-options-window" style="width:min(760px,calc(100vw - 28px));">
-        <header class="svg-window-header">
-          <span class="svg-kicker">SPUDNAUT SPACE AGENCY · LAUNCH CLEARANCE</span>
-          <h1 tabindex="-1">FINAL FLIGHT CHECK</h1>
-        </header>
-        <div class="svg-options-body">
-          <div class="svg-inspector-preview">
-            <img src="${specialist.art}" alt="" />
-            <div class="svg-inspector-title">
-              <span>CREW MANIFEST LOCKED</span>
-              <h3>${escapeHtml(name)} · ${escapeHtml(specialist.name)}</h3>
-              <small>${escapeHtml(specialist.perk)}</small>
-            </div>
-          </div>
-          <div class="svg-slot-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));">
-            <div class="svg-slot-card" style="min-height:84px;cursor:default;"><span class="svg-slot-badge">TARGET</span><strong>${escapeHtml(destination.name)}</strong><small>SURFACE HABITAT</small></div>
-            <div class="svg-slot-card" style="min-height:84px;cursor:default;"><span class="svg-slot-badge">GRAVITY</span><strong>${escapeHtml(destination.gravity)}</strong><small>FIELD ENV</small></div>
-            <div class="svg-slot-card" style="min-height:84px;cursor:default;"><span class="svg-slot-badge">HAZARD</span><strong>${escapeHtml(destination.hazard)}</strong><small>PRIMARY RISK</small></div>
-            <div class="svg-slot-card" style="min-height:84px;cursor:default;"><span class="svg-slot-badge">DURATION</span><strong>${TRIAL_MAX_DAY} DAYS</strong><small>CO-OP TRIAL</small></div>
-            <div class="svg-slot-card" style="min-height:84px;cursor:default;"><span class="svg-slot-badge">SYSTEMS</span><strong>4 CORE</strong><small>ALL MUST PASS</small></div>
-            <div class="svg-slot-card" style="min-height:84px;cursor:default;"><span class="svg-slot-badge">MODE</span><strong>${escapeHtml(DIFFICULTY_INFO[save.options.difficulty].name)}</strong><small>DIFFICULTY</small></div>
-          </div>
-        </div>
-        <footer class="svg-window-footer">
-          <button class="svg-back-pill-btn" type="button" data-launch-back>← BACK TO HABITAT</button>
-          <button class="svg-back-pill-btn is-cyan" type="button" data-launch-begin>BEGIN TRIAL · DAY 01 →</button>
-        </footer>
-      </article>
-      ${renderPotatoOverride(true)}
-    </section>
-  `);
-  wireUniversalTopBar();
-  screenRoot.querySelector<HTMLElement>('h1')?.focus();
-  screenRoot.querySelector('[data-launch-back]')?.addEventListener('click', () => {
+  const color = getColor(lobby.colorId);
+  const bodyMarkup = `
+    ${renderConstellationTitle('FINAL FLIGHT CHECK', 'launch-title', 'SPUDNAUT SPACE AGENCY · LAUNCH CLEARANCE')}
+    <div class="spud-loadout-portrait" style="--choice-accent:${color.css};justify-content:center;">
+      <div class="spud-portrait-ring"><img src="${specialist.art}" alt="" /></div>
+      <div class="spud-loadout-meta">
+        <span>CREW MANIFEST LOCKED</span>
+        <h3>${escapeHtml(name)} · ${escapeHtml(specialist.name)}</h3>
+        <small><i aria-hidden="true"></i>${escapeHtml(specialist.perk)}</small>
+      </div>
+    </div>
+    <div class="spud-telemetry-grid">
+      <div class="spud-telemetry-cell">
+        <span>TARGET</span>
+        <strong>${escapeHtml(destination.name)}</strong>
+        <small>SURFACE HABITAT</small>
+      </div>
+      <div class="spud-telemetry-cell">
+        <span>GRAVITY</span>
+        <strong>${escapeHtml(destination.gravity)}</strong>
+        <small>FIELD ENV</small>
+      </div>
+      <div class="spud-telemetry-cell">
+        <span>HAZARD</span>
+        <strong>${escapeHtml(destination.hazard)}</strong>
+        <small>PRIMARY RISK</small>
+      </div>
+      <div class="spud-telemetry-cell">
+        <span>DURATION</span>
+        <strong>${TRIAL_MAX_DAY} DAYS</strong>
+        <small>CO-OP TRIAL</small>
+      </div>
+      <div class="spud-telemetry-cell">
+        <span>SYSTEMS</span>
+        <strong>4 CORE</strong>
+        <small>ALL MUST PASS</small>
+      </div>
+      <div class="spud-telemetry-cell">
+        <span>MODE</span>
+        <strong>${escapeHtml(DIFFICULTY_INFO[save.options.difficulty].name)}</strong>
+        <small>DIFFICULTY</small>
+      </div>
+    </div>
+    <footer class="spud-constellation-actions">
+      ${renderConstellationAction({ icon: 'back', label: 'BACK TO HABITAT', attrs: 'data-launch-back' })}
+      ${renderConstellationAction({ icon: 'launch', label: 'BEGIN TRIAL · DAY 01', attrs: 'data-launch-begin', variant: 'primary' })}
+    </footer>
+  `;
+
+  setScreen('launch', renderConstellationVideoScreen({
+    ariaLabel: 'Final Flight Check',
+    bodyMarkup,
+    backLabel: 'BACK',
+    backAttrs: 'data-launch-back',
+    backAriaLabel: 'Back to Target Habitat',
+    narrow: true,
+    extraClass: 'launch-screen',
+  }));
+  screenRoot.querySelector<HTMLElement>('#launch-title')?.focus();
+  screenRoot.querySelectorAll('[data-launch-back]').forEach(el => el.addEventListener('click', () => {
     sfx.click();
     showHabitat();
-  });
+  }));
   screenRoot.querySelector('[data-launch-begin]')?.addEventListener('click', () => {
-    sfx.launch();
-    startLaunchSequence();
+    const launchNew = (): void => {
+      sfx.launch();
+      startLaunchSequence();
+    };
+    if (save.activeTrial) {
+      const savedDay = save.activeTrial.penaltyDay ? TRIAL_MAX_DAY + save.activeTrial.penaltyDay : save.activeTrial.day;
+      confirmReplaceSavedTrial({
+        title: 'LAUNCH DAY 01 & REPLACE SAVED TRIAL?',
+        description: `Launching this new expedition will overwrite your saved Day ${String(savedDay).padStart(2, '0')} mission on ${destinationById(save.destination).name}.`,
+        confirmLabel: 'LAUNCH DAY 01',
+        confirmIcon: 'launch',
+        variant: 'danger',
+        onConfirm: launchNew,
+      });
+      return;
+    }
+    launchNew();
   });
 }
 
@@ -2053,7 +2620,10 @@ function startLaunchSequence(): void {
   setScreen('launch', `
     <section class="screen-splash launch-sequence" aria-label="Launch and landing cinematic">
       <div class="intro-canvas" id="launch-canvas" aria-hidden="true"></div>
-      <div class="intro-accessibility"><span>SPUDNAUT SPACE AGENCY · FLIGHT DECK</span><button class="intro-skip" type="button">SKIP FLIGHT <kbd>ENTER</kbd></button></div>
+      <div class="intro-accessibility">
+        <span>SPUDNAUT SPACE AGENCY · FLIGHT DECK</span>
+        <button class="intro-skip" type="button">${renderConstellationIcon('skip')} <span>SKIP FLIGHT</span> <kbd>ENTER</kbd></button>
+      </div>
     </section>
   `);
   let finished = false;
@@ -2173,11 +2743,11 @@ function renderProjectedGaugesMarkup(): string {
   return keys.map(key => {
     const before = Math.round(mission.metrics[key]);
     const after = Math.round(projected[key]);
-    const label = key === 'hull' ? 'Hull' : METRIC_LABELS[key];
+    const label = key === 'hull' ? 'HULL' : METRIC_LABELS[key].toUpperCase();
     return `
       <div class="shift-gauge">
         <span>${label}</span>
-        <div class="svg-stat-track" aria-hidden="true"><div class="svg-stat-fill" style="width:${after}%"></div></div>
+        <div class="spud-stat-track" aria-hidden="true"><div class="spud-stat-fill" style="width:${after}%"></div></div>
         <b class="${after > before ? 'is-gain' : ''}">${before} → ${after}</b>
       </div>
     `;
@@ -2187,7 +2757,7 @@ function renderProjectedGaugesMarkup(): string {
 function startPlanning(): void {
   const event = mission.eventCard;
   const day = missionDayNumber();
-  const goal = mission.penaltyDay > 0 ? 'Penalty shift' : 'Daily shift';
+  const goal = mission.penaltyDay > 0 ? 'PENALTY SHIFT' : 'DAILY SHIFT';
   const required = DAY.assignmentsPerDay;
   const duration = Math.ceil(dayDurationMs() / 1000);
   const shiftTime = `${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, '0')}`;
@@ -2197,92 +2767,92 @@ function startPlanning(): void {
     const offer = mission.offers.find(item => item.taskId === inspectedOfferId);
     if (!offer) return '<p>No assignment to preview.</p>';
     return `
-      <h3>${escapeHtml(offer.name)}</h3>
+      <strong style="color:#ffffff;font-size:15px;">${escapeHtml(offer.name)}</strong>
       <p>${escapeHtml(getRoomName(offer.roomId))} · ${escapeHtml(offer.blurb)}</p>
-      <div class="shift-telemetry">${assignmentPreview(offer.taskId)}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:4px;">${assignmentPreview(offer.taskId)}</div>
     `;
   };
 
   overlayRoot.innerHTML = `
-    <dialog class="svg-inventory-window shift-planner" aria-labelledby="shift-planning-title">
-      <header class="svg-inventory-topbar">
-        <div class="svg-inventory-title">
-          <span>${goal} · Day ${String(day).padStart(2, '0')} · ${escapeHtml(destinationById(lobby.destination).name)}</span>
-          <h1 id="shift-planning-title" tabindex="-1" autofocus>Shift planning</h1>
-        </div>
-        <span class="svg-section-pill is-gold">${shiftTime} SHIFT</span>
-      </header>
+    <dialog class="spud-canvas-overlay shift-planner ${save.options.reducedMotion ? 'reduce-motion' : ''}" aria-labelledby="shift-planning-title">
+      <div class="spud-canvas-inner">
+        ${renderConstellationTitle('SHIFT PLANNING', 'shift-planning-title', `${goal} · DAY ${String(day).padStart(2, '0')} · ${destinationById(lobby.destination).name.toUpperCase()} · ${shiftTime} CLOCK`)}
 
-      <div class="shift-planning-body">
-        <section class="shift-card shift-event" aria-labelledby="shift-event-title">
-          <span class="shift-kicker">${escapeHtml(event?.kind ?? 'routine')} · Shift event</span>
-          <h2 id="shift-event-title">${escapeHtml(event?.name ?? 'Routine Shift')}</h2>
-          <p>${escapeHtml(event?.description ?? 'The habitat is quiet. Keep the systems steady.')}</p>
+        <section class="spud-copy-stack" aria-labelledby="shift-event-title">
+          <div class="spud-copy-block">
+            <h2 id="shift-event-title">${escapeHtml((event?.kind ?? 'routine').toUpperCase())} · ${escapeHtml((event?.name ?? 'Routine Shift').toUpperCase())}</h2>
+            <p>${escapeHtml(event?.description ?? 'The habitat is quiet. Keep the systems steady.')}</p>
+          </div>
           ${event?.responses?.length ? `
-            <div class="shift-responses" role="group" aria-label="Event response">
+            <div class="spud-event-responses" role="group" aria-label="Event response">
               ${event.responses.map(choice => `
                 <button type="button" class="event-response" data-event-choice="${choice.id}" aria-pressed="${selectedEventChoice === choice.id}">
                   <strong>${escapeHtml(choice.label)}</strong>
-                  <small>${escapeHtml(choice.description)}</small>
-                  <span class="shift-response-active" aria-hidden="true">✓ Active</span>
+                  <small style="display:block;margin-top:3px;">${escapeHtml(choice.description)}</small>
                 </button>
               `).join('')}
             </div>
-          ` : `<p class="shift-event-effect">${escapeHtml(event?.effect ?? 'No event effects today.')}</p>`}
+          ` : `<small style="color:var(--spud-ink-muted);font-family:var(--mono);letter-spacing:0.12em;">${escapeHtml(event?.effect ?? 'No event effects today.')}</small>`}
           ${event ? `
-            <div class="shift-event-impact">
-              <span class="shift-kicker">Applied impact</span>
-              <div class="shift-chips" id="event-deltas" aria-live="polite">${metricChips(metricDeltas(eventBaseMetrics(), mission.metrics))}</div>
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;">
+              <span class="spud-constellation-kicker" style="margin:0;">APPLIED IMPACT</span>
+              <div id="event-deltas" style="display:flex;flex-wrap:wrap;gap:8px 14px;" aria-live="polite">${metricChips(metricDeltas(eventBaseMetrics(), mission.metrics))}</div>
             </div>
           ` : ''}
         </section>
 
-        <div class="shift-workspace">
-          <section class="shift-card" aria-labelledby="shift-assignments-title">
-            <h2 id="shift-assignments-title">Assignments</h2>
-            <p>Choose ${required} of ${mission.offers.length} for this shift.</p>
+        <div class="spud-constellation-divider" aria-hidden="true"></div>
+
+        <div class="spud-split-columns">
+          <section class="spud-copy-stack" aria-labelledby="shift-assignments-title">
+            <div class="spud-constellation-heading" id="shift-assignments-title">ASSIGNMENTS · CHOOSE ${required} OF ${mission.offers.length}</div>
             <div class="shift-offers" role="group" aria-labelledby="shift-assignments-title">
               ${mission.offers.map(offer => `
                 <button type="button" class="shift-offer" data-offer="${offer.taskId}" aria-pressed="false" style="--offer-accent:${offer.accent}">
-                  <img src="/assets/ui/icons/${offer.icon}.png" width="32" height="32" alt="" />
-                  <span class="shift-offer-info">
+                  <img src="/assets/ui/icons/${offer.icon}.png" width="28" height="28" alt="" />
+                  <div class="shift-offer-info">
                     <strong>${escapeHtml(offer.name)}</strong>
-                    <small>${escapeHtml(getRoomName(offer.roomId))}</small>
-                    <span class="shift-offer-system">${escapeHtml(SYSTEMS.find(system => system.id === offer.system)?.name ?? 'Science')}<span class="shift-urgent" hidden> · Critical</span></span>
-                  </span>
-                  <span class="shift-offer-check" aria-hidden="true">✓</span>
+                    <small>${escapeHtml(getRoomName(offer.roomId))} · ${escapeHtml(SYSTEMS.find(system => system.id === offer.system)?.name ?? 'Science')}<span class="shift-urgent" style="color:var(--spud-danger);" hidden> · Critical</span></small>
+                  </div>
+                  <span class="spud-orbital-check" aria-hidden="true"></span>
                 </button>
               `).join('')}
             </div>
           </section>
 
-          <aside class="shift-sidebar" aria-label="Planning details">
-            <section class="shift-card">
-              <h2>Assignment preview</h2>
+          <div class="spud-vertical-rule" aria-hidden="true"></div>
+
+          <aside class="spud-copy-stack" aria-label="Planning details">
+            <div class="spud-copy-block">
+              <h2>ASSIGNMENT PREVIEW</h2>
               <div id="planning-offer-inspector">${renderFocusedOfferBox()}</div>
-            </section>
-            <section class="shift-card">
-              <h2>Shift forecast</h2>
-              <p>Current → projected if all selected assignments succeed.</p>
-              <div id="planning-projected-gauges">${renderProjectedGaugesMarkup()}</div>
-              <details class="shift-drift">
-                <summary>Daily operating costs</summary>
-                <div class="shift-chips">${metricChips(DAILY_OPERATIONS_DRIFT)}</div>
+            </div>
+            <div class="spud-constellation-divider" aria-hidden="true"></div>
+            <div class="spud-copy-block">
+              <h2>SHIFT FORECAST</h2>
+              <small>Current → projected if all selected assignments succeed.</small>
+              <div class="spud-stat-bars" id="planning-projected-gauges" style="margin-top:6px;">${renderProjectedGaugesMarkup()}</div>
+              <details class="shift-drift" style="margin-top:4px;">
+                <summary>DAILY OPERATING COSTS</summary>
+                <div style="display:flex;flex-wrap:wrap;gap:8px 14px;padding-top:6px;">${metricChips(DAILY_OPERATIONS_DRIFT)}</div>
               </details>
-            </section>
+            </div>
           </aside>
         </div>
-      </div>
 
-      <footer class="svg-window-footer shift-planning-footer">
-        <div class="shift-selection-status" role="status">
-          <strong id="planning-count"></strong>
-          <span id="planning-instruction"></span>
-        </div>
-        <button class="svg-back-pill-btn is-cyan" type="button" data-planning-confirm disabled>Start shift →</button>
-      </footer>
+        <footer class="spud-constellation-actions">
+          <div class="spud-copy-block" role="status">
+            <strong id="planning-count" style="color:var(--spud-ice);"></strong>
+            <small id="planning-instruction"></small>
+          </div>
+          ${renderConstellationAction({ icon: 'launch', label: 'START SHIFT', attrs: 'data-planning-confirm', variant: 'primary', disabled: true })}
+        </footer>
+      </div>
     </dialog>
   `;
+
+  const titleEl = overlayRoot.querySelector<HTMLElement>('#shift-planning-title');
+  titleEl?.focus();
 
   const dialog = overlayRoot.querySelector<HTMLDialogElement>('.shift-planner')!;
   const count = dialog.querySelector<HTMLElement>('#planning-count')!;
@@ -2377,11 +2947,11 @@ function applyPlanningEventChoice(choiceId: string): void {
 
 function metricChips(deltas: Partial<MissionMetrics>): string {
   const entries = Object.entries(deltas);
-  if (!entries.length) return '<span class="story-note">No metric change.</span>';
+  if (!entries.length) return '<span class="spud-metric-chip">NO METRIC CHANGE</span>';
   return entries.map(([key, value]) => {
     const delta = value ?? 0;
-    const color = delta >= 0 ? '#8fe6a8' : '#ff9e9e';
-    return `<span class="metric-chip" style="padding:6px 12px;border:1px solid rgba(150,190,240,0.3);font-size:11px;letter-spacing:0.16em;">${METRIC_LABELS[key as keyof MissionMetrics].toUpperCase()} <b style="color:${color}">${delta >= 0 ? '+' : ''}${delta}</b></span>`;
+    const toneClass = delta >= 0 ? 'is-gain' : 'is-loss';
+    return `<span class="spud-metric-chip">${METRIC_LABELS[key as keyof MissionMetrics].toUpperCase()} <b class="${toneClass}">${delta >= 0 ? '+' : ''}${delta}</b></span>`;
   }).join('');
 }
 
@@ -2464,82 +3034,89 @@ function renderReport(reason: string): void {
   const baselineMetrics = prevReport?.metrics ?? planningEventBase ?? mission.metrics;
 
   overlayRoot.innerHTML = `
-    <section class="universal-duelyst-screen earth-report-full" style="background:rgba(6,10,22,0.78);">
-      ${renderUniversalBackdrop()}
-      <article class="svg-inventory-window report-card ${isFinalDay ? (verdict.passed ? 'final-review passed' : 'final-review below-target') : ''}">
-        <header class="svg-inventory-topbar">
-          <div class="svg-inventory-title">
-            <span>EARTH PROGRESS REPORT · DAY ${String(report.day).padStart(2, '0')} OF ${TRIAL_MAX_DAY + PENALTY_MAX_DAY}</span>
-            <h1>${isFinalDay ? 'FINAL HABITAT REVIEW' : 'SHIFT TELEMETRY REPORT'}</h1>
-          </div>
-          <span class="svg-section-pill ${report.completed === report.assigned ? '' : 'is-gold'}">
-            ASSIGNMENTS ${report.completed} / ${report.assigned}
-          </span>
-        </header>
+    <section class="spud-canvas-overlay earth-report-full ${isFinalDay ? (verdict.passed ? 'final-review passed' : 'final-review below-target') : ''} ${save.options.reducedMotion ? 'reduce-motion' : ''}" aria-labelledby="report-screen-title">
+      <div class="spud-canvas-inner">
+        ${renderConstellationTitle(
+          isFinalDay ? 'FINAL HABITAT REVIEW' : 'SHIFT TELEMETRY REPORT',
+          'report-screen-title',
+          `EARTH PROGRESS REPORT · DAY ${String(report.day).padStart(2, '0')} OF ${TRIAL_MAX_DAY + PENALTY_MAX_DAY} · ASSIGNMENTS ${report.completed} / ${report.assigned}`,
+        )}
 
-        <div class="svg-master-detail-body">
-          <div class="svg-slot-well">
-            <div class="svg-inspector-box" style="margin:0;">
-              <strong>SHIFT SUMMARY · ${escapeHtml(report.event.toUpperCase())}</strong>
-              <p style="margin:4px 0 0;">${escapeHtml(reason)}</p>
+        <div class="spud-split-columns">
+          <div class="spud-copy-stack">
+            <div class="spud-copy-block">
+              <h2>SHIFT SUMMARY · ${escapeHtml(report.event.toUpperCase())}</h2>
+              <p>${escapeHtml(reason)}</p>
             </div>
-            <div class="svg-slot-grid">
+            <div class="spud-slot-list">
               ${mission.tasks.map(id => {
                 const task = taskById(id);
                 const done = mission.completed.includes(id);
                 return `
-                  <div class="svg-slot-card report-task ${done ? 'selected done' : ''}" style="cursor:default;">
-                    <span class="svg-slot-badge ${done ? 'is-done' : 'is-urgent'}">${done ? 'DONE ✓' : 'MISSED'}</span>
-                    <strong>${escapeHtml(task?.name ?? id)}</strong>
-                    <small>${escapeHtml(getRoomName(task?.roomId ?? ''))}</small>
+                  <div class="spud-slot-row report-task ${done ? 'selected' : ''}">
+                    <div>
+                      <strong>${escapeHtml(task?.name ?? id)}</strong>
+                      <small>${escapeHtml(getRoomName(task?.roomId ?? ''))}</small>
+                    </div>
+                    <span class="spud-status-tag ${done ? 'is-done' : 'is-urgent'}">${done ? 'DONE ✓' : 'MISSED'}</span>
                   </div>
                 `;
               }).join('')}
             </div>
-            <div class="svg-slot-footer-bar">
+            <div class="spud-meta-inline">
               <span>MISSED SHIFT DAYS: ${mission.missedDays}</span>
               <span>CUMULATIVE TASKS: ${mission.totalCompleted} / ${mission.totalAssigned}</span>
             </div>
           </div>
 
-          <aside class="svg-inspector-card">
-            <div class="svg-inspector-box">
-              <strong>HABITAT GAUGES &amp; SHIFT NET DELTA</strong>
-              <div class="svg-stat-bars" style="margin-top:10px;">
-                ${metricOrder.map(metric => {
-                  const value = Math.round(mission.metrics[metric]);
-                  const prevVal = Math.round(baselineMetrics[metric]);
-                  const delta = value - prevVal;
-                  const deltaBadge = delta > 0 ? `+${delta} ▲` : delta < 0 ? `${delta} ▼` : '0';
-                  const deltaColor = delta > 0 ? '#8fe6a8' : delta < 0 ? '#ff9e9e' : '#9aa6cb';
-                  const target = PASS_THRESHOLDS[metric as keyof typeof PASS_THRESHOLDS];
-                  return `
-                    <div class="svg-stat-row" style="grid-template-columns:92px 1fr 90px;">
-                      <span>${METRIC_LABELS[metric].split(' ')[0]!.toUpperCase()}</span>
-                      <div class="svg-stat-track"><div class="svg-stat-fill" style="width:${Math.min(100, Math.max(0, value))}%"></div></div>
-                      <b style="text-align:right;">${value} <small style="color:${deltaColor}">(${deltaBadge})</small> <small style="color:#9aa6cb">/ ${typeof target === 'number' ? Math.round(target) : '—'}</small></b>
-                    </div>
-                  `;
-                }).join('')}
-              </div>
+          <div class="spud-vertical-rule" aria-hidden="true"></div>
+
+          <aside class="spud-copy-stack">
+            <div class="spud-constellation-heading">HABITAT GAUGES &amp; SHIFT NET DELTA</div>
+            <div class="spud-stat-bars">
+              ${metricOrder.map(metric => {
+                const value = Math.round(mission.metrics[metric]);
+                const prevVal = Math.round(baselineMetrics[metric]);
+                const delta = value - prevVal;
+                const deltaBadge = delta > 0 ? `+${delta} ▲` : delta < 0 ? `${delta} ▼` : '0';
+                const deltaColor = delta > 0 ? 'var(--spud-gain)' : delta < 0 ? 'var(--spud-danger)' : 'var(--spud-ink-muted)';
+                const target = PASS_THRESHOLDS[metric as keyof typeof PASS_THRESHOLDS];
+                return `
+                  <div class="spud-stat-row" style="grid-template-columns:86px 1fr 94px;">
+                    <span>${METRIC_LABELS[metric].split(' ')[0]!.toUpperCase()}</span>
+                    <div class="spud-stat-track"><div class="spud-stat-fill" style="width:${Math.min(100, Math.max(0, value))}%"></div></div>
+                    <b style="text-align:right;">${value} <small style="color:${deltaColor};font-weight:600;">(${deltaBadge})</small> <small style="color:var(--spud-ink-muted);font-weight:500;">/ ${typeof target === 'number' ? Math.round(target) : '—'}</small></b>
+                  </div>
+                `;
+              }).join('')}
             </div>
             ${isFinalDay ? `
-              <div class="svg-inspector-box">
-                <strong>CERTIFICATION TARGETS</strong>
-                <div class="report-requirements" style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:6px;">
-                  ${verdict.requirements.map(item => `<div class="${item.met ? 'met' : 'unmet'}" style="font-size:11px;"><span>${escapeHtml(item.label)}:</span> <strong>${item.value}/${item.target}</strong></div>`).join('')}
+              <div class="spud-constellation-divider" aria-hidden="true"></div>
+              <div class="spud-copy-block">
+                <h2>CERTIFICATION TARGETS</h2>
+                <div class="spud-telemetry-grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 16px;">
+                  ${verdict.requirements.map(item => `
+                    <div class="spud-telemetry-cell">
+                      <span>${escapeHtml(item.label)}</span>
+                      <strong style="color:${item.met ? 'var(--spud-gain)' : 'var(--spud-danger)'};">${item.value} / ${item.target}</strong>
+                    </div>
+                  `).join('')}
                 </div>
               </div>
             ` : ''}
           </aside>
         </div>
 
-        <footer class="svg-window-footer">
-          <button class="svg-back-pill-btn" type="button" data-report-save>SAVE &amp; EXIT</button>
-          <button class="svg-back-pill-btn is-cyan" type="button" data-report-next>${isFinalDay && (verdict.passed || mission.penaltyDay >= PENALTY_MAX_DAY) ? 'SEE FINAL RESULT →' : 'NEXT SHIFT →'}</button>
+        <footer class="spud-constellation-actions">
+          ${renderConstellationAction({ icon: 'back', label: 'SAVE & EXIT', attrs: 'data-report-save' })}
+          ${renderConstellationAction({
+            icon: isFinalDay && (verdict.passed || mission.penaltyDay >= PENALTY_MAX_DAY) ? 'cert' : 'forward',
+            label: isFinalDay && (verdict.passed || mission.penaltyDay >= PENALTY_MAX_DAY) ? 'SEE FINAL RESULT' : 'NEXT SHIFT',
+            attrs: 'data-report-next',
+            variant: 'primary',
+          })}
         </footer>
-      </article>
-      ${renderPotatoOverride(true)}
+      </div>
     </section>
   `;
   overlayRoot.querySelector('[data-report-save]')?.addEventListener('click', () => {
@@ -2580,59 +3157,76 @@ function completeMission(): void {
   persistSave(save);
   const destination = destinationById(lobby.destination);
   const specialist = specialistById(lobby.specialist);
+  const color = getColor(lobby.colorId);
   overlayRoot.innerHTML = `
-    <section class="universal-duelyst-screen mission-end">
-      ${renderUniversalBackdrop()}
-      <article class="svg-inventory-window end-card">
-        <header class="svg-inventory-topbar">
-          <div class="svg-inventory-title">
-            <span>SPUDNAUT SPACE AGENCY · FINAL EVALUATION</span>
-            <h1>${passed ? 'HABITAT CERTIFIED ★' : 'TRIAL BELOW TARGET'}</h1>
-          </div>
-          <span class="svg-section-pill ${passed ? '' : 'is-gold'}">${passed ? 'CERTIFIED' : 'REVIEW LOGGED'}</span>
-        </header>
-        <div class="svg-master-detail-body">
-          <div class="svg-slot-well">
-            <div class="svg-inspector-preview">
-              <img src="${specialist.art}" alt="" />
-              <div class="svg-inspector-title">
+    <section class="spud-canvas-overlay mission-end ${save.options.reducedMotion ? 'reduce-motion' : ''}" aria-labelledby="mission-end-title">
+      <div class="spud-canvas-inner">
+        ${renderConstellationTitle(
+          passed ? 'HABITAT CERTIFIED ★' : 'TRIAL BELOW TARGET',
+          'mission-end-title',
+          `SPUDNAUT SPACE AGENCY · FINAL EVALUATION · ${passed ? 'CERTIFIED' : 'REVIEW LOGGED'}`,
+        )}
+        <div class="spud-split-columns">
+          <div class="spud-copy-stack">
+            <div class="spud-loadout-portrait" style="--choice-accent:${color.css}">
+              <div class="spud-portrait-ring"><img src="${specialist.art}" alt="" /></div>
+              <div class="spud-loadout-meta">
                 <span>${passed ? 'CERTIFICATE OF HABITABILITY' : 'FIELD RECORD'}</span>
                 <h3>${escapeHtml(save.name)} · ${escapeHtml(specialist.name)}</h3>
-                <small>${escapeHtml(destination.name)} · ${save.trainingRank ?? 'B'} Training Rank</small>
+                <small><i aria-hidden="true"></i>${escapeHtml(destination.name)} · Rank ${escapeHtml(save.trainingRank ?? 'B')}</small>
               </div>
             </div>
-            <p style="margin:0;color:#fff3d8;line-height:1.6;">
-              ${passed
-                ? `${escapeHtml(save.name)} and the crew held all four systems together for ${TRIAL_MAX_DAY + mission.penaltyDay} days on ${escapeHtml(destination.name)}. Earth approves the habitat design.`
-                : `${escapeHtml(save.name)} completed the trial on ${escapeHtml(destination.name)}, but the final metrics fell below certification targets. Earth has logged the telemetry for the next crew.`}
-            </p>
-            <div class="svg-slot-grid" style="grid-template-columns:repeat(4,1fr);">
-              <div class="svg-slot-card" style="min-height:76px;cursor:default;"><span class="svg-slot-badge">DAYS</span><strong>${mission.day + mission.penaltyDay}</strong></div>
-              <div class="svg-slot-card" style="min-height:76px;cursor:default;"><span class="svg-slot-badge">TASKS</span><strong>${mission.totalCompleted}/${mission.totalAssigned}</strong></div>
-              <div class="svg-slot-card" style="min-height:76px;cursor:default;"><span class="svg-slot-badge">MISSED</span><strong>${mission.missedDays}</strong></div>
-              <div class="svg-slot-card" style="min-height:76px;cursor:default;"><span class="svg-slot-badge">EXAM</span><strong>${save.examBest}%</strong></div>
+            <div class="spud-copy-block">
+              <p>
+                ${passed
+                  ? `${escapeHtml(save.name)} and the crew held all four systems together for ${TRIAL_MAX_DAY + mission.penaltyDay} days on ${escapeHtml(destination.name)}. Earth approves the habitat design.`
+                  : `${escapeHtml(save.name)} completed the trial on ${escapeHtml(destination.name)}, but the final metrics fell below certification targets. Earth has logged the telemetry for the next crew.`}
+              </p>
+            </div>
+            <div class="spud-telemetry-grid is-four">
+              <div class="spud-telemetry-cell">
+                <span>DAYS</span>
+                <strong>${mission.day + mission.penaltyDay}</strong>
+                <small>TRIAL SPAN</small>
+              </div>
+              <div class="spud-telemetry-cell">
+                <span>TASKS</span>
+                <strong>${mission.totalCompleted}/${mission.totalAssigned}</strong>
+                <small>COMPLETED</small>
+              </div>
+              <div class="spud-telemetry-cell">
+                <span>MISSED</span>
+                <strong>${mission.missedDays}</strong>
+                <small>SHIFTS</small>
+              </div>
+              <div class="spud-telemetry-cell">
+                <span>EXAM</span>
+                <strong>${save.examBest}%</strong>
+                <small>CERT BEST</small>
+              </div>
             </div>
           </div>
-          <aside class="svg-inspector-card">
-            <div class="svg-inspector-box">
-              <strong>CERTIFICATION CHECKLIST</strong>
-              <div class="report-requirements" style="display:grid;gap:8px;margin-top:8px;">
-                ${verdict.requirements.map(item => `
-                  <div class="${item.met ? 'met' : 'unmet'}" style="display:flex;justify-content:space-between;padding:6px 10px;border-radius:6px;background:rgba(12,18,34,0.65);">
-                    <span>${escapeHtml(item.label)}</span>
-                    <strong style="color:${item.met ? '#8fe6a8' : '#ff9e9e'}">${item.value} / ${item.target} ${item.met ? '✓' : '×'}</strong>
-                  </div>
-                `).join('')}
-              </div>
+
+          <div class="spud-vertical-rule" aria-hidden="true"></div>
+
+          <aside class="spud-copy-stack">
+            <div class="spud-constellation-heading">CERTIFICATION CHECKLIST</div>
+            <div class="spud-slot-list">
+              ${verdict.requirements.map(item => `
+                <div class="spud-slot-row">
+                  <strong>${escapeHtml(item.label)}</strong>
+                  <span class="spud-status-tag ${item.met ? 'is-done' : 'is-urgent'}">${item.value} / ${item.target} ${item.met ? '✓' : '×'}</span>
+                </div>
+              `).join('')}
             </div>
           </aside>
         </div>
-        <footer class="svg-window-footer">
-          <button class="svg-back-pill-btn" type="button" data-end-menu>RETURN TO MENU</button>
-          <button class="svg-back-pill-btn is-cyan" type="button" data-end-retry>NEW TRIAL →</button>
+
+        <footer class="spud-constellation-actions">
+          ${renderConstellationAction({ icon: 'back', label: 'RETURN TO MENU', attrs: 'data-end-menu' })}
+          ${renderConstellationAction({ icon: 'launch', label: 'NEW TRIAL', attrs: 'data-end-retry', variant: 'primary' })}
         </footer>
-      </article>
-      ${renderPotatoOverride(true)}
+      </div>
     </section>
   `;
   overlayRoot.querySelector('[data-end-menu]')?.addEventListener('click', () => {
@@ -2790,7 +3384,7 @@ function showToast(message: string): void {
 }
 
 function gameMenuClose(label: string): string {
-  return `<button class="game-menu-close" type="button" data-close aria-label="Close ${label}"><span aria-hidden="true">×</span> Close <kbd aria-hidden="true">Esc</kbd></button>`;
+  return `<button class="game-menu-close spud-constellation-close" type="button" data-close aria-label="Close ${escapeHtml(label)}">${renderConstellationIcon('close')}<span>Close</span><kbd aria-hidden="true">Esc</kbd></button>`;
 }
 
 function showGameMenu(): () => void {
@@ -2821,33 +3415,34 @@ function openMap(): void {
   const scale = 680 / map.width;
   const height = Math.round(map.height * scale);
   const marker = (x: number, y: number, tone: string, label?: string): string => {
-    return `<button type="button" class="map-marker" data-map-walk-x="${Math.round(x)}" data-map-walk-y="${Math.round(y)}" data-map-walk-label="${escapeHtml(label ?? 'Waypoint')}" title="${escapeHtml(label ? `Walk to ${label}` : 'You')}" style="left:${(x / map.width) * 100}%;top:${(y / map.height) * 100}%;background:${tone};cursor:pointer;border:2px solid #fff;"></button>`;
+    return `<button type="button" class="spud-map-marker map-marker" data-map-walk-x="${Math.round(x)}" data-map-walk-y="${Math.round(y)}" data-map-walk-label="${escapeHtml(label ?? 'Waypoint')}" title="${escapeHtml(label ? `Walk to ${label}` : 'You')}" style="left:${(x / map.width) * 100}%;top:${(y / map.height) * 100}%;background:${tone};color:${tone};"></button>`;
   };
   modalRoot.innerHTML = `
     <dialog class="game-menu-dialog game-map-dialog" aria-labelledby="game-map-title">
-      <section class="svg-options-window map-card">
-        <header class="svg-window-header game-menu-header">
-          <div><span class="svg-kicker">${escapeHtml(map.subtitle)} · SELECT A ROOM TO AUTO-PILOT</span><h2 id="game-map-title">${escapeHtml(map.title)}</h2></div>
+      <section class="spud-copy-stack map-card">
+        <header class="spud-modal-top">
+          <div>
+            <span class="spud-constellation-kicker" style="margin-bottom:2px;">${escapeHtml(map.subtitle)} · SELECT A ROOM TO AUTO-PILOT</span>
+            <h2 id="game-map-title">${escapeHtml(map.title)}</h2>
+          </div>
           ${gameMenuClose('map')}
         </header>
-        <div class="svg-options-body" style="padding:18px 24px;">
-          <div class="map-canvas" style="position:relative;width:100%;height:${height}px;max-height:56vh;background:rgba(10,16,32,0.92);border:2px solid #566080;border-radius:12px;overflow:hidden;">
-            ${map.rooms.map(room => `
-              <button type="button" class="map-room" data-map-walk-x="${Math.round(room.x + room.w / 2)}" data-map-walk-y="${Math.round(room.y + room.h / 2)}" data-map-walk-label="${escapeHtml(room.name)}" title="Click to walk to ${escapeHtml(room.name)}" style="position:absolute;left:${(room.x / map.width) * 100}%;top:${(room.y / map.height) * 100}%;width:${(room.w / map.width) * 100}%;height:${(room.h / map.height) * 100}%;border:1.5px solid ${room.accent};background:rgba(52,52,86,0.28);cursor:pointer;padding:0;text-align:left;">
-                <span style="position:absolute;left:6px;top:4px;font:700 9px/1 var(--mono);letter-spacing:0.14em;color:${room.accent};">${escapeHtml(room.name.toUpperCase())}</span>
-              </button>
-            `).join('')}
-            ${map.interactions.filter(item => activeTasks.includes(item.id)).map(item => marker(item.x, item.y, completed.includes(item.id) ? '#8fe6a8' : (item.accent ?? '#f5c451'), item.name)).join('')}
-            ${marker(currentScreen === 'training' ? training.x : mission.playerX, currentScreen === 'training' ? training.y : mission.playerY, getColor(save.colorId).css, 'Current Position')}
+        <div class="spud-map-blueprint map-canvas" style="height:${height}px;">
+          ${map.rooms.map(room => `
+            <button type="button" class="spud-map-room map-room" data-map-walk-x="${Math.round(room.x + room.w / 2)}" data-map-walk-y="${Math.round(room.y + room.h / 2)}" data-map-walk-label="${escapeHtml(room.name)}" title="Click to walk to ${escapeHtml(room.name)}" style="left:${(room.x / map.width) * 100}%;top:${(room.y / map.height) * 100}%;width:${(room.w / map.width) * 100}%;height:${(room.h / map.height) * 100}%;--room-accent:${room.accent};">
+              <span>${escapeHtml(room.name.toUpperCase())}</span>
+            </button>
+          `).join('')}
+          ${map.interactions.filter(item => activeTasks.includes(item.id)).map(item => marker(item.x, item.y, completed.includes(item.id) ? '#8fe6a8' : (item.accent ?? '#f5c451'), item.name)).join('')}
+          ${marker(currentScreen === 'training' ? training.x : mission.playerX, currentScreen === 'training' ? training.y : mission.playerY, getColor(save.colorId).css, 'Current Position')}
+        </div>
+        <div class="spud-meta-inline">
+          <div style="display:flex;gap:16px;flex-wrap:wrap;">
+            <span>● YOU</span>
+            <span style="color:#f5c451;">● ASSIGNMENT</span>
+            <span style="color:#8fe6a8;">● COMPLETE</span>
           </div>
-          <div class="svg-slot-footer-bar">
-            <div style="display:flex;gap:16px;flex-wrap:wrap;">
-              <span>● YOU</span>
-              <span style="color:#f5c451;">● ASSIGNMENT</span>
-              <span style="color:#8fe6a8;">● COMPLETE</span>
-            </div>
-            <span>TIP: CLICK ANY ROOM OR MARKER TO WALK THERE</span>
-          </div>
+          <span>CLICK ANY ROOM OR MARKER TO WALK THERE</span>
         </div>
       </section>
     </dialog>
@@ -2874,67 +3469,70 @@ function openTaskList(): void {
 
   const renderTaskInspector = (taskId: string): string => {
     const task = taskById(taskId);
-    if (!task) return '<div class="svg-inspector-box"><strong>NO TASK SELECTED</strong><p>Plan the shift to receive assignments.</p></div>';
+    if (!task) return '<div class="spud-copy-block"><h2>NO TASK SELECTED</h2><p>Plan the shift to receive assignments.</p></div>';
     const offer = mission.offers.find(item => item.taskId === task.id);
     const iconName = offer?.icon ?? 'gear';
     const sysName = (task.system ?? offer?.system ?? 'station').toUpperCase();
     const blurbText = offer?.blurb ?? `Complete the ${task.kind} maintenance protocol in ${getRoomName(task.roomId)}.`;
     const done = mission.completed.includes(task.id);
     return `
-      <div class="svg-inspector-preview">
-        <img src="/assets/ui/icons/${iconName}.png" alt="" />
-        <div class="svg-inspector-title">
+      <div class="spud-loadout-portrait">
+        <div class="spud-portrait-ring"><img src="/assets/ui/icons/${iconName}.png" alt="" style="width:40px;height:40px;" /></div>
+        <div class="spud-loadout-meta">
           <span>${escapeHtml(getRoomName(task.roomId).toUpperCase())} · ${escapeHtml(sysName)}</span>
           <h3>${escapeHtml(task.name)}</h3>
           <small>${done ? 'COMPLETED ✓' : 'PENDING MAINTENANCE'}</small>
         </div>
       </div>
-      <div class="svg-inspector-box">
-        <strong>TELEMETRY &amp; WALK ESTIMATE</strong>
-        <p style="margin:6px 0;">${escapeHtml(blurbText)}</p>
-        <div>${assignmentPreview(task.id)}</div>
+      <div class="spud-copy-block">
+        <h2>TELEMETRY &amp; WALK ESTIMATE</h2>
+        <p>${escapeHtml(blurbText)}</p>
+        <div style="display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:4px;">${assignmentPreview(task.id)}</div>
       </div>
-      ${!done ? `
-        <button class="svg-back-pill-btn is-cyan" type="button" data-walk-task="${task.id}" style="width:100%;">
-          WALK TO STATION (${escapeHtml(getRoomName(task.roomId).toUpperCase())}) →
-        </button>
-      ` : ''}
+      ${!done ? renderConstellationAction({
+        icon: 'launch',
+        label: `WALK TO STATION (${getRoomName(task.roomId).toUpperCase()})`,
+        attrs: `data-walk-task="${task.id}"`,
+        variant: 'primary',
+      }) : ''}
     `;
   };
 
   modalRoot.innerHTML = `
     <dialog class="game-menu-dialog" aria-labelledby="game-tasks-title">
-      <section class="svg-inventory-window task-list-card">
-        <header class="svg-inventory-topbar game-menu-header">
-          <div class="svg-inventory-title">
-            <span>DAY ${String(missionDayNumber()).padStart(2, '0')} · ${escapeHtml(mission.eventCard?.name ?? 'ROUTINE SHIFT')}</span>
+      <section class="spud-copy-stack task-list-card">
+        <header class="spud-modal-top">
+          <div>
+            <span class="spud-constellation-kicker" style="margin-bottom:2px;">DAY ${String(missionDayNumber()).padStart(2, '0')} · ${escapeHtml(mission.eventCard?.name ?? 'ROUTINE SHIFT')}</span>
             <h2 id="game-tasks-title">TODAY'S ASSIGNMENTS</h2>
           </div>
           ${gameMenuClose('tasks')}
         </header>
-        <div class="svg-master-detail-body">
-          <div class="svg-slot-well">
-            <div class="svg-slot-grid">
+        <div class="spud-split-columns">
+          <div class="spud-copy-stack">
+            <div class="spud-slot-list">
               ${mission.tasks.length
                 ? mission.tasks.map(id => {
                   const task = taskById(id);
                   const done = mission.completed.includes(id);
                   return `
-                    <button type="button" class="svg-slot-card report-task ${id === selectedTaskId ? 'selected' : ''} ${done ? 'done' : ''}" data-task-slot="${id}">
-                      <span class="svg-slot-badge ${done ? 'is-done' : ''}">${done ? 'DONE ✓' : 'ACTIVE'}</span>
-                      ${task ? `<img src="/assets/ui/icons/${mission.offers.find(o => o.taskId === task.id)?.icon ?? 'gear'}.png" alt="" />` : ''}
-                      <strong>${escapeHtml(task?.name ?? id)}</strong>
-                      <small>${escapeHtml(getRoomName(task?.roomId ?? ''))}</small>
+                    <button type="button" class="spud-slot-row report-task ${id === selectedTaskId ? 'selected' : ''}" data-task-slot="${id}">
+                      <div>
+                        <strong>${escapeHtml(task?.name ?? id)}</strong>
+                        <small>${escapeHtml(getRoomName(task?.roomId ?? ''))}</small>
+                      </div>
+                      <span class="spud-status-tag ${done ? 'is-done' : ''}">${done ? 'DONE ✓' : 'ACTIVE'}</span>
                     </button>
                   `;
                 }).join('')
-                : '<p class="story-note">No assignments scheduled yet.</p>'}
+                : '<div class="spud-copy-block"><p>No assignments scheduled yet.</p></div>'}
             </div>
-            <div class="svg-slot-footer-bar">
+            <div class="spud-meta-inline">
               <span>COMPLETED: ${mission.completed.length} / ${mission.tasks.length}</span>
             </div>
           </div>
-          <aside class="svg-inspector-card" id="task-modal-inspector">
+          <div class="spud-vertical-rule" aria-hidden="true"></div>
+          <aside class="spud-copy-stack" id="task-modal-inspector">
             ${renderTaskInspector(selectedTaskId)}
           </aside>
         </div>
@@ -2976,28 +3574,29 @@ function openMissionLog(): void {
     const rep = reports.find(r => r.day === dayNum) ?? reports[0];
     if (!rep) {
       return `
-        <div class="svg-inspector-box">
-          <strong>NO EARTH REPORTS SENT YET</strong>
-          <p style="margin:6px 0 0;">Complete your first timed shift to transmit daily telemetry to Earth Command.</p>
+        <div class="spud-copy-block">
+          <h2>NO EARTH REPORTS SENT YET</h2>
+          <p>Complete your first timed shift to transmit daily telemetry to Earth Command.</p>
         </div>
       `;
     }
     return `
-      <div class="svg-inspector-box">
-        <strong>DAY ${String(rep.day).padStart(2, '0')} · ${escapeHtml(rep.event.toUpperCase())}</strong>
-        <p style="margin:6px 0;">Assignments Completed: ${rep.completed} / ${rep.assigned}</p>
-        ${rep.eventChoiceId ? `<small style="display:block;color:#9beeff;margin-bottom:6px;">RESPONSE: ${escapeHtml(rep.eventChoiceId.toUpperCase())}</small>` : ''}
-        <small style="display:block;color:#c8baff;">${(rep.tasks ?? []).map(id => `${rep.completedTasks?.includes(id) ? '✓' : '×'} ${escapeHtml(taskById(id)?.name ?? id)}`).join(' · ')}</small>
+      <div class="spud-copy-block">
+        <h2>DAY ${String(rep.day).padStart(2, '0')} · ${escapeHtml(rep.event.toUpperCase())}</h2>
+        <p>Assignments Completed: ${rep.completed} / ${rep.assigned}</p>
+        ${rep.eventChoiceId ? `<small style="color:var(--spud-ice);">RESPONSE: ${escapeHtml(rep.eventChoiceId.toUpperCase())}</small>` : ''}
+        <small>${(rep.tasks ?? []).map(id => `${rep.completedTasks?.includes(id) ? '✓' : '×'} ${escapeHtml(taskById(id)?.name ?? id)}`).join(' · ')}</small>
       </div>
       ${rep.metrics ? `
-        <div class="svg-inspector-box">
-          <strong>RECORDED METRICS</strong>
-          <div class="svg-stat-bars" style="margin-top:8px;">
-            <div class="svg-stat-row"><span>POWER</span><div class="svg-stat-track"><div class="svg-stat-fill" style="width:${Math.round(rep.metrics.power)}%"></div></div><b>${Math.round(rep.metrics.power)}</b></div>
-            <div class="svg-stat-row"><span>OXYGEN</span><div class="svg-stat-track"><div class="svg-stat-fill" style="width:${Math.round(rep.metrics.oxygen)}%"></div></div><b>${Math.round(rep.metrics.oxygen)}</b></div>
-            <div class="svg-stat-row"><span>WATER</span><div class="svg-stat-track"><div class="svg-stat-fill" style="width:${Math.round(rep.metrics.water)}%"></div></div><b>${Math.round(rep.metrics.water)}</b></div>
-            <div class="svg-stat-row"><span>STARCH</span><div class="svg-stat-track"><div class="svg-stat-fill" style="width:${Math.round(rep.metrics.starch)}%"></div></div><b>${Math.round(rep.metrics.starch)}</b></div>
-            <div class="svg-stat-row"><span>HULL</span><div class="svg-stat-track"><div class="svg-stat-fill" style="width:${Math.round(rep.metrics.hull)}%"></div></div><b>${Math.round(rep.metrics.hull)}</b></div>
+        <div class="spud-constellation-divider" aria-hidden="true"></div>
+        <div class="spud-copy-block">
+          <h2>RECORDED METRICS</h2>
+          <div class="spud-stat-bars" style="margin-top:6px;">
+            <div class="spud-stat-row"><span>POWER</span><div class="spud-stat-track"><div class="spud-stat-fill" style="width:${Math.round(rep.metrics.power)}%"></div></div><b>${Math.round(rep.metrics.power)}</b></div>
+            <div class="spud-stat-row"><span>OXYGEN</span><div class="spud-stat-track"><div class="spud-stat-fill" style="width:${Math.round(rep.metrics.oxygen)}%"></div></div><b>${Math.round(rep.metrics.oxygen)}</b></div>
+            <div class="spud-stat-row"><span>WATER</span><div class="spud-stat-track"><div class="spud-stat-fill" style="width:${Math.round(rep.metrics.water)}%"></div></div><b>${Math.round(rep.metrics.water)}</b></div>
+            <div class="spud-stat-row"><span>STARCH</span><div class="spud-stat-track"><div class="spud-stat-fill" style="width:${Math.round(rep.metrics.starch)}%"></div></div><b>${Math.round(rep.metrics.starch)}</b></div>
+            <div class="spud-stat-row"><span>HULL</span><div class="spud-stat-track"><div class="spud-stat-fill" style="width:${Math.round(rep.metrics.hull)}%"></div></div><b>${Math.round(rep.metrics.hull)}</b></div>
           </div>
         </div>
       ` : ''}
@@ -3006,31 +3605,34 @@ function openMissionLog(): void {
 
   modalRoot.innerHTML = `
     <dialog class="game-menu-dialog" aria-labelledby="mission-log-title">
-      <section class="svg-inventory-window help-card">
-        <header class="svg-inventory-topbar game-menu-header">
-          <div class="svg-inventory-title">
-            <span>${escapeHtml(destinationById(lobby.destination).name)} · DAY ${missionDayNumber()}</span>
+      <section class="spud-copy-stack help-card">
+        <header class="spud-modal-top">
+          <div>
+            <span class="spud-constellation-kicker" style="margin-bottom:2px;">${escapeHtml(destinationById(lobby.destination).name)} · DAY ${missionDayNumber()}</span>
             <h2 id="mission-log-title">MISSION LOG ARCHIVE</h2>
           </div>
           ${gameMenuClose('mission log')}
         </header>
-        <div class="svg-master-detail-body">
-          <div class="svg-slot-well">
-            <div class="svg-slot-grid" style="max-height:46vh;overflow:auto;">
+        <div class="spud-split-columns">
+          <div class="spud-copy-stack">
+            <div class="spud-slot-list spud-scroll-region" style="max-height:44vh;overflow-y:auto;">
               ${reports.length ? reports.map(rep => `
-                <button type="button" class="svg-slot-card ${rep.day === selectedDay ? 'selected' : ''}" data-log-day="${rep.day}">
-                  <span class="svg-slot-badge ${rep.completed === rep.assigned ? 'is-done' : 'is-urgent'}">${rep.completed}/${rep.assigned}</span>
-                  <strong>DAY ${String(rep.day).padStart(2, '0')}</strong>
-                  <small>${escapeHtml(rep.event)}</small>
+                <button type="button" class="spud-slot-row ${rep.day === selectedDay ? 'selected' : ''}" data-log-day="${rep.day}">
+                  <div>
+                    <strong>DAY ${String(rep.day).padStart(2, '0')}</strong>
+                    <small>${escapeHtml(rep.event)}</small>
+                  </div>
+                  <span class="spud-status-tag ${rep.completed === rep.assigned ? 'is-done' : 'is-urgent'}">${rep.completed}/${rep.assigned}</span>
                 </button>
-              `).join('') : '<p class="story-note">No Earth reports have been sent yet.</p>'}
+              `).join('') : '<div class="spud-copy-block"><p>No Earth reports have been sent yet.</p></div>'}
             </div>
-            <div class="svg-slot-footer-bar">
+            <div class="spud-meta-inline">
               <span>LOGGED TRANSMISSIONS: ${reports.length}</span>
               <span>ACTIVE: ${escapeHtml(mission.eventCard?.name ?? 'Routine')}</span>
             </div>
           </div>
-          <aside class="svg-inspector-card" id="mission-log-inspector">
+          <div class="spud-vertical-rule" aria-hidden="true"></div>
+          <aside class="spud-copy-stack" id="mission-log-inspector">
             ${renderLogInspector(selectedDay)}
           </aside>
         </div>
@@ -3051,25 +3653,28 @@ function openMissionLog(): void {
 function openHelp(): void {
   modalRoot.innerHTML = `
     <dialog class="game-menu-dialog game-help-dialog" aria-labelledby="game-help-title">
-      <section class="svg-options-window help-card">
-        <header class="svg-window-header game-menu-header">
-          <div><span class="svg-kicker">S.P.U.D.I.E. · FIELD MANUAL</span><h2 id="game-help-title">CONTROLS &amp; SYSTEMS</h2></div>
+      <section class="spud-copy-stack help-card">
+        <header class="spud-modal-top">
+          <div>
+            <span class="spud-constellation-kicker" style="margin-bottom:2px;">S.P.U.D.I.E. · FIELD MANUAL</span>
+            <h2 id="game-help-title">CONTROLS &amp; SYSTEMS</h2>
+          </div>
           ${gameMenuClose('help')}
         </header>
-        <div class="svg-options-body">
-          <div class="svg-subcard" style="padding:18px 22px;display:grid;gap:14px;">
-            <div>
-              <strong style="color:#9beeff;letter-spacing:0.12em;">01 · MOVEMENT &amp; AUTO-PILOT</strong>
-              <p style="margin:4px 0 0;color:#fff3d8;">Use <b>WASD</b> or the <b>arrow keys</b> to walk. Click or tap the deck, a room in <b>Map (M)</b>, or a destination in <b>Tasks (T)</b> to auto-pilot.</p>
-            </div>
-            <div style="border-top:1px solid #343c5b;padding-top:12px;">
-              <strong style="color:#c8baff;letter-spacing:0.12em;">02 · DAILY SHIFT LOOP</strong>
-              <p style="margin:4px 0 0;color:#fff3d8;">Choose 3 of 5 assignments during Shift Planning, inspect projected gauge deltas, then complete each console task before the shift clock expires.</p>
-            </div>
-            <div style="border-top:1px solid #343c5b;padding-top:12px;">
-              <strong style="color:#f4d38b;letter-spacing:0.12em;">03 · FOUR CORE SYSTEMS</strong>
-              <p style="margin:4px 0 0;color:#fff3d8;">Keep Power, Life Support, Hydroponics, and Shielding above certification targets for 30 days. Press <b>E</b> near any active station to interact.</p>
-            </div>
+        <div class="spud-copy-stack">
+          <div class="spud-copy-block">
+            <h2>01 · MOVEMENT &amp; AUTO-PILOT</h2>
+            <p>Use <b>WASD</b> or the <b>arrow keys</b> to walk. Click or tap the deck, a room in <b>Map (M)</b>, or a destination in <b>Tasks (T)</b> to auto-pilot.</p>
+          </div>
+          <div class="spud-constellation-divider" aria-hidden="true"></div>
+          <div class="spud-copy-block">
+            <h2>02 · DAILY SHIFT LOOP</h2>
+            <p>Choose 3 of 5 assignments during Shift Planning, inspect projected gauge deltas, then complete each console task before the shift clock expires.</p>
+          </div>
+          <div class="spud-constellation-divider" aria-hidden="true"></div>
+          <div class="spud-copy-block">
+            <h2>03 · FOUR CORE SYSTEMS</h2>
+            <p>Keep Power, Life Support, Hydroponics, and Shielding above certification targets for 30 days. Press <b>E</b> near any active station to interact.</p>
           </div>
         </div>
       </section>
@@ -3117,27 +3722,23 @@ function wireControls(): void {
     const target = event.target as HTMLElement | null;
     if (target?.closest('dialog[open]')) return;
     if (event.key === 'Escape' && currentScreen === 'options') {
-      screenRoot.querySelector<HTMLButtonElement>('[data-game-return]')?.click();
+      (screenRoot.querySelector<HTMLButtonElement>('[data-game-return]')
+        ?? screenRoot.querySelector<HTMLButtonElement>('[data-options-back]'))?.click();
       return;
     }
     if (target?.closest('input, textarea')) return;
 
-    if (currentScreen === 'menu' && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
-      const items = Array.from(screenRoot.querySelectorAll<HTMLButtonElement>('.duelyst-nav-item'));
-      if (items.length) {
+    if (event.key === 'Enter' && (currentScreen === 'splash' || currentScreen === 'launch') && !target?.closest('button, a')) {
+      const skipBtn = screenRoot.querySelector<HTMLButtonElement>('.intro-skip');
+      if (skipBtn) {
         event.preventDefault();
-        const activeIdx = items.indexOf(document.activeElement as HTMLButtonElement);
-        const nextIdx = event.key === 'ArrowDown'
-          ? (activeIdx + 1) % items.length
-          : (activeIdx <= 0 ? items.length - 1 : activeIdx - 1);
-        items[nextIdx]?.focus();
-        sfx.click();
+        skipBtn.click();
+        return;
       }
-      return;
     }
 
     if (currentScreen === 'menu' && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
-      const items = Array.from(screenRoot.querySelectorAll<HTMLButtonElement>('.spud-menu-item'));
+      const items = Array.from(screenRoot.querySelectorAll<HTMLButtonElement>('.spud-center-nav .spud-menu-item'));
       if (items.length) {
         event.preventDefault();
         const activeIdx = items.findIndex(el => el.classList.contains('is-active'));
