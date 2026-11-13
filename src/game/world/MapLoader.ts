@@ -25,6 +25,7 @@ export interface LoadedMap {
   wallLayer: Phaser.Tilemaps.TilemapLayer;
   overheadLayer: Phaser.Tilemaps.TilemapLayer;
   artImage: Phaser.GameObjects.Image;
+  depthArtwork: Phaser.GameObjects.Image[];
   spawn: SpawnPoint;
   vents: Vent[];
   rooms: Room[];
@@ -41,6 +42,7 @@ interface TiledObject {
   width: number;
   height: number;
   point?: boolean;
+  polygon?: { x: number; y: number }[];
   properties?: { name: string; type: string; value: string | number | boolean }[];
 }
 
@@ -92,6 +94,7 @@ export class MapLoader {
     if (typeof options?.artTint === 'number') {
       artImage.setTint(options.artTint);
     }
+    const depthArtwork = this.createDepthArtwork(map, options?.artTint);
 
     floorLayer.setVisible(false);
     wallLayer.setVisible(false);
@@ -116,12 +119,62 @@ export class MapLoader {
       wallLayer,
       overheadLayer,
       artImage,
+      depthArtwork,
       spawn: parsed.spawn,
       vents: parsed.vents,
       rooms: parsed.rooms,
       bounds,
       minimap,
     };
+  }
+
+  private createDepthArtwork(map: Phaser.Tilemaps.Tilemap, tint?: number): Phaser.GameObjects.Image[] {
+    const layer = map.getObjectLayer('depth-artwork');
+    if (!layer) return [];
+    const textures = this.scene.textures;
+    const art = textures.get(AssetKeys.mapImage);
+    const source = art.getSourceImage();
+    if (!(source instanceof HTMLImageElement || source instanceof HTMLCanvasElement)) return [];
+    const images: Phaser.GameObjects.Image[] = [];
+
+    for (const object of layer.objects as unknown as TiledObject[]) {
+      const outline = object.polygon;
+      if (object.type !== 'DepthArtwork' || !outline || outline.length < 3) continue;
+      const depth = object.properties?.find(property => property.name === 'depth')?.value;
+      if (typeof depth !== 'number') continue;
+
+      const width = Math.max(...outline.map(point => point.x));
+      const height = Math.max(...outline.map(point => point.y));
+      const frame = `station-art-${object.id}`;
+      const rectangle = outline.length === 4 && outline.every(({ x, y }) => (x === 0 || x === width) && (y === 0 || y === height));
+      let image: Phaser.GameObjects.Image;
+      if (rectangle) {
+        if (!art.has(frame)) art.add(frame, 0, object.x, object.y, width, height);
+        image = this.scene.add.image(object.x, object.y, AssetKeys.mapImage, frame);
+      } else {
+        if (!textures.exists(frame)) {
+          const texture = textures.createCanvas(frame, width, height);
+          if (!texture) continue;
+          const context = texture.getContext();
+          context.save();
+          context.beginPath();
+          for (const [index, point] of outline.entries()) {
+            if (index === 0) context.moveTo(point.x, point.y);
+            else context.lineTo(point.x, point.y);
+          }
+          context.closePath();
+          context.clip();
+          context.drawImage(source, -object.x, -object.y);
+          context.restore();
+          texture.refresh();
+        }
+        image = this.scene.add.image(object.x, object.y, frame);
+      }
+      image.setOrigin(0).setDepth(depth).setName(object.name);
+      if (tint !== undefined) image.setTint(tint);
+      images.push(image);
+    }
+    return images;
   }
 
   private buildMinimap(

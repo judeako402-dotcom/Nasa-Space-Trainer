@@ -113,30 +113,30 @@ function renderSwipe(host: HTMLElement, complete: Complete): void {
   track.append(reader, card);
   host.append(track);
   const status = statusLine(host, 'DRAG THE CARD →');
-  let dragging = false;
+  let activePointer: number | null = null;
   let startX = 0;
   let startTime = 0;
   let currentX = 0;
 
   const maxX = (): number => Math.max(1, track.clientWidth - card.clientWidth - 14);
   card.addEventListener('pointerdown', event => {
-    dragging = true;
+    if (activePointer !== null || event.button !== 0) return;
+    activePointer = event.pointerId;
     startX = event.clientX;
     startTime = performance.now();
     card.setPointerCapture(event.pointerId);
   });
   card.addEventListener('pointermove', event => {
-    if (!dragging) return;
+    if (activePointer !== event.pointerId) return;
     currentX = Math.max(0, Math.min(maxX(), event.clientX - startX));
     card.style.transform = `translateX(${currentX}px)`;
   });
-  const release = (): void => {
-    if (!dragging) return;
-    dragging = false;
-    const duration = performance.now() - startTime;
+  const release = (event: PointerEvent): void => {
+    if (activePointer !== event.pointerId) return;
+    activePointer = null;
     const distance = currentX / maxX();
-    if (distance > 0.88) {
-      const speed = distance / (duration / 1000);
+    if (event.type === 'pointerup' && distance > 0.88) {
+      const speed = distance / ((performance.now() - startTime) / 1000);
       if (speed > 0.32 && speed < 3.4) {
         status.textContent = 'CARD ACCEPTED';
         complete();
@@ -149,6 +149,7 @@ function renderSwipe(host: HTMLElement, complete: Complete): void {
   };
   card.addEventListener('pointerup', release);
   card.addEventListener('pointercancel', release);
+  card.addEventListener('lostpointercapture', release);
 }
 
 function renderDownload(host: HTMLElement, complete: Complete, cleanups: Cleanups): void {
@@ -229,19 +230,24 @@ function renderCalibrate(host: HTMLElement, complete: Complete, cleanups: Cleanu
   host.append(button);
   const status = statusLine(host, '0 / 3');
   let pos = 0;
-  let direction = 1;
   let hits = 0;
   let raf = 0;
-  const tick = (): void => {
-    pos += direction * 0.011;
-    if (pos >= 1) { pos = 1; direction = -1; }
-    if (pos <= 0) { pos = 0; direction = 1; }
+  let pass = 0;
+  let lastHitPass = -1;
+  const start = performance.now();
+  const tick = (now: number): void => {
+    const progress = Math.max(0, now - start) / 1500;
+    pass = Math.floor(progress);
+    const fraction = progress - pass;
+    pos = pass % 2 === 0 ? fraction : 1 - fraction;
     marker.style.left = `${pos * 100}%`;
     raf = requestAnimationFrame(tick);
   };
   raf = requestAnimationFrame(tick);
   button.addEventListener('click', () => {
     if (pos > 0.42 && pos < 0.58) {
+      if (lastHitPass === pass) return;
+      lastHitPass = pass;
       hits += 1;
       status.textContent = `${hits} / 3`;
       if (hits >= 3) {
@@ -338,12 +344,13 @@ function renderHold(
     }
     raf = requestAnimationFrame(tick);
   };
-  button.addEventListener('pointerdown', () => {
+  const beginHold = (): void => {
+    if (holding) return;
     holding = true;
     start = performance.now();
     status.textContent = 'HOLDING...';
     tick();
-  });
+  };
   const release = (): void => {
     if (!holding) return;
     holding = false;
@@ -351,9 +358,23 @@ function renderHold(
     fill.style.width = '0%';
     status.textContent = 'RELEASED — HOLD LONGER';
   };
+  button.addEventListener('pointerdown', event => {
+    if (event.isPrimary && event.button === 0) beginHold();
+  });
   button.addEventListener('pointerup', release);
   button.addEventListener('pointerleave', release);
   button.addEventListener('pointercancel', release);
+  button.addEventListener('keydown', event => {
+    if (event.key !== ' ' && event.key !== 'Enter') return;
+    event.preventDefault();
+    if (!event.repeat) beginHold();
+  });
+  button.addEventListener('keyup', event => {
+    if (event.key !== ' ' && event.key !== 'Enter') return;
+    event.preventDefault();
+    release();
+  });
+  button.addEventListener('blur', release);
   cleanups.push(() => {
     holding = false;
     cancelAnimationFrame(raf);

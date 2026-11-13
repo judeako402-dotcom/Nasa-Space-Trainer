@@ -14,6 +14,7 @@ export type ScreenId =
 export interface MissionState extends TrialProgress {
   phase: GamePhase;
   dayStartedAt: number;
+  shiftDurationMs: number;
   pausedDuration: number;
   pauseStartedAt: number;
   tasks: string[];
@@ -57,11 +58,19 @@ export const createInitialExam = (): ExamState => ({
 export function createMissionState(): MissionState {
   return {
     phase: 'menu', day: 1, penaltyDay: 0, totalAssigned: 0, totalCompleted: 0,
-    missedDays: 0, metrics: createMetrics(), dayStartedAt: 0, pausedDuration: 0,
+    missedDays: 0, metrics: createMetrics(), dayStartedAt: 0, shiftDurationMs: 0, pausedDuration: 0,
     pauseStartedAt: 0, tasks: [], completed: [], offers: [], selected: [],
     eventCard: null, playerX: PLAYER_SPAWN.x, playerY: PLAYER_SPAWN.y,
     room: 'Central Hub', report: null, reports: [], modalOpen: false,
   };
+}
+
+export function remainingShiftMs(
+  shift: Pick<MissionState, 'shiftDurationMs' | 'dayStartedAt' | 'pauseStartedAt' | 'pausedDuration'>,
+  now: number,
+): number {
+  const elapsed = (shift.pauseStartedAt || now) - shift.dayStartedAt - shift.pausedDuration;
+  return Math.max(0, shift.shiftDurationMs - Math.max(0, elapsed));
 }
 
 export function createTrainingState(): TrainingState {

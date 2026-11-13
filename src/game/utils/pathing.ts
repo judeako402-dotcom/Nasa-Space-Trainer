@@ -34,6 +34,22 @@ export function tileAtPixel(pos: { x: number; y: number }, tileSize: number): Ti
   return { x: Math.floor(pos.x / tileSize), y: Math.floor(pos.y / tileSize) };
 }
 
+/** Test the full collision rectangle against every tile it overlaps. */
+export function hasTileClearance(
+  grid: WalkableGrid, tileSize: number, center: Tile, width: number, height: number,
+): boolean {
+  const left = Math.floor((center.x - width / 2) / tileSize);
+  const right = Math.ceil((center.x + width / 2) / tileSize);
+  const top = Math.floor((center.y - height / 2) / tileSize);
+  const bottom = Math.ceil((center.y + height / 2) / tileSize);
+  for (let row = top; row < bottom; row++) {
+    for (let col = left; col < right; col++) {
+      if (grid.isBlocked(col, row)) return false;
+    }
+  }
+  return true;
+}
+
 function inBounds(grid: WalkableGrid, t: Tile): boolean {
   return t.x >= 0 && t.y >= 0 && t.x < grid.cols && t.y < grid.rows;
 }

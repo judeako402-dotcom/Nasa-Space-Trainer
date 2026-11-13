@@ -9,15 +9,14 @@ import type { InputSnapshot, PlayerState } from '../sim/movement';
 import { createPlayerState, lerp, stepPlayer } from '../sim/movement';
 import { AssetKeys, MapKeys } from './assets/AssetKeys';
 import { createPlaceholderTextures } from './assets/PlaceholderFactory';
-import { DEBUG_PAN_SPEED, DEMO_PAN_DURATION } from './constants';
+import { DEBUG_PAN_SPEED, DEMO_PAN_DURATION, PLAYER_FEET } from './constants';
 import { CrewNPC } from './entities/CrewNPC';
 import { Player } from './entities/Player';
 import { TaskStation } from './entities/TaskStation';
-import { DepthSortSystem } from './systems/DepthSortSystem';
 import { FollowerCamera } from './systems/FollowerCamera';
 import { InputSystem } from './systems/InputSystem';
 import { InteractionSystem } from './systems/InteractionSystem';
-import { compressPath, findPath, gridFromTiles, tileAtPixel, type Tile, type WalkableGrid } from './utils/pathing';
+import { compressPath, findPath, gridFromTiles, hasTileClearance, tileAtPixel, type Tile, type WalkableGrid } from './utils/pathing';
 import { MapLoader, type LoadedMap } from './world/MapLoader';
 import { roomAt } from './world/Room';
 
@@ -45,6 +44,7 @@ export type GameEvent =
   | { type: 'prompt'; interactionId: string | null; name: string; kind: string; room: string }
   | { type: 'interact'; interactionId: string; kind: string }
   | { type: 'crew'; crewId: string; name: string; lines: string[] }
+  | { type: 'route-blocked' }
   | { type: 'fps'; fps: number };
 
 const MAPS: Record<MapId, MapDefinition> = {
@@ -148,11 +148,11 @@ export class StationScene extends Phaser.Scene {
   private followerCamera?: FollowerCamera;
   private tiledInput?: InputSystem;
   private readonly tiledInteraction = new InteractionSystem();
-  private readonly tiledDepthSort = new DepthSortSystem();
   private readonly tiledStations: TaskStation[] = [];
   private readonly tiledCrew: CrewNPC[] = [];
   private readonly tiledDecor: Phaser.GameObjects.Image[] = [];
   private tiledRoute: { x: number; y: number }[] = [];
+  private routeProgress?: { x: number; y: number; stalledMs: number };
 
   constructor(onEvent: (event: GameEvent) => void, initial: SceneGameState) {
     super({ key: 'station' });
@@ -239,25 +239,24 @@ export class StationScene extends Phaser.Scene {
     this.followerCamera?.setReducedMotion(reduced);
   }
 
-  navigateTo(x: number, y: number): void {
-    if (!this.ready || this.state.frozen) return;
+  navigateTo(x: number, y: number): boolean {
+    if (!this.ready || this.state.frozen) return false;
     if (this.activeMode === 'surface') {
-      this.routeSurfaceTo(x, y);
-      return;
+      return this.routeSurfaceTo(x, y);
     }
-    if (!this.geometry) return;
+    if (!this.geometry) return false;
     const target = this.nearestTrainingInteraction(x, y, 90);
     const destination = target ? { x: target.x, y: target.y } : { x, y };
-    const path = this.geometry.findPath({ x: this.sim.x, y: this.sim.y }, destination);
-    if (path.length) {
-      this.sim.route = path;
-      this.sim.routeIndex = 0;
-    }
+    this.sim.route = this.geometry.findPath({ x: this.sim.x, y: this.sim.y }, destination);
+    this.sim.routeIndex = 0;
+    return this.sim.route.length > 0;
   }
 
   interactNow(): void {
     if (!this.ready || this.state.frozen) return;
     if (this.activeMode === 'surface') {
+      if (!this.tiledPlayer) return;
+      this.tiledInteraction.update(this.tiledPlayer.position);
       this.tiledInteraction.interact();
     } else {
       this.tryInteractTraining();
@@ -293,7 +292,8 @@ export class StationScene extends Phaser.Scene {
         if (respawn) {
           this.tiledRoute = [];
           this.tiledPlayer.stop();
-          this.tiledPlayer.setPosition(next.x || this.map.spawn.x, next.y || this.map.spawn.y);
+          const position = this.safeSurfacePosition(next.x, next.y);
+          this.tiledPlayer.setPosition(position.x, position.y);
           this.followerCamera?.snap();
         }
       }
@@ -315,18 +315,20 @@ export class StationScene extends Phaser.Scene {
       this.buildTrainingMap();
       this.createTrainingPlayer();
       this.activeMode = 'training';
-    } else if (respawn || this.playerRoot) {
+    } else if (respawn) {
       this.sim.x = next.x;
       this.sim.y = next.y;
       this.sim.prevX = next.x;
       this.sim.prevY = next.y;
-      if (respawn) {
-        this.sim.route = [];
-        this.sim.routeIndex = 0;
-        this.camTargetX = next.x;
-        this.camTargetY = next.y;
-        this.camSnap = true;
-      }
+      this.sim.route = [];
+      this.sim.routeIndex = 0;
+      this.camTargetX = next.x;
+      this.camTargetY = next.y;
+      this.camSnap = true;
+    }
+    if (next.frozen) {
+      this.sim.route = [];
+      this.sim.routeIndex = 0;
     }
     this.playerRoot?.setAlpha(next.frozen ? 0.72 : 1);
     this.createTrainingMarkers();
@@ -375,12 +377,11 @@ export class StationScene extends Phaser.Scene {
     const bounds = this.tiledMap.bounds;
     this.physics.world.setBounds(bounds.x, bounds.y, bounds.width, bounds.height);
 
-    const startX = this.state.x || this.tiledMap.spawn.x;
-    const startY = this.state.y || this.tiledMap.spawn.y;
+    const start = this.safeSurfacePosition(this.state.x, this.state.y);
     this.tiledPlayer = new Player(
       this,
-      startX,
-      startY,
+      start.x,
+      start.y,
       this.state.playerName,
       textureKeyForArt(this.state.playerArt),
     );
@@ -395,8 +396,6 @@ export class StationScene extends Phaser.Scene {
     this.followerCamera.setBounds(bounds);
     this.followerCamera.setReducedMotion(this.reducedMotion);
     this.followerCamera.snap();
-
-    this.tiledDepthSort.register(this.tiledPlayer.sprite, () => this.tiledPlayer?.sprite.y ?? 0);
 
     for (const vent of this.tiledMap.vents) {
       this.tiledInteraction.register(vent);
@@ -425,6 +424,7 @@ export class StationScene extends Phaser.Scene {
     if (this.tiledMap) {
       this.tiledMap.spawn.destroy();
       for (const vent of this.tiledMap.vents) vent.destroy();
+      for (const image of this.tiledMap.depthArtwork) image.destroy();
       this.tiledMap.artImage.destroy();
       this.tiledMap.floorLayer.destroy();
       this.tiledMap.wallLayer.destroy();
@@ -435,7 +435,6 @@ export class StationScene extends Phaser.Scene {
     this.tiledGrid = undefined;
     this.tiledRoute = [];
     this.tiledInteraction.clear();
-    this.tiledDepthSort.clear();
   }
 
   private spawnSurfaceStations(): void {
@@ -559,7 +558,8 @@ export class StationScene extends Phaser.Scene {
     const dest = others[0];
     if (dest) {
       this.tiledRoute = [];
-      this.tiledPlayer.setPosition(dest.position.x, dest.position.y);
+      const position = this.safeSurfacePosition(dest.position.x, dest.position.y);
+      this.tiledPlayer.setPosition(position.x, position.y);
       this.followerCamera?.snap();
     }
     this.onEvent({ type: 'interact', interactionId: ventId, kind: 'vent' });
@@ -568,17 +568,31 @@ export class StationScene extends Phaser.Scene {
   private findSurfacePath(
     from: { x: number; y: number },
     to: { x: number; y: number },
+    feetOffsetY = 0,
   ): { x: number; y: number }[] | null {
     if (!this.tiledMap || !this.tiledGrid) return null;
     const ts = this.tiledMap.minimap.tileSize;
-    const startTile = nearestWalkableTile(this.tiledGrid, tileAtPixel(from, ts));
+    const startTile = nearestWalkableTile(this.tiledGrid, tileAtPixel({ x: from.x, y: from.y + feetOffsetY }, ts));
     const goalTile = nearestWalkableTile(this.tiledGrid, tileAtPixel(to, ts));
     if (!startTile || !goalTile) return null;
     const tiles = findPath(this.tiledGrid, startTile, goalTile);
     if (!tiles) return null;
     const compressed = compressPath(tiles);
     const half = ts / 2;
-    return compressed.map((t) => ({ x: t.x * ts + half, y: t.y * ts + half }));
+    return compressed.map((t) => ({ x: t.x * ts + half, y: t.y * ts + half - feetOffsetY }));
+  }
+
+  private safeSurfacePosition(x: number, y: number): { x: number; y: number } {
+    const map = this.tiledMap!;
+    const grid = this.tiledGrid!;
+    const size = map.minimap.tileSize;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return { x: map.spawn.x, y: map.spawn.y };
+    const feet = { x, y: y + PLAYER_FEET.offsetY };
+    if (hasTileClearance(grid, size, feet, PLAYER_FEET.width, PLAYER_FEET.height)) return { x, y };
+    const tile = nearestWalkableTile(grid, tileAtPixel(feet, size));
+    return tile
+      ? { x: (tile.x + 0.5) * size, y: (tile.y + 0.5) * size - PLAYER_FEET.offsetY }
+      : { x: map.spawn.x, y: map.spawn.y };
   }
 
   private roomWalkTarget(roomName: string): { x: number; y: number } | null {
@@ -596,11 +610,13 @@ export class StationScene extends Phaser.Scene {
     return { x: found.x * m.tileSize + half, y: found.y * m.tileSize + half };
   }
 
-  private routeSurfaceTo(x: number, y: number): void {
-    if (!this.tiledPlayer) return;
-    const path = this.findSurfacePath(this.tiledPlayer.position, { x, y });
-    if (!path || path.length === 0) return;
-    this.tiledRoute = path.length > 1 ? path.slice(1) : [{ x, y }];
+  private routeSurfaceTo(x: number, y: number): boolean {
+    if (!this.tiledPlayer) return false;
+    // Align with the starting tile before following the route around walls.
+    this.tiledRoute = this.findSurfacePath(this.tiledPlayer.position, { x, y }, PLAYER_FEET.offsetY) ?? [];
+    this.routeProgress = undefined;
+    this.tiledPlayer.stop();
+    return this.tiledRoute.length > 0;
   }
 
   private updateSurface(deltaMs: number, now: number): void {
@@ -611,7 +627,7 @@ export class StationScene extends Phaser.Scene {
     const freeCam = this.tiledInput.isShiftDown() && !this.state.frozen;
 
     if (this.tiledInput.justPressed('interact') && !this.state.frozen) {
-      this.tiledInteraction.interact();
+      this.interactNow();
     }
     if (this.tiledInput.justPressed('snapCamera')) {
       this.followerCamera.snap();
@@ -640,15 +656,26 @@ export class StationScene extends Phaser.Scene {
       this.tiledPlayer.applyInput(move);
     } else if (this.tiledRoute.length > 0) {
       const next = this.tiledRoute[0];
-      const dx = next.x - this.tiledPlayer.position.x;
-      const dy = next.y - this.tiledPlayer.position.y;
-      if (Math.hypot(dx, dy) <= 14) {
+      const { x, y } = this.tiledPlayer.position;
+      const dx = next.x - x;
+      const dy = next.y - y;
+      if (Math.hypot(dx, dy) <= 6) {
         this.tiledRoute.shift();
-        if (this.tiledRoute.length === 0) {
-          this.tiledPlayer.stop();
-        }
+        this.routeProgress = undefined;
+        this.tiledPlayer.setPosition(next.x, next.y);
+        this.tiledPlayer.stop();
       } else {
-        this.tiledPlayer.applyInput({ x: dx, y: dy });
+        const previous = this.routeProgress;
+        const stalledMs = previous && Math.hypot(x - previous.x, y - previous.y) < 0.1
+          ? previous.stalledMs + deltaMs : 0;
+        this.routeProgress = { x, y, stalledMs };
+        if (stalledMs >= 750) {
+          this.tiledRoute = [];
+          this.tiledPlayer.stop();
+          this.onEvent({ type: 'route-blocked' });
+        } else {
+          this.tiledPlayer.applyInput({ x: dx, y: dy });
+        }
       }
     } else {
       this.tiledPlayer.stop();
@@ -661,7 +688,6 @@ export class StationScene extends Phaser.Scene {
       this.followerCamera.update(deltaMs);
     }
 
-    this.tiledDepthSort.update();
     for (const member of this.tiledCrew) {
       member.preUpdate();
     }
@@ -1164,9 +1190,9 @@ export function setSceneReducedMotion(game: Phaser.Game, reduced: boolean): void
   scene?.setReducedMotion(reduced);
 }
 
-export function navigateStationTo(game: Phaser.Game, x: number, y: number): void {
+export function navigateStationTo(game: Phaser.Game, x: number, y: number): boolean {
   const scene = game.scene.getScene('station') as StationScene | null;
-  scene?.navigateTo(x, y);
+  return scene?.navigateTo(x, y) ?? false;
 }
 
 export function interactStation(game: Phaser.Game): void {

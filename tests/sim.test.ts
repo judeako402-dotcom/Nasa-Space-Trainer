@@ -3,7 +3,7 @@ import { DAY, PASS_THRESHOLDS, VISION } from '../src/data/balance';
 import { TRAINING_DECK } from '../src/data/trainingDeck';
 import { SURFACE_HABITAT } from '../src/data/surfaceHabitat';
 import { EVENT_CARDS } from '../src/data/events';
-import { DEFAULT_OPTIONS, SAVE_KEY, TASKS, loadSave, taskById } from '../src/model';
+import { DEFAULT_OPTIONS, SAVE_KEY, SPECIALISTS, TASKS, loadSave, persistSave, taskById } from '../src/model';
 import {
   applyDailyOperations, applyEvent, applyMissedDay, applyTaskCompletion, createMetrics, evaluateMission, eventForDay,
   offersForDay, systemHealth,
@@ -12,9 +12,18 @@ import { applySpecialistSpeed, createPlayerState, normalizeInput, stepPlayer } f
 import { MapGeometry } from '../src/sim/navigation';
 import { castVision } from '../src/sim/occluders';
 import { createRng, seedFor } from '../src/sim/rng';
-import { createInitialExam, createMissionState, createTrainingState } from '../src/app/state';
+import { createInitialExam, createMissionState, createTrainingState, remainingShiftMs } from '../src/app/state';
 
 describe('application state factories', () => {
+  it('keeps the clock steady through a pause and expires at zero', () => {
+    const shift = { shiftDurationMs: 180_000, dayStartedAt: 10_000, pausedDuration: 5_000, pauseStartedAt: 75_000 };
+    expect(remainingShiftMs(shift, 100_000)).toBe(120_000);
+    shift.pausedDuration += 100_000 - shift.pauseStartedAt;
+    shift.pauseStartedAt = 0;
+    expect(remainingShiftMs(shift, 101_000)).toBe(119_000);
+    expect(remainingShiftMs(shift, 220_000)).toBe(0);
+  });
+
   it('creates independent mission and training sessions', () => {
     const first = createMissionState();
     first.metrics.oxygen = 0;
@@ -204,6 +213,13 @@ describe('mission simulation', () => {
     expect(offers[0]!.system).toBe('farming');
   });
 
+  it('offers work across all systems when the full station roster is available', () => {
+    for (const specialist of SPECIALISTS) {
+      const offers = offersForDay(TASKS, specialist.id, createRng(seedFor(1, 0)));
+      expect(new Set(offers.map(offer => offer.system)).size).toBe(5);
+    }
+  });
+
   it('clamps event effects to the metric limits', () => {
     const metrics = createMetrics();
     metrics.oxygen = 4;
@@ -301,5 +317,30 @@ describe('save options & showFps persistence', () => {
       { [SAVE_KEY]: JSON.stringify({ options: { masterVolume: 50 } }) },
       () => expect(loadSave().options.showFps).toBe(false),
     );
+  });
+
+  it('preserves a shift draft and restores the saved clock and position after launch', () => {
+    const eventBase = createMetrics();
+    const activeTrial = {
+      phase: 'playing', day: 30, penaltyDay: 2, totalAssigned: 0, totalCompleted: 0, missedDays: 0,
+      metrics: eventBase, tasks: [], completed: [], eventId: 'solar-flare', eventChoiceId: 'continue',
+      reports: [], report: null, planning: { eventBase, selected: ['shields', 'garbage'] },
+    };
+    withMockStorage({ [SAVE_KEY]: JSON.stringify({ trialDay: 32, activeTrial }) }, () => {
+      const save = loadSave();
+      expect(save.trialDay).toBe(32);
+      expect(save.activeTrial?.planning).toEqual(activeTrial.planning);
+      expect(save.activeTrial?.eventChoiceId).toBe('continue');
+      expect(save.activeTrial?.shiftDurationMs).toBeUndefined();
+      expect(save.activeTrial?.remainingMs).toBeUndefined();
+      save.activeTrial = {
+        ...save.activeTrial!, planning: undefined, tasks: ['shields', 'garbage'],
+        shiftDurationMs: 129_600, remainingMs: 22_100, position: { x: 416, y: 1312 },
+      };
+      expect(persistSave(save)).toBe(true);
+      expect(loadSave().activeTrial).toMatchObject({
+        shiftDurationMs: 129_600, remainingMs: 22_100, eventChoiceId: 'continue', position: { x: 416, y: 1312 },
+      });
+    });
   });
 });

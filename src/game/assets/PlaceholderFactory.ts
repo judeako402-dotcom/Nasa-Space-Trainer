@@ -55,18 +55,18 @@ function makeTileWall(scene: Phaser.Scene): void {
 }
 
 function makeTileset(scene: Phaser.Scene): void {
-  graphicsTexture(scene, AssetKeys.tileset, 128, 64, (g) => {
+  graphicsTexture(scene, AssetKeys.tileset, 64, 32, (g) => {
     g.fillStyle(0x2a2d38, 1);
-    g.fillRect(0, 0, 64, 64);
+    g.fillRect(0, 0, 32, 32);
     g.lineStyle(1, 0x232630, 1);
-    g.strokeRect(0.5, 0.5, 63, 63);
+    g.strokeRect(0.5, 0.5, 31, 31);
 
     g.fillStyle(0x4a5064, 1);
-    g.fillRect(64, 0, 64, 64);
+    g.fillRect(32, 0, 32, 32);
     g.fillStyle(0x565d75, 1);
-    g.fillRect(64, 0, 64, 8);
+    g.fillRect(32, 0, 32, 4);
     g.lineStyle(1, 0x3a3f50, 1);
-    g.strokeRect(64.5, 0.5, 63, 63);
+    g.strokeRect(32.5, 0.5, 31, 31);
   });
 }
 

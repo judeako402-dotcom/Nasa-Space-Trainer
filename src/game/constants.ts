@@ -32,6 +32,9 @@ export const CAMERA_MAX_STEP = 0.9;
 /** Default interaction proximity radius in pixels. */
 export const INTERACTION_RADIUS = 96;
 
+/** Surface player contact area, centered just below the sprite origin. */
+export const PLAYER_FEET = { width: 28, height: 26, offsetY: 3 } as const;
+
 /** Depth of the floor artwork / tile layer. */
 export const DEPTH_FLOOR = 0;
 

@@ -71,6 +71,10 @@ export interface SavedTrial extends TrialProgress {
   reports: EarthProgressReport[];
   report: EarthProgressReport | null;
   remainingMs?: number;
+  shiftDurationMs?: number;
+  eventChoiceId?: string;
+  position?: { x: number; y: number };
+  planning?: { eventBase: MissionMetrics; selected: string[] };
 }
 
 export interface RoomDef {
@@ -225,15 +229,15 @@ export const CORRIDORS: CorridorDef[] = [
 ];
 
 export const TASKS: TaskDef[] = [
-  { id: 'fuel-upper', name: 'Balance Solar-Battery Load', kind: 'fuel', roomId: 'reactor', x: 672, y: 224, system: 'power' },
+  { id: 'fuel-upper', name: 'Balance Solar-Battery Load', kind: 'fuel', roomId: 'reactor', x: 624, y: 272, system: 'power' },
   { id: 'align-engine', name: 'Align Sun-Tracking Array', kind: 'calibrate', roomId: 'reactor', x: 672, y: 352, system: 'power' },
   { id: 'wiring-cafeteria', name: 'Route Greenhouse Power', kind: 'wiring', roomId: 'cafeteria', x: 352, y: 800, system: 'power' },
   { id: 'garbage', name: 'Sort Galley Water Filters', kind: 'garbage', roomId: 'cafeteria', x: 480, y: 800, system: 'life' },
   { id: 'grow-light-balance', name: 'Balance Grow-Light Spectrum', kind: 'calibrate', roomId: 'cafeteria', x: 608, y: 800, system: 'farming' },
   { id: 'nutrient-loop', name: 'Check Hydroponics Nutrient Loop', kind: 'inspect', roomId: 'cafeteria', x: 544, y: 928, system: 'farming' },
   { id: 'asteroids', name: 'Survey EVA Safe Route', kind: 'inspect', roomId: 'admin', x: 928, y: 800, system: 'science' },
-  { id: 'steering', name: 'Plan Rover Traverse', kind: 'calibrate', roomId: 'communications', x: 1376, y: 160, system: 'science' },
-  { id: 'download-nav', name: 'Upload Surface Weather', kind: 'download', roomId: 'communications', x: 1888, y: 160, system: 'science' },
+  { id: 'steering', name: 'Plan Rover Traverse', kind: 'calibrate', roomId: 'communications', x: 1360, y: 336, system: 'science' },
+  { id: 'download-nav', name: 'Upload Surface Weather', kind: 'download', roomId: 'communications', x: 1872, y: 272, system: 'science' },
   { id: 'reactor-start', name: 'Tune Thermal Control', kind: 'calibrate', roomId: 'reactor', x: 736, y: 416, system: 'power' },
   { id: 'inspect', name: 'Analyze Regolith Sample', kind: 'inspect', roomId: 'medbay', x: 736, y: 1376, system: 'science' },
   { id: 'calibrate', name: 'Balance Habitat Power Bus', kind: 'calibrate', roomId: 'reactor', x: 864, y: 416, system: 'power' },
@@ -242,8 +246,8 @@ export const TASKS: TaskDef[] = [
   { id: 'fuel-storage', name: 'Replace Battery Module', kind: 'fuel', roomId: 'storage', x: 1376, y: 736, system: 'power' },
   { id: 'shields', name: 'Prime Shields', kind: 'shield', roomId: 'security', x: 416, y: 1312 },
   { id: 'wiring-electrical', name: 'Reconnect Power Distribution Bus', kind: 'wiring', roomId: 'reactor', x: 1056, y: 416, system: 'power' },
-  { id: 'review-cams', name: 'Review Rover Terrain Images', kind: 'download', roomId: 'security', x: 224, y: 1056, system: 'science' },
-  { id: 'clean-o2', name: 'Service CO2 Scrubber Filter', kind: 'garbage', roomId: 'storage', x: 1824, y: 736, system: 'life' },
+  { id: 'review-cams', name: 'Review Rover Terrain Images', kind: 'download', roomId: 'security', x: 240, y: 1200, system: 'science' },
+  { id: 'clean-o2', name: 'Service CO2 Scrubber Filter', kind: 'garbage', roomId: 'storage', x: 1808, y: 752, system: 'life' },
   { id: 'reboot-comms', name: 'Align Deep-Space Antenna', kind: 'calibrate', roomId: 'communications', x: 1760, y: 352, system: 'science' },
   { id: 'eva-sample', name: 'Collect Geology Sample', kind: 'inspect', roomId: 'exterior', x: 1568, y: 1568, system: 'science' },
   { id: 'eva-array', name: 'Inspect Exterior Power Cable', kind: 'wiring', roomId: 'exterior', x: 1824, y: 1568, system: 'power' },
@@ -558,7 +562,7 @@ export function loadSave(): PlayerSave {
         ? parsed.trainingRank
         : null,
       examBest: Number.isFinite(parsed.examBest) ? Number(parsed.examBest) : 0,
-      trialDay: Number.isFinite(parsed.trialDay) ? Math.max(0, Math.min(TRIAL_MAX_DAY, Number(parsed.trialDay))) : 0,
+      trialDay: Number.isFinite(parsed.trialDay) ? Math.max(0, Math.min(TRIAL_MAX_DAY + PENALTY_MAX_DAY, Number(parsed.trialDay))) : 0,
       activeTrial: parseSavedTrial(parsed.activeTrial),
       specialist: isSpecialistId(parsed.specialist) ? parsed.specialist : fallback.specialist,
       destination: isDestinationId(parsed.destination) ? parsed.destination : fallback.destination,
@@ -609,6 +613,11 @@ function parseSavedTrial(value: unknown): SavedTrial | null {
     ? trial.reports.map(parseReport).filter((item): item is EarthProgressReport => Boolean(item))
     : [];
   const report = parseReport(trial.report);
+  const planningBase = trial.planning && !trial.tasks.length ? migrateMetrics(trial.planning.eventBase) : null;
+  const selected = Array.isArray(trial.planning?.selected)
+    ? [...new Set(trial.planning.selected.filter(id => typeof id === 'string' && TASKS.some(task => task.id === id)))]
+    : [];
+  const position = trial.position;
   return {
     phase: trial.phase,
     day: Number(trial.day),
@@ -622,7 +631,15 @@ function parseSavedTrial(value: unknown): SavedTrial | null {
     metrics,
     reports: reports.slice(-TRIAL_MAX_DAY - PENALTY_MAX_DAY),
     report,
-    remainingMs: typeof trial.remainingMs === 'number' ? Math.max(0, Math.min(300000, trial.remainingMs)) : undefined,
+    remainingMs: typeof trial.remainingMs === 'number' && Number.isFinite(trial.remainingMs)
+      ? Math.max(0, Math.min(300000, trial.remainingMs)) : undefined,
+    shiftDurationMs: typeof trial.shiftDurationMs === 'number' && Number.isFinite(trial.shiftDurationMs) && trial.shiftDurationMs > 0
+      ? Math.min(300000, trial.shiftDurationMs) : undefined,
+    eventChoiceId: typeof trial.eventChoiceId === 'string' ? trial.eventChoiceId : undefined,
+    position: position && Number.isFinite(position.x) && Number.isFinite(position.y)
+      && position.x > 0 && position.x < WORLD_WIDTH && position.y > 0 && position.y < WORLD_HEIGHT
+      ? { x: position.x, y: position.y } : undefined,
+    planning: planningBase ? { eventBase: planningBase, selected } : undefined,
   };
 }
 

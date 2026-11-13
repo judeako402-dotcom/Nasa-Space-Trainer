@@ -1,7 +1,7 @@
 import {
   DEFAULT_LOBBY, DESTINATIONS, DIFFICULTY_INFO, EXAM_PASS_RATIO, EXAM_QUESTION_COUNT,
   EXAM_QUESTIONS, PLAYER_COLORS, PENALTY_MAX_DAY, SPECIALISTS, TASKS,
-  TRIAL_MAX_DAY, SAVE_BACKUP_KEY, SAVE_KEY, defaultSave, destinationById, getColor, getRoomName, loadSave, persistSave, shuffle,
+  TRIAL_MAX_DAY, PLAYER_SPAWN, SAVE_BACKUP_KEY, SAVE_KEY, defaultSave, destinationById, getColor, getRoomName, loadSave, persistSave, shuffle,
   specialistById, taskById,
 } from './model';
 import type {
@@ -16,7 +16,7 @@ import { surfaceHabitatFor } from './data/surfaceHabitat';
 import { GAME_MODEL_NOTE, NASA_REFERENCES, scienceBrief } from './data/science';
 import { TRAINING_DECK } from './data/trainingDeck';
 import {
-  applyDailyOperations, applyEvent, applyMissedDay, applyTaskCompletion, evaluateMission,
+  applyDailyOperations, applyEvent, applyMissedDay, applyTaskCompletion, assignmentOffer, createMetrics, evaluateMission,
   eventForDay, metricDeltas, offersForDay, systemHealth,
 } from './sim/mission';
 import { createRng, seedFor } from './sim/rng';
@@ -28,7 +28,7 @@ import { configureMusic, startMusic, stopMusic } from './audio/music';
 import './styles/style.css';
 import './styles/ui-kit.css';
 import {
-  createInitialExam, createMissionState, createTrainingState,
+  createInitialExam, createMissionState, createTrainingState, remainingShiftMs,
 } from './app/state';
 import type {
   ExamState, MissionState, PendingScene, PromptState, ScreenId, TrainingState,
@@ -348,15 +348,17 @@ function renderConstellationVideoScreen(opts: {
 function walkStationTo(x: number, y: number, label?: string): void {
   if (!game) return;
   const activeGame = game;
+  const screen = currentScreen;
   void import('./game').then(({ navigateStationTo }) => {
-    if (activeGame === game) {
-      navigateStationTo(activeGame, x, y);
-      if (label) showToast(`Auto-piloting to ${label}...`);
+    if (activeGame === game && currentScreen === screen) {
+      const routed = navigateStationTo(activeGame, x, y);
+      if (label) showToast(routed ? `Auto-piloting to ${label}...` : `No route to ${label}.`);
     }
   });
 }
 
 function setScreen(screen: ScreenId, markup: string): void {
+  pendingScene = null;
   if (screen !== 'launch' && launchGame) {
     launchGame.destroy(true);
     launchGame = null;
@@ -435,7 +437,7 @@ function showMenu(): void {
   startMusic();
   const savedTrial = save.activeTrial;
   const badgeMain = savedTrial
-    ? `DAY ${String(savedTrial.penaltyDay ? TRIAL_MAX_DAY + savedTrial.penaltyDay : savedTrial.day).padStart(2, '0')} / ${TRIAL_MAX_DAY}`
+    ? trialDayLabel(savedTrial)
     : '';
   const playActionMarkup = savedTrial
     ? `
@@ -771,7 +773,8 @@ function configureScene(options: { respawn?: boolean } = {}): void {
   if (!game) return;
   const state = currentScreen === 'training' ? trainingSceneState() : missionSceneState();
   if (!sceneReady) {
-    pendingScene = { state, respawn: options.respawn === true };
+    const respawn = options.respawn === true || (pendingScene?.state.mapId === state.mapId && pendingScene.respawn);
+    pendingScene = { state, respawn };
     return;
   }
   const activeGame = game;
@@ -797,6 +800,7 @@ function onGameEvent(event: GameEvent): void {
     }
     return;
   }
+  if (currentScreen !== 'mission' && currentScreen !== 'training') return;
   if (event.type === 'move') {
     if (currentScreen === 'training') {
       training.x = event.x;
@@ -847,6 +851,10 @@ function onGameEvent(event: GameEvent): void {
   }
   if (event.type === 'crew') {
     talkToCrew(event.crewId, event.name, event.lines);
+    return;
+  }
+  if (event.type === 'route-blocked') {
+    showToast('Auto-pilot stopped. Move clear of the wall and try again.');
     return;
   }
   if (event.type === 'fps') {
@@ -1143,13 +1151,13 @@ function openMinigameModal(options: {
     if (event.target === shade) close(false);
   });
   renderTaskGame(options.kind, box.querySelector<HTMLDivElement>('#task-body')!, () => close(true), cleanups, options.title);
+  box.querySelector<HTMLButtonElement>('[data-close]')?.focus();
 }
 
 function openMissionTask(taskId: string): void {
   const task = taskById(taskId);
   if (!task || !mission.tasks.includes(task.id) || mission.completed.includes(task.id)) return;
   if (!isMissionActive() || mission.modalOpen) return;
-  if (Math.hypot(mission.playerX - task.x, mission.playerY - task.y) > 160) return;
   pauseMissionForModal();
   openMinigameModal({
     eyebrow: `DAY ${missionDayNumber()} · ${getRoomName(task.roomId).toUpperCase()}`,
@@ -1158,10 +1166,11 @@ function openMissionTask(taskId: string): void {
     onClose: resumeMissionAfterModal,
     onComplete: () => {
       const beforeTask = { ...mission.metrics };
-      mission.completed.push(task.id);
+      mission.completed = [...mission.completed, task.id];
       mission.totalCompleted += 1;
       mission.metrics = applyTaskCompletion(mission.metrics, task, lobby.specialist);
       sfx.complete();
+      saveTrialProgress();
       updateHUD();
       showTaskResult(task.name, beforeTask);
     },
@@ -1176,7 +1185,7 @@ function showTaskResult(taskName: string, before: MissionMetrics): void {
       <section class="spud-modal-frame task-result-card" role="dialog" aria-modal="true" aria-labelledby="task-result-title">
         <div class="spud-modal-top">
           <div>
-            <span class="spud-constellation-kicker" style="margin-bottom:2px;">SYSTEMS REPORT · ${escapeHtml(getRoomName(mission.room))}</span>
+            <span class="spud-constellation-kicker" style="margin-bottom:2px;">SYSTEMS REPORT · ${escapeHtml(mission.room)}</span>
             <h2 id="task-result-title">${escapeHtml(taskName)} COMPLETE</h2>
           </div>
         </div>
@@ -1200,7 +1209,6 @@ function showTaskResult(taskName: string, before: MissionMetrics): void {
     updateHUD();
     if (lastTask) finishDay('All daily assignments completed. Crew systems stable.');
     else {
-      saveTrialProgress();
       showToast(`${mission.tasks.length - mission.completed.length} assignment${mission.tasks.length - mission.completed.length === 1 ? '' : 's'} remain today.`);
     }
   });
@@ -1665,7 +1673,10 @@ function showOptions(): void {
   if (typeof options.masterVolume !== 'number') options.masterVolume = 80;
   const returnScreen = currentScreen === 'training' || currentScreen === 'mission' ? currentScreen : 'menu';
   if (returnScreen === 'training') pauseTrainingForModal();
-  if (returnScreen === 'mission') pauseMissionForModal();
+  if (returnScreen === 'mission') {
+    pauseMissionForModal();
+    if (isMissionActive()) saveTrialProgress();
+  }
 
   const existingMenuStage = returnScreen === 'menu'
     ? screenRoot.querySelector<HTMLElement>('.screen-menu.spud-video-menu')
@@ -2329,8 +2340,7 @@ function showResumeStaging(): void {
   }
   syncLobbyFromSave();
   const destination = destinationById(save.destination);
-  const effectiveDay = saved.penaltyDay ? TRIAL_MAX_DAY + saved.penaltyDay : saved.day;
-  const dayLabel = `DAY ${String(effectiveDay).padStart(2, '0')} / ${TRIAL_MAX_DAY}`;
+  const dayLabel = trialDayLabel(saved);
   const shiftStageLabel = saved.phase === 'report' && saved.report
     ? 'SAVED SHIFT REPORT'
     : saved.tasks.length > 0
@@ -2356,7 +2366,7 @@ function showResumeStaging(): void {
         <div class="spud-constellation-heading" id="suit-color-heading">SUIT COLOR (APPLIES LIVE)</div>
         ${renderSuitColorNodes(lobby.colorId)}
 
-        <div class="spud-constellation-heading" id="difficulty-heading">TRIAL DIFFICULTY (APPLIES LIVE)</div>
+        <div class="spud-constellation-heading" id="difficulty-heading">TRIAL DIFFICULTY (NEXT SHIFT)</div>
         ${renderDifficultyStrip(save.options.difficulty)}
 
         <div class="spud-constellation-heading" id="specialist-heading">SPECIALIST CLASS · ACTIVE TRIAL (CHANGING OPENS NEW MISSION SETUP)</div>
@@ -2736,7 +2746,6 @@ function beginMission(): void {
   save.destination = lobby.destination;
   save.trialDay = 1;
   save.activeTrial = null;
-  persistSave(save);
   mission = createMissionState();
   mission.phase = 'playing';
   mission.day = 1;
@@ -2753,6 +2762,12 @@ function stopLoop(): void {
 
 function missionDayNumber(): number {
   return mission.day + mission.penaltyDay;
+}
+
+function trialDayLabel(trial: Pick<SavedTrial, 'day' | 'penaltyDay'>): string {
+  return trial.penaltyDay
+    ? `EXT. ${trial.penaltyDay} / ${PENALTY_MAX_DAY}`
+    : `DAY ${String(trial.day).padStart(2, '0')} / ${TRIAL_MAX_DAY}`;
 }
 
 function isMissionActive(): boolean {
@@ -2786,7 +2801,7 @@ function showMissionShell(): void {
   updateHUD();
 }
 
-function startDay(): void {
+function startDay(draft?: SavedTrial['planning']): void {
   stopLoop();
   mission.phase = 'playing';
   mission.completed = [];
@@ -2795,21 +2810,26 @@ function startDay(): void {
   mission.offers = [];
   mission.report = null;
   mission.dayStartedAt = Date.now();
+  mission.shiftDurationMs = 0;
   mission.pausedDuration = 0;
   mission.pauseStartedAt = 0;
   mission.modalOpen = false;
   const rng = createRng(seedFor(mission.day, mission.penaltyDay, mission.reports.length));
   const recentReports = mission.reports.slice(-3);
   mission.eventCard = eventForDay(rng, lobby.destination, mission.penaltyDay > 0 ? missionDayNumber() : mission.day, recentReports.map(report => report.eventId ?? ''));
-  mission.metrics = applyDailyOperations(mission.metrics);
-  planningEventBase = { ...mission.metrics };
-  selectedEventChoice = mission.eventCard.responses?.[0]?.id ?? 'default';
-  if (!mission.eventCard.responses?.length) mission.metrics = applyEvent(mission.metrics, mission.eventCard);
-  else applyPlanningEventChoice(selectedEventChoice);
+  planningEventBase = draft ? { ...draft.eventBase } : applyDailyOperations(mission.metrics);
+  const responses = mission.eventCard.responses ?? [];
+  selectedEventChoice = draft && responses.some(response => response.id === selectedEventChoice)
+    ? selectedEventChoice : responses[0]?.id ?? 'default';
+  applyPlanningEventChoice(selectedEventChoice);
   mission.offers = offersForDay(TASKS, lobby.specialist, rng, mission.reports.slice(-2).flatMap(report => report.tasks ?? []));
+  if (draft) {
+    mission.selected = draft.selected.filter(id => mission.offers.some(offer => offer.taskId === id)).slice(0, DAY.assignmentsPerDay);
+  }
   configureScene({ respawn: true });
   updateHUD();
   startPlanning();
+  saveTrialProgress();
 }
 
 function computeProjectedMetrics(): MissionMetrics {
@@ -2984,6 +3004,7 @@ function startPlanning(): void {
       }
       sfx.click();
       refreshPlanning();
+      saveTrialProgress();
     });
   }
 
@@ -2997,6 +3018,7 @@ function startPlanning(): void {
     sfx.click();
     refreshPlanning();
     updateHUD();
+    saveTrialProgress();
   }));
 
   confirm.addEventListener('click', () => {
@@ -3044,6 +3066,7 @@ function commitAssignments(): void {
   mission.totalAssigned += mission.tasks.length;
   mission.phase = 'playing';
   mission.dayStartedAt = Date.now();
+  mission.shiftDurationMs = dayDurationMs();
   mission.pausedDuration = 0;
   mission.pauseStartedAt = 0;
   mission.modalOpen = false;
@@ -3058,13 +3081,13 @@ function commitAssignments(): void {
 function startLoop(): void {
   stopLoop();
   tickClock();
-  loopTimer = window.setInterval(tickClock, 400);
+  if (isMissionActive()) loopTimer = window.setInterval(tickClock, 400);
 }
 
 function tickClock(): void {
-  if (currentScreen !== 'mission' || mission.phase !== 'playing') return;
+  if (!isMissionActive()) return;
   if (mission.modalOpen) return;
-  const remaining = Math.max(0, dayDurationMs() - (Date.now() - mission.dayStartedAt - mission.pausedDuration));
+  const remaining = remainingShiftMs(mission, Date.now());
   const clock = document.querySelector<HTMLDivElement>('#day-clock');
   if (clock) {
     const total = Math.ceil(remaining / 1000);
@@ -3115,7 +3138,7 @@ function renderReport(reason: string): void {
   const isFinalDay = mission.day >= TRIAL_MAX_DAY;
   const metricOrder: (keyof MissionMetrics)[] = ['power', 'oxygen', 'water', 'starch', 'hull', 'morale', 'research'];
   const prevReport = mission.reports.length >= 2 ? mission.reports[mission.reports.length - 2] : null;
-  const baselineMetrics = prevReport?.metrics ?? planningEventBase ?? mission.metrics;
+  const baselineMetrics = prevReport?.metrics ?? (report.day === 1 ? createMetrics() : mission.metrics);
 
   overlayRoot.innerHTML = `
     <section class="spud-canvas-overlay earth-report-full ${isFinalDay ? (verdict.passed ? 'final-review passed' : 'final-review below-target') : ''} ${save.options.reducedMotion ? 'reduce-motion' : ''}" aria-labelledby="report-screen-title">
@@ -3336,6 +3359,10 @@ function resumeTrial(): void {
     destination: save.destination,
   };
   const restoredEvent = saved.eventId ? EVENT_CARDS.find(event => event.id === saved.eventId) ?? null : null;
+  const shiftDurationMs = saved.shiftDurationMs ?? Math.max(dayDurationMs(saved.penaltyDay), saved.remainingMs ?? 0);
+  const elapsedMs = Math.max(0, shiftDurationMs - (saved.remainingMs ?? shiftDurationMs));
+  planningEventBase = null;
+  selectedEventChoice = saved.eventChoiceId ?? saved.report?.eventChoiceId ?? '';
   mission = {
     ...createMissionState(),
     ...saved,
@@ -3346,11 +3373,14 @@ function resumeTrial(): void {
     offers: [],
     selected: [],
     eventCard: restoredEvent,
-    dayStartedAt: Date.now(),
-    pausedDuration: saved.remainingMs === undefined ? 0 : Math.max(0, dayDurationMs(saved.penaltyDay) - saved.remainingMs),
+    dayStartedAt: Date.now() - elapsedMs,
+    shiftDurationMs,
+    pausedDuration: 0,
     pauseStartedAt: 0,
     modalOpen: false,
     report: saved.report,
+    playerX: saved.position?.x ?? PLAYER_SPAWN.x,
+    playerY: saved.position?.y ?? PLAYER_SPAWN.y,
   };
   showMissionShell();
   configureScene({ respawn: true });
@@ -3362,10 +3392,14 @@ function resumeTrial(): void {
   }
   mission.phase = 'playing';
   if (mission.tasks.length > 0) {
+    if (mission.completed.length === mission.tasks.length) {
+      finishDay('All daily assignments completed. Crew systems stable.');
+      return;
+    }
     startLoop();
-    showToast('Trial resumed. Finish the shift before the clock runs out.');
+    if (isMissionActive()) showToast('Trial resumed. Finish the shift before the clock runs out.');
   } else {
-    startDay();
+    startDay(saved.planning);
   }
 }
 
@@ -3382,11 +3416,14 @@ function saveTrialProgress(): void {
     tasks: [...mission.tasks],
     completed: [...mission.completed],
     eventId: mission.eventCard?.id ?? null,
+    eventChoiceId: selectedEventChoice || undefined,
+    position: { x: mission.playerX, y: mission.playerY },
     reports: [...mission.reports],
     report: mission.report,
-    remainingMs: mission.tasks.length
-      ? Math.max(0, dayDurationMs() - (Date.now() - mission.dayStartedAt - mission.pausedDuration - (mission.pauseStartedAt ? Date.now() - mission.pauseStartedAt : 0)))
-      : dayDurationMs(),
+    remainingMs: mission.tasks.length ? remainingShiftMs(mission, Date.now()) : undefined,
+    shiftDurationMs: mission.tasks.length ? mission.shiftDurationMs : undefined,
+    planning: !mission.tasks.length && planningEventBase
+      ? { eventBase: { ...planningEventBase }, selected: [...mission.selected] } : undefined,
   };
   save.activeTrial = trial;
   save.trialDay = missionDayNumber();
@@ -3408,9 +3445,7 @@ function systemsMarkup(): string {
 function updateHUD(): void {
   if (currentScreen !== 'mission') return;
   const dayPill = document.querySelector<HTMLDivElement>('#trial-day');
-  if (dayPill) dayPill.textContent = mission.penaltyDay
-    ? `EXT. ${mission.penaltyDay} / ${PENALTY_MAX_DAY}`
-    : `DAY ${String(mission.day).padStart(2, '0')} / ${TRIAL_MAX_DAY}`;
+  if (dayPill) dayPill.textContent = trialDayLabel(mission);
   const taskLabel = document.querySelector<HTMLSpanElement>('#task-label');
   const taskStatus = mission.tasks.length ? `TASKS ${mission.completed.length} / ${mission.tasks.length}` : 'PLANNING';
   if (taskLabel && taskLabel.textContent !== taskStatus) taskLabel.textContent = taskStatus;
@@ -3444,7 +3479,7 @@ function updateActionButtons(): void {
   if (!prompt || !use) return;
   const id = currentPrompt.id;
   const isSpecial = currentPrompt.kind === 'crew' || currentPrompt.kind === 'vent';
-  const relevant = Boolean(id) && (currentScreen === 'training' || isSpecial || mission.tasks.includes(id ?? ''));
+  const relevant = Boolean(id) && (currentScreen === 'training' || (isMissionActive() && (isSpecial || mission.tasks.includes(id ?? ''))));
   if (!id) {
     prompt.textContent = '';
     prompt.hidden = true;
@@ -3561,14 +3596,12 @@ function openTaskList(): void {
   const renderTaskInspector = (taskId: string): string => {
     const task = taskById(taskId);
     if (!task) return '<div class="spud-copy-block"><h2>NO TASK SELECTED</h2><p>Plan the shift to receive assignments.</p></div>';
-    const offer = mission.offers.find(item => item.taskId === task.id);
-    const iconName = offer?.icon ?? 'gear';
-    const sysName = (task.system ?? offer?.system ?? 'station').toUpperCase();
-    const blurbText = offer?.blurb ?? `Complete the ${task.kind} maintenance protocol in ${getRoomName(task.roomId)}.`;
+    const offer = assignmentOffer(task);
+    const sysName = offer.system.toUpperCase();
     const done = mission.completed.includes(task.id);
     return `
       <div class="spud-loadout-portrait">
-        <div class="spud-portrait-ring"><img src="/assets/ui/icons/${iconName}.png" alt="" style="width:40px;height:40px;" /></div>
+        <div class="spud-portrait-ring"><img src="/assets/ui/icons/${offer.icon}.png" alt="" style="width:40px;height:40px;" /></div>
         <div class="spud-loadout-meta">
           <span>${escapeHtml(getRoomName(task.roomId).toUpperCase())} · ${escapeHtml(sysName)}</span>
           <h3>${escapeHtml(task.name)}</h3>
@@ -3577,7 +3610,7 @@ function openTaskList(): void {
       </div>
       <div class="spud-copy-block">
         <h2>TELEMETRY &amp; WALK ESTIMATE</h2>
-        <p>${escapeHtml(blurbText)}</p>
+        <p>${escapeHtml(offer.blurb)}</p>
         <div style="display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:4px;">${assignmentPreview(task.id)}</div>
       </div>
       ${!done ? renderConstellationAction({
@@ -3814,6 +3847,9 @@ function wireControls(): void {
       resumeMissionAfterModal();
     }
   });
+  window.addEventListener('pagehide', () => {
+    if (isMissionActive() && !document.hidden) saveTrialProgress();
+  });
   document.addEventListener('keydown', event => {
     const target = event.target as HTMLElement | null;
     if (target?.closest('dialog[open]')) return;
@@ -3848,8 +3884,8 @@ function wireControls(): void {
     }
     if (event.key === 'Escape') {
       if (modalRoot.childElementCount) {
-        const resultContinue = modalRoot.querySelector<HTMLButtonElement>('[data-result-continue]');
-        if (resultContinue) resultContinue.click();
+        const close = modalRoot.querySelector<HTMLButtonElement>('[data-result-continue], [data-close]');
+        if (close) close.click();
         else {
           modalRoot.replaceChildren();
           resumeFromModal();
@@ -3858,6 +3894,7 @@ function wireControls(): void {
       return;
     }
     if (currentScreen !== 'mission' && currentScreen !== 'training') return;
+    if (currentScreen === 'mission' && !isMissionActive()) return;
     if (modalRoot.childElementCount || event.ctrlKey || event.altKey || event.metaKey || event.repeat) return;
     const key = event.key.toLowerCase();
     if (key === 'm') {
@@ -3880,6 +3917,7 @@ function wireControls(): void {
     openMap();
   });
   document.querySelector('[data-action="options"]')?.addEventListener('click', () => {
+    if (!isMissionActive()) return;
     sfx.click();
     showOptions();
   });

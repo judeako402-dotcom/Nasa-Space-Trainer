@@ -59,6 +59,17 @@ export function systemOfTask(task: TaskDef): AssignmentSystem {
   return 'science';
 }
 
+export function assignmentOffer(task: TaskDef): AssignmentOffer {
+  const system = systemOfTask(task);
+  return {
+    taskId: task.id,
+    name: task.name,
+    roomId: task.roomId,
+    system,
+    ...SYSTEM_META[system],
+  };
+}
+
 export function offersForDay(tasks: TaskDef[], role: SpecialistId, rng: Rng, recentlyAssigned: string[] = []): AssignmentOffer[] {
   const preferred = ROLE_SYSTEMS[role];
   const ranked = rng.shuffle(tasks).sort((a, b) => {
@@ -68,19 +79,15 @@ export function offersForDay(tasks: TaskDef[], role: SpecialistId, rng: Rng, rec
   });
   const fresh = ranked.filter(task => !recentlyAssigned.includes(task.id));
   const pool = fresh.length >= DAY.offerCount ? fresh : ranked;
-  return pool.slice(0, DAY.offerCount).map(task => {
+  const systems = new Set<AssignmentSystem>();
+  const varied = pool.filter(task => {
     const system = systemOfTask(task);
-    const meta = SYSTEM_META[system];
-    return {
-      taskId: task.id,
-      name: task.name,
-      roomId: task.roomId,
-      system,
-      blurb: meta.blurb,
-      icon: meta.icon,
-      accent: meta.accent,
-    };
+    if (systems.has(system)) return false;
+    systems.add(system);
+    return true;
   });
+  const offers = [...varied, ...pool.filter(task => !varied.includes(task))].slice(0, DAY.offerCount);
+  return offers.map(assignmentOffer);
 }
 
 export function eventForDay(rng: Rng, destination: DestinationId = 'moon', day = 1, recentIds: string[] = []): EventCard {

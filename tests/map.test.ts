@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { findPath, gridFromTiles, tileAtPixel, type Tile } from '../src/game/utils/pathing';
+import { PLAYER_FEET } from '../src/game/constants';
+import { findPath, gridFromTiles, hasTileClearance, tileAtPixel, type Tile } from '../src/game/utils/pathing';
 import { PLAYER_SPAWN, TASKS } from '../src/model';
 
 /**
@@ -18,6 +19,7 @@ interface TiledObject {
   width: number;
   height: number;
   point?: boolean;
+  polygon?: { x: number; y: number }[];
   properties?: { name: string; type: string; value: string | number | boolean }[];
 }
 
@@ -79,18 +81,27 @@ const centerOf = (obj: TiledObject): Tile =>
   tileAtPixel({ x: obj.x + obj.width / 2, y: obj.y + obj.height / 2 }, map.tilewidth);
 
 describe('station map structure', () => {
-  it('has the foundation layers: floor, walls, overhead, objects', () => {
+  it('keeps depth artwork separate from floor and collision tiles', () => {
     expect(map.layers.map((l) => l.name).sort()).toEqual([
+      'depth-artwork',
       'floor',
       'objects',
       'overhead',
       'walls',
     ]);
+    const artwork = layer('depth-artwork').objects ?? [];
+    expect(artwork.map(object => object.name)).toContain('Cargo container');
+    expect(artwork.some(object => object.name.startsWith('Wall '))).toBe(true);
+    for (const object of artwork) {
+      expect(object.type).toBe('DepthArtwork');
+      expect(object.polygon?.length, object.name).toBeGreaterThanOrEqual(4);
+      expect(object.properties?.find(property => property.name === 'depth')?.value, object.name).toEqual(expect.any(Number));
+    }
   });
 
-  it('uses 64px tiles covering the 2048x2048 sample artwork', () => {
-    expect(map.tilewidth).toBe(64);
-    expect(map.tileheight).toBe(64);
+  it('uses 32px collision tiles covering the 2048x2048 artwork', () => {
+    expect(map.tilewidth).toBe(32);
+    expect(map.tileheight).toBe(32);
     expect(map.width * map.tilewidth).toBe(2048);
     expect(map.height * map.tileheight).toBe(2048);
   });
@@ -137,6 +148,24 @@ describe('station map structure', () => {
 });
 
 describe('station map collision', () => {
+  const fits = (x: number, y: number): boolean =>
+    hasTileClearance(grid, map.tilewidth, { x, y }, PLAYER_FEET.width, PLAYER_FEET.height);
+
+  it('fits the full player collider along the illustrated doorways', () => {
+    for (const [from, to, y] of [[1120, 1344, 928], [608, 768, 1408]]) {
+      for (let x = from; x <= to; x += 4) {
+        expect(fits(x, y), `doorway blocked at ${x}, ${y}`).toBe(true);
+      }
+    }
+    expect(fits(PLAYER_SPAWN.x, PLAYER_SPAWN.y + PLAYER_FEET.offsetY)).toBe(true);
+  });
+
+  it('blocks the walls beside doors and solid cargo props', () => {
+    for (const [x, y] of [[1232, 800], [690, 1300], [1600, 940], [1680, 770], [1890, 1060]]) {
+      expect(fits(x, y), `collider fits inside a wall or prop at ${x}, ${y}`).toBe(false);
+    }
+  });
+
   it('keeps the spawn tile walkable', () => {
     expect(spawnTile).not.toBeNull();
     expect(grid.isBlocked(spawnTile!.x, spawnTile!.y)).toBe(false);

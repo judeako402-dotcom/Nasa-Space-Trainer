@@ -1,6 +1,6 @@
 /**
  * Generates public/assets/maps/spudnaut-station.tmj — the Spudnaut station
- * layout traced from assets/Sample mapppp.png (2048x2048, 32x32 tiles @64px).
+ * layout traced from the station artwork (2048x2048, 64x64 tiles @32px).
  *
  * The artwork renders as the visual layer in-game; this generator derives the
  * collision/minimap grid from hand-authored pixel regions that follow the
@@ -15,52 +15,68 @@ import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const TS = 64;
-const COLS = 32;
-const ROWS = 32;
+const TS = 32;
+const COLS = 2048 / TS;
+const ROWS = 2048 / TS;
 
 // --- regions (pixel space, traced from the sample map) ---------------------
 const WALK = [
   // rooms
-  { t: 'ellipse', cx: 866, cy: 240, rx: 311, ry: 230 }, // Reactor Dome
-  { t: 'rect', x: 1278, y: 115, w: 685, h: 355 }, // Comms Dome
-  { t: 'rect', x: 105, y: 445, w: 560, h: 520 }, // Hydroponics Bay
-  { t: 'rect', x: 782, y: 700, w: 240, h: 455 }, // Hub vertical arm
-  { t: 'rect', x: 782, y: 897, w: 365, h: 80 }, // Hub horizontal arm
-  { t: 'ellipse', cx: 922, cy: 942, rx: 135, ry: 135 }, // Hub bulge
-  { t: 'rect', x: 1290, y: 640, w: 670, h: 520 }, // Cargo Bay
-  { t: 'rect', x: 105, y: 1035, w: 540, h: 625 }, // Crew Quarters
-  { t: 'rect', x: 665, y: 1155, w: 560, h: 610 }, // Med Lab
-  { t: 'ellipse', cx: 1655, cy: 1515, rx: 340, ry: 330 }, // Landing Pad
-  { t: 'rect', x: 1493, y: 1803, w: 390, h: 190 }, // Airlock (below pad)
+  { t: 'ellipse', cx: 900, cy: 276, rx: 302, ry: 226 }, // Reactor Dome
+  { t: 'rect', x: 1328, y: 218, w: 596, h: 250 }, // Comms Dome
+  { t: 'rect', x: 123, y: 532, w: 536, h: 428 }, // Hydroponics Bay
+  { t: 'rect', x: 746, y: 732, w: 400, h: 420 }, // Central Hub
+  { t: 'rect', x: 1302, y: 722, w: 645, h: 459 }, // Cargo Bay
+  { t: 'rect', x: 130, y: 1137, w: 493, h: 544 }, // Crew Quarters
+  { t: 'rect', x: 748, y: 1224, w: 477, h: 590 }, // Med Lab
+  { t: 'ellipse', cx: 1692, cy: 1533, rx: 296, ry: 287 }, // Landing Pad
+  { t: 'rect', x: 1498, y: 1696, w: 391, h: 75 }, // South edge of the pad
   // corridors
-  { t: 'rect', x: 1088, y: 155, w: 322, h: 190 }, // reactor -> comms
-  { t: 'rect', x: 830, y: 400, w: 300, h: 370 }, // reactor -> hub
-  { t: 'rect', x: 1022, y: 740, w: 332, h: 110 }, // hub -> cargo
-  { t: 'rect', x: 360, y: 920, w: 110, h: 160 }, // hydro -> crew
-  { t: 'rect', x: 1445, y: 415, w: 175, h: 300 }, // comms -> cargo
-  { t: 'rect', x: 1548, y: 1120, w: 155, h: 180 }, // cargo -> landing
+  { t: 'rect', x: 1100, y: 382, w: 262, h: 64 }, // reactor -> comms
+  { t: 'rect', x: 817, y: 474, w: 147, h: 276 }, // reactor -> hub
+  { t: 'rect', x: 1125, y: 896, w: 192, h: 72 }, // hub -> cargo
+  { t: 'rect', x: 320, y: 949, w: 145, h: 207 }, // hydro -> crew
+  { t: 'rect', x: 1358, y: 450, w: 114, h: 286 }, // comms -> cargo
+  { t: 'rect', x: 1610, y: 1165, w: 119, h: 200 }, // cargo -> landing
+  { t: 'rect', x: 873, y: 1133, w: 106, h: 110 }, // hub -> med lab
+  { t: 'rect', x: 607, y: 1361, w: 155, h: 92 }, // crew -> med lab
 ];
 
-const BLOCK = [
-  { t: 'rect', x: 745, y: 20, w: 330, h: 340 }, // reactor cylinder
-  { t: 'ellipse', cx: 1592, cy: 230, rx: 180, ry: 120 }, // geodesic dome
-  { t: 'rect', x: 945, y: 445, w: 70, h: 305 }, // yellow pipes
-  { t: 'rect', x: 140, y: 475, w: 195, h: 305 }, // CO2 tanks
-  { t: 'rect', x: 335, y: 445, w: 295, h: 305 }, // grow beds
-  { t: 'rect', x: 145, y: 775, w: 165, h: 155 }, // blue barrels
-  { t: 'rect', x: 570, y: 825, w: 95, h: 140 }, // hydro monitor
-  { t: 'rect', x: 1420, y: 860, w: 390, h: 200 }, // cargo container
-  { t: 'rect', x: 1540, y: 655, w: 180, h: 120 }, // stacked crates
-  { t: 'rect', x: 1855, y: 700, w: 110, h: 90 }, // small crate
-  { t: 'rect', x: 1310, y: 1075, w: 240, h: 95 }, // orange crate
-  { t: 'rect', x: 155, y: 1150, w: 160, h: 95 }, // crew desk
-  { t: 'rect', x: 475, y: 1105, w: 145, h: 150 }, // crew whiteboard
-  { t: 'rect', x: 140, y: 1470, w: 390, h: 180 }, // crew beds
-  { t: 'rect', x: 875, y: 1265, w: 230, h: 330 }, // exam table
-  { t: 'rect', x: 745, y: 1605, w: 330, h: 90 }, // lab counter
-  { t: 'rect', x: 1370, y: 1310, w: 190, h: 250 }, // pad seats
-  { t: 'rect', x: 1745, y: 1345, w: 240, h: 190 }, // pod shelf
+const rect = (x, y, w, h) => ({ t: 'rect', x, y, w, h });
+const ellipse = (cx, cy, rx, ry) => ({ t: 'ellipse', cx, cy, rx, ry });
+const rectangleOutline = ({ x, y, w, h }) => [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+
+// The floor footprint blocks movement. The artwork outline also includes the
+// height above that footprint so it can cover a character standing behind it.
+function prop(name, footprint, outline = rectangleOutline(footprint)) {
+  const depth = footprint.t === 'rect' ? footprint.y + footprint.h : footprint.cy + footprint.ry;
+  return { name, footprint, outline, depth };
+}
+
+const PROPS = [
+  prop('Reactor tank and rail', ellipse(899, 213, 290, 158), [[600, 219], [616, 212], [724, 265], [725, 59], [738, 25], [778, 14], [999, 11], [1053, 23], [1080, 46], [1084, 153], [1100, 212], [1095, 268], [1157, 244], [1191, 222], [1181, 275], [1097, 342], [1032, 368], [856, 376], [752, 350], [672, 309], [615, 253]]),
+  prop('Reactor cabinet', rect(1111, 262, 97, 110), [[1105, 277], [1164, 252], [1205, 262], [1201, 372], [1107, 353]]),
+  prop('Comms dome', ellipse(1628, 252, 175, 87), [[1452, 239], [1480, 206], [1512, 132], [1559, 91], [1617, 76], [1676, 85], [1723, 113], [1757, 157], [1776, 207], [1803, 240], [1797, 291], [1735, 313], [1716, 350], [1539, 350], [1533, 326], [1475, 308], [1453, 285]]),
+  prop('Comms console', rect(1829, 335, 95, 131)),
+  prop('Yellow pipes', rect(1039, 437, 69, 307), [[1039, 457], [1052, 440], [1068, 439], [1080, 427], [1098, 429], [1108, 443], [1105, 718], [1111, 735], [1100, 749], [1075, 753], [1042, 746], [1033, 732], [1040, 711]]),
+  prop('CO2 tanks', rect(124, 522, 145, 238), [[113, 458], [137, 431], [168, 420], [180, 405], [199, 410], [206, 432], [229, 449], [248, 475], [248, 526], [267, 544], [276, 564], [255, 767], [119, 767], [113, 544]]),
+  prop('Grow beds', rect(316, 535, 346, 224), [[315, 539], [403, 539], [419, 477], [431, 462], [444, 478], [663, 477], [663, 772], [416, 770], [405, 747], [315, 747]]),
+  prop('Blue barrels', ellipse(207, 881, 94, 91), [[116, 819], [121, 795], [144, 775], [180, 768], [209, 782], [221, 822], [241, 810], [275, 816], [299, 839], [304, 919], [290, 945], [229, 950], [218, 968], [146, 968], [125, 952]]),
+  prop('Hydroponics monitor', rect(563, 827, 98, 140)),
+  prop('Cargo container', rect(1419, 841, 373, 207)),
+  prop('Stacked crates', rect(1503, 718, 171, 73), [[1500, 632], [1677, 632], [1677, 795], [1500, 795]]),
+  prop('Cargo carton', rect(1675, 729, 107, 78)),
+  prop('Angled crate', rect(1827, 721, 121, 81), [[1825, 729], [1897, 692], [1949, 728], [1947, 782], [1877, 815], [1825, 784]]),
+  prop('Orange crate', rect(1306, 1078, 164, 100)),
+  prop('Cargo tool bench', rect(1849, 959, 95, 220)),
+  prop('Crew desk', rect(158, 1128, 136, 59), [[158, 1128], [172, 1128], [172, 1075], [278, 1075], [278, 1128], [295, 1128], [295, 1179], [245, 1179], [245, 1188], [193, 1188], [193, 1179], [158, 1179]]),
+  prop('Crew whiteboard', rect(480, 1120, 143, 166)),
+  prop('Crew beds', rect(130, 1478, 388, 204), [[130, 1478], [304, 1478], [304, 1682], [342, 1682], [342, 1478], [518, 1478], [518, 1683], [130, 1683]]),
+  prop('Exam table and benches', rect(907, 1288, 283, 274), [[905, 1311], [939, 1311], [939, 1287], [1135, 1287], [1135, 1311], [1190, 1311], [1190, 1566], [905, 1566]]),
+  prop('Lab counter', rect(908, 1629, 318, 87)),
+  prop('Rear lab cabinet', rect(821, 1759, 405, 61)),
+  prop('Landing pad seats', ellipse(1430, 1499, 101, 212), [[1390, 1520], [1410, 1430], [1478, 1332], [1555, 1268], [1594, 1259], [1594, 1394], [1558, 1418], [1512, 1480], [1489, 1548], [1496, 1704], [1448, 1718], [1418, 1647]]),
+  prop('Pod shelf', ellipse(1868, 1439, 71, 112), [[1756, 1338], [1817, 1312], [1857, 1329], [1924, 1400], [1978, 1484], [1978, 1516], [1903, 1561], [1755, 1368]]),
 ];
 
 const inRegion = (r, x, y) =>
@@ -69,8 +85,8 @@ const inRegion = (r, x, y) =>
     : ((x - r.cx) / r.rx) ** 2 + ((y - r.cy) / r.ry) ** 2 < 1;
 
 // --- grid -------------------------------------------------------------------
-const walkableAt = (x, y) =>
-  WALK.some((r) => inRegion(r, x, y)) && !BLOCK.some((r) => inRegion(r, x, y));
+const insideStation = (x, y) => WALK.some((r) => inRegion(r, x, y));
+const walkableAt = (x, y) => insideStation(x, y) && !PROPS.some(({ footprint }) => inRegion(footprint, x, y));
 
 const floor = new Array(COLS * ROWS).fill(0);
 const walls = new Array(COLS * ROWS).fill(0);
@@ -114,9 +130,9 @@ const task = (id, name, cx, cy, promptText) => ({
 });
 
 const tasks = [
-  task(2, 'task_reactor', 765, 290, 'Patch Hull Breach'),
-  task(3, 'task_hydro', 555, 890, 'Calibrate Grow Lamps'),
-  task(4, 'task_comms', 1620, 325, 'Reconnect Nav Relay'),
+  task(2, 'task_reactor', 784, 400, 'Patch Hull Breach'),
+  task(3, 'task_hydro', 528, 880, 'Calibrate Grow Lamps'),
+  task(4, 'task_comms', 1616, 368, 'Reconnect Nav Relay'),
 ];
 
 const vent = (id, name, cx, cy) => ({
@@ -249,6 +265,40 @@ const fmtGrid = (grid) =>
   Array.from({ length: ROWS }, (_, r) => '        ' + grid.slice(r * COLS, (r + 1) * COLS).join(',')).join(',\n') +
   '\n      ]';
 
+// Keep the wall faces at the walkable perimeter in the same depth-sorted
+// layer as props. Merge neighboring tiles into one artwork strip per edge.
+const wallFaces = [];
+for (let row = 0; row < ROWS; row++) {
+  const isWallFace = (col) => {
+    if (col >= COLS || !walls[idx(col, row)]) return false;
+    const x = (col + 0.5) * TS;
+    const y = (row + 0.5) * TS;
+    return !insideStation(x, y)
+      && !PROPS.some(({ footprint }) => inRegion(footprint, x, y))
+      && [floor[idx(col, row - 1)], floor[idx(col, row + 1)], col > 0 && floor[idx(col - 1, row)], col < COLS - 1 && floor[idx(col + 1, row)]].some(Boolean);
+  };
+  for (let col = 0; col < COLS; col++) {
+    if (!isWallFace(col)) continue;
+    const start = col;
+    while (isWallFace(col + 1)) col++;
+    wallFaces.push(prop(`Wall ${row}-${start}`, rect(start * TS, row * TS, (col - start + 1) * TS, TS)));
+  }
+}
+
+function artworkObject({ name, outline, depth }, index) {
+  const x = Math.min(...outline.map(point => point[0]));
+  const y = Math.min(...outline.map(point => point[1]));
+  return {
+    id: index + 1,
+    name,
+    type: 'DepthArtwork',
+    x,
+    y,
+    polygon: outline.map(([px, py]) => ({ x: px - x, y: py - y })),
+    properties: [{ name: 'depth', type: 'int', value: depth }],
+  };
+}
+
 const objects = [
   { id: 1, name: 'spawn', type: 'SpawnPoint', point: true, x: spawn.x, y: spawn.y, width: 0, height: 0 },
   ...tasks.map(({ promptText, ...t }) => ({
@@ -267,6 +317,7 @@ const objects = [
     properties: [{ name: 'name', type: 'string', value: rm.name }],
   })),
 ];
+const artwork = [...wallFaces, ...PROPS].map((item, index) => artworkObject(item, objects.length + index));
 
 const map = `{
   "compressionlevel": -1,
@@ -320,10 +371,21 @@ const map = `{
       "visible": true,
       "x": 0,
       "y": 0
+    },
+    {
+      "draworder": "topdown",
+      "id": 5,
+      "name": "depth-artwork",
+      "objects": [\n        ${artwork.map(item => JSON.stringify(item)).join(',\n        ')}\n      ],
+      "opacity": 1,
+      "type": "objectgroup",
+      "visible": true,
+      "x": 0,
+      "y": 0
     }
   ],
-  "nextlayerid": 5,
-  "nextobjectid": ${objects.length + 1},
+  "nextlayerid": 6,
+  "nextobjectid": ${objects.length + artwork.length + 1},
   "orientation": "orthogonal",
   "renderorder": "right-down",
   "tiledversion": "1.11.0",
@@ -334,14 +396,14 @@ const map = `{
       "columns": 2,
       "firstgid": 1,
       "image": "placeholder.png",
-      "imageheight": 64,
-      "imagewidth": 128,
+      "imageheight": ${TS},
+      "imagewidth": ${2 * TS},
       "margin": 0,
       "name": "placeholder",
       "spacing": 0,
       "tilecount": 2,
-      "tileheight": 64,
-      "tilewidth": 64
+      "tileheight": ${TS},
+      "tilewidth": ${TS}
     }
   ],
   "type": "map",
@@ -355,7 +417,7 @@ writeFileSync(out, map, 'utf8');
 
 const parsed = JSON.parse(map);
 assert(parsed.width === COLS && parsed.height === ROWS, 'round-trip dimensions');
-assert(parsed.layers.length === 4, 'round-trip layers');
+assert(parsed.layers.length === 5, 'round-trip layers');
 
 let walkCount = 0;
 for (const g of floor) if (g) walkCount++;

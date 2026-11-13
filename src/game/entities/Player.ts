@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { AssetKeys } from '../assets/AssetKeys';
-import { GHOST_SPEED, WALK_SPEED } from '../constants';
+import { GHOST_SPEED, PLAYER_FEET, WALK_SPEED } from '../constants';
 import { moveVelocity } from '../utils/vectors';
 
 const BODY_WIDTH = 56;
@@ -118,21 +118,22 @@ export class Player {
     this.pos.y = this.sprite.y;
 
     const y = this.sprite.y;
+    const depth = y + PLAYER_FEET.offsetY;
     const baseAlpha = !this.canMove ? 0.78 : 1;
     const ghostAlpha = (this.isGhost ? 0.55 : 1) * baseAlpha;
 
     this.sprite.setFlipX(this.facing === -1);
-    this.sprite.setDepth(y);
+    this.sprite.setDepth(depth);
     this.sprite.setAlpha(ghostAlpha);
 
     this.shadow.x = this.sprite.x;
     this.shadow.y = y + 30;
-    this.shadow.setDepth(y - 1);
+    this.shadow.setDepth(depth - 1);
     this.shadow.setAlpha(this.isGhost ? 0.15 : 0.35);
 
     this.nameLabel.x = this.sprite.x;
     this.nameLabel.y = y - 50;
-    this.nameLabel.setDepth(y + 2);
+    this.nameLabel.setDepth(depth + 2);
     this.nameLabel.setAlpha(ghostAlpha);
 
     if (this.moving && !this.reducedMotion) {
@@ -150,12 +151,10 @@ export class Player {
 
   private syncBodyHitbox(): void {
     const body = this.sprite.body as Phaser.Physics.Arcade.Body;
-    const feetW = 32;
-    const feetH = 34;
-    body.setSize(feetW / this.baseScaleX, feetH / this.baseScaleY, false);
+    body.setSize(PLAYER_FEET.width / this.baseScaleX, PLAYER_FEET.height / this.baseScaleY, false);
     body.setOffset(
-      ((BODY_WIDTH - feetW) / 2) / this.baseScaleX,
-      (BODY_HEIGHT - feetH - 15) / this.baseScaleY,
+      ((BODY_WIDTH - PLAYER_FEET.width) / 2) / this.baseScaleX,
+      ((BODY_HEIGHT - PLAYER_FEET.height) / 2 + PLAYER_FEET.offsetY) / this.baseScaleY,
     );
   }
 
