@@ -9,7 +9,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "prepare-assets": "node scripts/prepare-assets.mjs"
+    "prepare-assets": "node scripts/prepare-assets.mjs",
+    "map:gen": "node tools/generate-station-map.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"

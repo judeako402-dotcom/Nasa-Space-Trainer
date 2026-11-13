@@ -3,7 +3,7 @@ import { DAY, PASS_THRESHOLDS, VISION } from '../src/data/balance';
 import { TRAINING_DECK } from '../src/data/trainingDeck';
 import { SURFACE_HABITAT } from '../src/data/surfaceHabitat';
 import { EVENT_CARDS } from '../src/data/events';
-import { TASKS, taskById } from '../src/model';
+import { DEFAULT_OPTIONS, SAVE_KEY, TASKS, loadSave, taskById } from '../src/model';
 import {
   applyDailyOperations, applyEvent, applyMissedDay, applyTaskCompletion, createMetrics, evaluateMission, eventForDay,
   offersForDay, systemHealth,
@@ -251,5 +251,55 @@ describe('mission simulation', () => {
     const verdict = evaluateMission(weak, 10, 10);
     expect(verdict.passed).toBe(false);
     expect(verdict.requirements.find(item => item.key === 'research')?.met).toBe(false);
+  });
+});
+
+describe('save options & showFps persistence', () => {
+  const withMockStorage = (initial: Record<string, string>, fn: () => void) => {
+    const store = new Map<string, string>(Object.entries(initial));
+    const prevDesc = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, val: string) => {
+          store.set(key, val);
+        },
+        removeItem: (key: string) => {
+          store.delete(key);
+        },
+      },
+    });
+    try {
+      fn();
+    } finally {
+      if (prevDesc) {
+        Object.defineProperty(globalThis, 'localStorage', prevDesc);
+      } else {
+        delete (globalThis as Record<string, unknown>).localStorage;
+      }
+    }
+  };
+
+  it('defaults showFps to false', () => {
+    expect(DEFAULT_OPTIONS.showFps).toBe(false);
+    withMockStorage({}, () => {
+      expect(loadSave().options.showFps).toBe(false);
+    });
+  });
+
+  it('persists and restores showFps when true, false, or omitted', () => {
+    withMockStorage(
+      { [SAVE_KEY]: JSON.stringify({ options: { showFps: true } }) },
+      () => expect(loadSave().options.showFps).toBe(true),
+    );
+    withMockStorage(
+      { [SAVE_KEY]: JSON.stringify({ options: { showFps: false } }) },
+      () => expect(loadSave().options.showFps).toBe(false),
+    );
+    withMockStorage(
+      { [SAVE_KEY]: JSON.stringify({ options: { masterVolume: 50 } }) },
+      () => expect(loadSave().options.showFps).toBe(false),
+    );
   });
 });

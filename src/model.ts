@@ -120,6 +120,7 @@ export interface GameOptions {
   musicVolume: number;
   lineOfSight: boolean;
   reducedMotion: boolean;
+  showFps: boolean;
   difficulty: DifficultyId;
 }
 
@@ -179,8 +180,8 @@ export interface LobbySettings {
   destination: DestinationId;
 }
 
-export const WORLD_WIDTH = 2600;
-export const WORLD_HEIGHT = 1880;
+export const WORLD_WIDTH = 2048;
+export const WORLD_HEIGHT = 2048;
 
 export const PLAYER_COLORS: PlayerColor[] = [
   { id: 'red', name: 'Red', hex: 0xc51111, css: '#c51111' },
@@ -202,67 +203,54 @@ export function getColor(id: PlayerColorId): PlayerColor {
 }
 
 export const ROOMS: RoomDef[] = [
-  { id: 'upper-engine', name: 'Solar Array Control', x: 100, y: 100, w: 500, h: 300, tint: 0x49556a, icon: '⚙' },
-  { id: 'reactor', name: 'Power & Thermal', x: 1450, y: 900, w: 450, h: 300, tint: 0x5b4654, icon: '◉' },
-  { id: 'lower-engine', name: 'Workshop & Spares', x: 100, y: 1300, w: 500, h: 250, tint: 0x49556a, icon: '⚙' },
-  { id: 'medbay', name: 'Medical & Sample Lab', x: 100, y: 500, w: 500, h: 300, tint: 0x3f6a69, icon: '✚' },
-  { id: 'cafeteria', name: 'Greenhouse & Galley', x: 700, y: 100, w: 700, h: 300, tint: 0x5a6b86, icon: '☕' },
-  { id: 'weapons', name: 'EVA Preparation', x: 1500, y: 100, w: 500, h: 300, tint: 0x4c5874, icon: '✦' },
-  { id: 'navigation', name: 'Mission Planning', x: 2100, y: 100, w: 400, h: 300, tint: 0x3d5574, icon: '✧' },
-  { id: 'o2', name: 'Life Support', x: 1450, y: 500, w: 450, h: 300, tint: 0x3e6a58, icon: '❋' },
-  { id: 'admin', name: 'Command & Data', x: 2000, y: 500, w: 500, h: 300, tint: 0x476252, icon: '▤' },
-  { id: 'storage', name: 'Cargo & Water', x: 700, y: 900, w: 450, h: 300, tint: 0x5e5040, icon: '▦' },
-  { id: 'electrical', name: 'Electrical Shop', x: 700, y: 500, w: 450, h: 300, tint: 0x625c3d, icon: '⚡' },
-  { id: 'security', name: 'Rover & Robotics', x: 100, y: 900, w: 500, h: 300, tint: 0x45516b, icon: '◈' },
-  { id: 'shields', name: 'Radiation Shelter', x: 2000, y: 900, w: 500, h: 300, tint: 0x3f6268, icon: '◍' },
-  { id: 'communications', name: 'Communications', x: 700, y: 1300, w: 450, h: 250, tint: 0x4b4470, icon: '⌁' },
-  { id: 'exterior', name: 'EVA Worksite', x: 1200, y: 1500, w: 1300, h: 320, tint: 0x544b45, icon: 'E' },
+  { id: 'reactor', name: 'Reactor Dome', x: 555, y: 10, w: 622, h: 460, tint: 0x5b4654, icon: '◉' },
+  { id: 'communications', name: 'Comms Dome', x: 1278, y: 115, w: 685, h: 355, tint: 0x4b4470, icon: '⌁' },
+  { id: 'cafeteria', name: 'Hydroponics Bay', x: 105, y: 445, w: 560, h: 520, tint: 0x3e6a58, icon: '❀' },
+  { id: 'admin', name: 'Central Hub', x: 782, y: 700, w: 365, h: 455, tint: 0x476252, icon: '▤' },
+  { id: 'storage', name: 'Cargo Bay', x: 1290, y: 640, w: 670, h: 520, tint: 0x5e5040, icon: '▦' },
+  { id: 'security', name: 'Crew Quarters', x: 105, y: 1035, w: 540, h: 625, tint: 0x45516b, icon: '◈' },
+  { id: 'medbay', name: 'Med Lab', x: 665, y: 1155, w: 560, h: 610, tint: 0x3f6a69, icon: '✚' },
+  { id: 'exterior', name: 'Landing Pad', x: 1315, y: 1185, w: 680, h: 808, tint: 0x544b45, icon: 'E' },
 ];
 
 export const CORRIDORS: CorridorDef[] = [
-  { x: 550, y: 200, w: 200, h: 100 },
-  { x: 1350, y: 200, w: 200, h: 100 },
-  { x: 1950, y: 200, w: 250, h: 100 },
-  { x: 250, y: 350, w: 100, h: 1050 },
-  { x: 1225, y: 350, w: 100, h: 1200 },
-  { x: 2200, y: 350, w: 100, h: 900 },
-  { x: 550, y: 600, w: 200, h: 100 },
-  { x: 1100, y: 600, w: 1150, h: 100 },
-
-  { x: 850, y: 750, w: 100, h: 200 },
-  { x: 1350, y: 1000, w: 150, h: 100 },
-  { x: 1225, y: 1000, w: 1075, h: 100 },
-  { x: 850, y: 1150, w: 100, h: 200 },
-  { x: 1100, y: 1400, w: 200, h: 100 },
+  { x: 1088, y: 155, w: 322, h: 190 },
+  { x: 830, y: 400, w: 300, h: 370 },
+  { x: 1022, y: 740, w: 332, h: 110 },
+  { x: 1445, y: 415, w: 175, h: 300 },
+  { x: 360, y: 920, w: 110, h: 160 },
+  { x: 580, y: 1280, w: 150, h: 160 },
+  { x: 782, y: 1080, w: 240, h: 140 },
+  { x: 1548, y: 1120, w: 155, h: 180 },
 ];
 
 export const TASKS: TaskDef[] = [
-  { id: 'fuel-upper', name: 'Balance Solar-Battery Load', kind: 'fuel', roomId: 'upper-engine', x: 280, y: 210, system: 'power' },
-  { id: 'align-engine', name: 'Align Sun-Tracking Array', kind: 'calibrate', roomId: 'upper-engine', x: 200, y: 330, system: 'power' },
-  { id: 'wiring-cafeteria', name: 'Route Greenhouse Power', kind: 'wiring', roomId: 'cafeteria', x: 1170, y: 200, system: 'power' },
-  { id: 'garbage', name: 'Sort Galley Water Filters', kind: 'garbage', roomId: 'cafeteria', x: 1090, y: 350, system: 'life' },
-  { id: 'grow-light-balance', name: 'Balance Grow-Light Spectrum', kind: 'calibrate', roomId: 'cafeteria', x: 1330, y: 200, system: 'farming' },
-  { id: 'nutrient-loop', name: 'Check Hydroponics Nutrient Loop', kind: 'inspect', roomId: 'cafeteria', x: 1300, y: 350, system: 'farming' },
-  { id: 'asteroids', name: 'Survey EVA Safe Route', kind: 'inspect', roomId: 'weapons', x: 1880, y: 260, system: 'science' },
-  { id: 'steering', name: 'Plan Rover Traverse', kind: 'calibrate', roomId: 'navigation', x: 2280, y: 330, system: 'science' },
-  { id: 'download-nav', name: 'Upload Surface Weather', kind: 'download', roomId: 'navigation', x: 2350, y: 350, system: 'science' },
-  { id: 'reactor-start', name: 'Tune Thermal Control', kind: 'calibrate', roomId: 'reactor', x: 1650, y: 980, system: 'power' },
-  { id: 'inspect', name: 'Analyze Regolith Sample', kind: 'inspect', roomId: 'medbay', x: 400, y: 690, system: 'science' },
-  { id: 'calibrate', name: 'Balance Habitat Power Bus', kind: 'calibrate', roomId: 'electrical', x: 950, y: 690, system: 'power' },
-  { id: 'swipe', name: 'Check Suit Pressure Seal', kind: 'swipe', roomId: 'shields', x: 2150, y: 1080, system: 'shielding' },
-  { id: 'upload-admin', name: 'Send Earth Science Log', kind: 'download', roomId: 'admin', x: 2250, y: 700, system: 'science' },
-  { id: 'fuel-storage', name: 'Replace Battery Module', kind: 'fuel', roomId: 'reactor', x: 1770, y: 1100, system: 'power' },
-  { id: 'shields', name: 'Prime Shields', kind: 'shield', roomId: 'shields', x: 2250, y: 1050 },
-  { id: 'wiring-electrical', name: 'Reconnect Power Distribution Bus', kind: 'wiring', roomId: 'electrical', x: 800, y: 730, system: 'power' },
-  { id: 'review-cams', name: 'Review Rover Terrain Images', kind: 'download', roomId: 'security', x: 350, y: 1080, system: 'science' },
-  { id: 'clean-o2', name: 'Service CO2 Scrubber Filter', kind: 'garbage', roomId: 'o2', x: 1850, y: 610, system: 'life' },
-  { id: 'reboot-comms', name: 'Align Deep-Space Antenna', kind: 'calibrate', roomId: 'communications', x: 900, y: 1420, system: 'science' },
-  { id: 'eva-sample', name: 'Collect Geology Sample', kind: 'inspect', roomId: 'exterior', x: 1450, y: 1580, system: 'science' },
-  { id: 'eva-array', name: 'Inspect Exterior Power Cable', kind: 'wiring', roomId: 'exterior', x: 1900, y: 1600, system: 'power' },
-  { id: 'eva-route', name: 'Mark Return-to-Airlock Route', kind: 'download', roomId: 'exterior', x: 2330, y: 1580, system: 'science' },
+  { id: 'fuel-upper', name: 'Balance Solar-Battery Load', kind: 'fuel', roomId: 'reactor', x: 672, y: 224, system: 'power' },
+  { id: 'align-engine', name: 'Align Sun-Tracking Array', kind: 'calibrate', roomId: 'reactor', x: 672, y: 352, system: 'power' },
+  { id: 'wiring-cafeteria', name: 'Route Greenhouse Power', kind: 'wiring', roomId: 'cafeteria', x: 352, y: 800, system: 'power' },
+  { id: 'garbage', name: 'Sort Galley Water Filters', kind: 'garbage', roomId: 'cafeteria', x: 480, y: 800, system: 'life' },
+  { id: 'grow-light-balance', name: 'Balance Grow-Light Spectrum', kind: 'calibrate', roomId: 'cafeteria', x: 608, y: 800, system: 'farming' },
+  { id: 'nutrient-loop', name: 'Check Hydroponics Nutrient Loop', kind: 'inspect', roomId: 'cafeteria', x: 544, y: 928, system: 'farming' },
+  { id: 'asteroids', name: 'Survey EVA Safe Route', kind: 'inspect', roomId: 'admin', x: 928, y: 800, system: 'science' },
+  { id: 'steering', name: 'Plan Rover Traverse', kind: 'calibrate', roomId: 'communications', x: 1376, y: 160, system: 'science' },
+  { id: 'download-nav', name: 'Upload Surface Weather', kind: 'download', roomId: 'communications', x: 1888, y: 160, system: 'science' },
+  { id: 'reactor-start', name: 'Tune Thermal Control', kind: 'calibrate', roomId: 'reactor', x: 736, y: 416, system: 'power' },
+  { id: 'inspect', name: 'Analyze Regolith Sample', kind: 'inspect', roomId: 'medbay', x: 736, y: 1376, system: 'science' },
+  { id: 'calibrate', name: 'Balance Habitat Power Bus', kind: 'calibrate', roomId: 'reactor', x: 864, y: 416, system: 'power' },
+  { id: 'swipe', name: 'Check Suit Pressure Seal', kind: 'swipe', roomId: 'storage', x: 1568, y: 800, system: 'shielding' },
+  { id: 'upload-admin', name: 'Send Earth Science Log', kind: 'download', roomId: 'communications', x: 1568, y: 352, system: 'science' },
+  { id: 'fuel-storage', name: 'Replace Battery Module', kind: 'fuel', roomId: 'storage', x: 1376, y: 736, system: 'power' },
+  { id: 'shields', name: 'Prime Shields', kind: 'shield', roomId: 'security', x: 416, y: 1312 },
+  { id: 'wiring-electrical', name: 'Reconnect Power Distribution Bus', kind: 'wiring', roomId: 'reactor', x: 1056, y: 416, system: 'power' },
+  { id: 'review-cams', name: 'Review Rover Terrain Images', kind: 'download', roomId: 'security', x: 224, y: 1056, system: 'science' },
+  { id: 'clean-o2', name: 'Service CO2 Scrubber Filter', kind: 'garbage', roomId: 'storage', x: 1824, y: 736, system: 'life' },
+  { id: 'reboot-comms', name: 'Align Deep-Space Antenna', kind: 'calibrate', roomId: 'communications', x: 1760, y: 352, system: 'science' },
+  { id: 'eva-sample', name: 'Collect Geology Sample', kind: 'inspect', roomId: 'exterior', x: 1568, y: 1568, system: 'science' },
+  { id: 'eva-array', name: 'Inspect Exterior Power Cable', kind: 'wiring', roomId: 'exterior', x: 1824, y: 1568, system: 'power' },
+  { id: 'eva-route', name: 'Mark Return-to-Airlock Route', kind: 'download', roomId: 'exterior', x: 1696, y: 1760, system: 'science' },
 ];
 
-export const PLAYER_SPAWN = { x: 900, y: 250 };
+export const PLAYER_SPAWN = { x: 960, y: 950 };
 
 export const SPECIALISTS: Specialist[] = [
   {
@@ -348,6 +336,7 @@ export const DEFAULT_OPTIONS: GameOptions = {
   musicVolume: 55,
   lineOfSight: true,
   reducedMotion: false,
+  showFps: false,
   difficulty: 'crew',
 };
 
@@ -581,6 +570,7 @@ export function loadSave(): PlayerSave {
         musicVolume: typeof options.musicVolume === 'number' ? Math.max(0, Math.min(100, options.musicVolume)) : fallback.options.musicVolume,
         lineOfSight: typeof options.lineOfSight === 'boolean' ? options.lineOfSight : fallback.options.lineOfSight,
         reducedMotion: typeof options.reducedMotion === 'boolean' ? options.reducedMotion : fallback.options.reducedMotion,
+        showFps: typeof options.showFps === 'boolean' ? options.showFps : fallback.options.showFps,
         difficulty: isDifficultyId(options.difficulty) ? options.difficulty : fallback.options.difficulty,
       },
     };
@@ -703,7 +693,10 @@ export function roomById(id: string): RoomDef | undefined {
 }
 
 export function getRoomName(id: string): string {
-  return roomById(id)?.name ?? 'Unknown room';
+  const byId = roomById(id);
+  if (byId) return byId.name;
+  const byName = ROOMS.find(room => room.name.toLowerCase() === id.toLowerCase());
+  return byName?.name ?? (id || 'Station Corridor');
 }
 
 export function roomAt(x: number, y: number): RoomDef | undefined {

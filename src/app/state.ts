@@ -60,7 +60,7 @@ export function createMissionState(): MissionState {
     missedDays: 0, metrics: createMetrics(), dayStartedAt: 0, pausedDuration: 0,
     pauseStartedAt: 0, tasks: [], completed: [], offers: [], selected: [],
     eventCard: null, playerX: PLAYER_SPAWN.x, playerY: PLAYER_SPAWN.y,
-    room: 'Cafeteria', report: null, reports: [], modalOpen: false,
+    room: 'Central Hub', report: null, reports: [], modalOpen: false,
   };
 }
 

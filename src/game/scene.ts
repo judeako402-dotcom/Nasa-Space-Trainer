@@ -1,13 +1,25 @@
 import Phaser from 'phaser';
-import { CAMERA, MOVEMENT, VISION } from '../data/balance';
+import { CAMERA, MOVEMENT } from '../data/balance';
 import type { MapDefinition, PropDef } from '../data/mapTypes';
 import { TRAINING_DECK } from '../data/trainingDeck';
 import { surfaceHabitatFor, SURFACE_HABITAT } from '../data/surfaceHabitat';
-import { PLAYER_COLORS, type PlayerColorId } from '../model';
+import { getRoomName, PLAYER_COLORS, type PlayerColorId } from '../model';
 import { MapGeometry } from '../sim/navigation';
-import { castVision } from '../sim/occluders';
 import type { InputSnapshot, PlayerState } from '../sim/movement';
 import { createPlayerState, lerp, stepPlayer } from '../sim/movement';
+import { AssetKeys, MapKeys } from './assets/AssetKeys';
+import { createPlaceholderTextures } from './assets/PlaceholderFactory';
+import { DEBUG_PAN_SPEED, DEMO_PAN_DURATION } from './constants';
+import { CrewNPC } from './entities/CrewNPC';
+import { Player } from './entities/Player';
+import { TaskStation } from './entities/TaskStation';
+import { DepthSortSystem } from './systems/DepthSortSystem';
+import { FollowerCamera } from './systems/FollowerCamera';
+import { InputSystem } from './systems/InputSystem';
+import { InteractionSystem } from './systems/InteractionSystem';
+import { compressPath, findPath, gridFromTiles, tileAtPixel, type Tile, type WalkableGrid } from './utils/pathing';
+import { MapLoader, type LoadedMap } from './world/MapLoader';
+import { roomAt } from './world/Room';
 
 export type MapId = 'training' | 'surface';
 
@@ -33,7 +45,7 @@ export type GameEvent =
   | { type: 'prompt'; interactionId: string | null; name: string; kind: string; room: string }
   | { type: 'interact'; interactionId: string; kind: string }
   | { type: 'crew'; crewId: string; name: string; lines: string[] }
-  | { type: 'debug'; fps: number; x: number; y: number; room: string; waypoints: number; vision: boolean };
+  | { type: 'fps'; fps: number };
 
 const MAPS: Record<MapId, MapDefinition> = {
   training: TRAINING_DECK,
@@ -73,48 +85,80 @@ function textureKeyForArt(art: string): string {
 }
 
 function colorHex(id: PlayerColorId): number {
-  return PLAYER_COLORS.find(color => color.id === id)?.hex ?? 0xef7d0d;
+  return PLAYER_COLORS.find((color) => color.id === id)?.hex ?? 0xef7d0d;
 }
 
+function nearestWalkableTile(grid: WalkableGrid, target: Tile): Tile | null {
+  if (!grid.isBlocked(target.x, target.y)) return target;
+  const limit = Math.max(grid.cols, grid.rows);
+  for (let radius = 1; radius < limit; radius++) {
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
+        const x = target.x + dx;
+        const y = target.y + dy;
+        if (!grid.isBlocked(x, y)) return { x, y };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Unified station Phaser scene:
+ * - `surface` (Main Mission): Tiled `spudnaut-station.tmj` + illustrated floorplan,
+ *   Arcade Physics walls, FollowerCamera, Y-sorted TaskStations/Vents/Props, and
+ *   autonomous BFS-wandering CrewNPCs.
+ * - `training` (Earth Simulator): keeps Training Deck procedural map and bridge flow.
+ */
 export class StationScene extends Phaser.Scene {
   private readonly onEvent: (event: GameEvent) => void;
   private state: SceneGameState;
   private map: MapDefinition = TRAINING_DECK;
-  private geometry!: MapGeometry;
-  private sim: PlayerState = createPlayerState(TRAINING_DECK.spawn.x, TRAINING_DECK.spawn.y);
-  private playerRoot?: Phaser.GameObjects.Container;
-  private playerBody?: Phaser.GameObjects.Container;
-  private playerLabel?: Phaser.GameObjects.Text;
-  private mapLayer?: Phaser.GameObjects.Container;
-  private markerLayer?: Phaser.GameObjects.Container;
-  private crewLayer?: Phaser.GameObjects.Container;
-  private darkLayer?: Phaser.GameObjects.Rectangle;
-  private visionGraphics?: Phaser.GameObjects.Graphics;
-  private visionMask?: Phaser.Display.Masks.GeometryMask;
-  private debugText?: Phaser.GameObjects.Text;
-  private keys!: Record<string, Phaser.Input.Keyboard.Key>;
-  private accumulator = 0;
-  private lastVisionAt = 0;
-  private lastVisionX = Number.NaN;
-  private lastVisionY = Number.NaN;
-  private camTargetX = TRAINING_DECK.spawn.x;
-  private camTargetY = TRAINING_DECK.spawn.y;
-  private camSnap = true;
-  private promptKey = '';
-  private lastMoveEvent = 0;
-  private debugVisible = false;
+  private activeMode: MapId | null = null;
   private reducedMotion = false;
   private ready = false;
   private pendingState: SceneGameState | null = null;
-  private pendingMap = false;
+  private pendingRespawn = false;
+
+  private lastMoveEvent = 0;
+  private lastFpsEvent = 0;
+  private lastEmittedRoom = '';
+  private promptKey = '';
+
+  // Training-deck state (procedural MapGeometry)
+  private geometry?: MapGeometry;
+  private sim: PlayerState = createPlayerState(TRAINING_DECK.spawn.x, TRAINING_DECK.spawn.y);
+  private playerRoot?: Phaser.GameObjects.Container;
+  private playerBody?: Phaser.GameObjects.Container;
+  private mapLayer?: Phaser.GameObjects.Container;
+  private markerLayer?: Phaser.GameObjects.Container;
+  private crewLayer?: Phaser.GameObjects.Container;
+  private keys?: Record<string, Phaser.Input.Keyboard.Key>;
+  private accumulator = 0;
+  private camTargetX = TRAINING_DECK.spawn.x;
+  private camTargetY = TRAINING_DECK.spawn.y;
+  private camSnap = true;
+
+  // Surface-station state (merged Tiled + Arcade physics + FollowerCamera)
+  private tiledMap?: LoadedMap;
+  private tiledGrid?: WalkableGrid;
+  private tiledPlayer?: Player;
+  private wallCollider?: Phaser.Physics.Arcade.Collider;
+  private followerCamera?: FollowerCamera;
+  private tiledInput?: InputSystem;
+  private readonly tiledInteraction = new InteractionSystem();
+  private readonly tiledDepthSort = new DepthSortSystem();
+  private readonly tiledStations: TaskStation[] = [];
+  private readonly tiledCrew: CrewNPC[] = [];
+  private readonly tiledDecor: Phaser.GameObjects.Image[] = [];
+  private tiledRoute: { x: number; y: number }[] = [];
 
   constructor(onEvent: (event: GameEvent) => void, initial: SceneGameState) {
     super({ key: 'station' });
     this.onEvent = onEvent;
     this.state = initial;
-    this.map = initial.mapId === 'surface' && initial.destination
-      ? surfaceHabitatFor(initial.destination)
-      : MAPS[initial.mapId];
+    this.map = this.resolveMapDef(initial);
     this.sim = createPlayerState(initial.x || this.map.spawn.x, initial.y || this.map.spawn.y);
     this.camTargetX = this.sim.x;
     this.camTargetY = this.sim.y;
@@ -130,43 +174,60 @@ export class StationScene extends Phaser.Scene {
     this.load.image('planet-earth', '/assets/placeholders/kenney/planets/planet00.png');
     this.load.image('planet-moon', '/assets/placeholders/kenney/planets/planet05.png');
     this.load.image('planet-mars', '/assets/placeholders/kenney/planets/planet08.png');
+
+    // Merged station artwork + Tiled collision JSON
+    this.load.image(AssetKeys.mapImage, '/assets/maps/spudnaut-station.png');
+    this.load.tilemapTiledJSON(MapKeys.station, '/assets/maps/spudnaut-station.tmj');
   }
 
   create(): void {
-    this.cameras.main.setBounds(0, 0, this.map.width, this.map.height);
+    createPlaceholderTextures(this);
+
     this.cameras.main.setZoom(CAMERA.zoom);
     this.cameras.main.setBackgroundColor('#03060c');
-    this.input.keyboard?.on('keydown-E', () => this.tryInteract());
-    this.input.keyboard?.on('keydown-F3', (event: KeyboardEvent) => {
-      event.preventDefault();
-      this.debugVisible = !this.debugVisible;
-      this.debugText?.setVisible(this.debugVisible);
+
+    this.tiledInput = new InputSystem(this);
+    this.keys = this.input.keyboard?.addKeys(
+      'W,A,S,D,UP,DOWN,LEFT,RIGHT',
+      false,
+      false,
+    ) as Record<string, Phaser.Input.Keyboard.Key> | undefined;
+
+    this.input.keyboard?.on('keydown-E', () => {
+      if (this.activeMode === 'training') this.tryInteractTraining();
     });
-    this.keys = this.input.keyboard?.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT') as Record<string, Phaser.Input.Keyboard.Key>;
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => this.handlePointer(pointer));
+
+    this.tiledInteraction.onSelectionChanged(() => {
+      if (this.activeMode === 'surface') {
+        this.emitSurfacePrompt(true);
+      }
+    });
+
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.input.keyboard?.removeAllListeners();
       this.input.removeAllListeners();
+      this.teardownTraining();
+      this.teardownSurface();
     });
 
-    this.buildMap();
-    this.createPlayer();
-    this.createOverlay();
     this.ready = true;
     this.onEvent({ type: 'ready' });
     if (this.pendingState) {
       const next = this.pendingState;
+      const respawn = this.pendingRespawn;
       this.pendingState = null;
-      this.applyState(next, this.pendingMap);
+      this.pendingRespawn = false;
+      this.applyState(next, respawn);
     } else {
-      this.applyState(this.state, false);
+      this.applyState(this.state, true);
     }
   }
 
   configure(next: SceneGameState, options: { respawn?: boolean } = {}): void {
     if (!this.ready) {
       this.pendingState = next;
-      this.pendingMap = next.mapId !== this.state.mapId || options.respawn === true;
+      this.pendingRespawn = this.pendingRespawn || options.respawn === true;
       return;
     }
     this.applyState(next, options.respawn === true);
@@ -174,11 +235,18 @@ export class StationScene extends Phaser.Scene {
 
   setReducedMotion(reduced: boolean): void {
     this.reducedMotion = reduced;
+    if (this.tiledPlayer) this.tiledPlayer.reducedMotion = reduced;
+    this.followerCamera?.setReducedMotion(reduced);
   }
 
   navigateTo(x: number, y: number): void {
-    if (!this.ready || !this.geometry) return;
-    const target = this.nearestInteraction(x, y, 90);
+    if (!this.ready || this.state.frozen) return;
+    if (this.activeMode === 'surface') {
+      this.routeSurfaceTo(x, y);
+      return;
+    }
+    if (!this.geometry) return;
+    const target = this.nearestTrainingInteraction(x, y, 90);
     const destination = target ? { x: target.x, y: target.y } : { x, y };
     const path = this.geometry.findPath({ x: this.sim.x, y: this.sim.y }, destination);
     if (path.length) {
@@ -187,51 +255,463 @@ export class StationScene extends Phaser.Scene {
     }
   }
 
+  interactNow(): void {
+    if (!this.ready || this.state.frozen) return;
+    if (this.activeMode === 'surface') {
+      this.tiledInteraction.interact();
+    } else {
+      this.tryInteractTraining();
+    }
+  }
+
+  private resolveMapDef(state: SceneGameState): MapDefinition {
+    return state.mapId === 'surface' && state.destination
+      ? surfaceHabitatFor(state.destination)
+      : MAPS[state.mapId];
+  }
+
   private applyState(next: SceneGameState, respawn: boolean): void {
-    const mapChanged = next.mapId !== this.state.mapId
-      || (next.mapId === 'surface' && next.destination !== this.state.destination);
-    const lengthBefore = [...next.activeInteractions].sort().join(',');
+    const modeChanged = this.activeMode !== next.mapId;
+    const destinationChanged = next.mapId === 'surface' && next.destination !== this.state.destination;
+    const prevActiveKey = [...this.state.activeInteractions].sort().join(',');
+    const nextActiveKey = [...next.activeInteractions].sort().join(',');
+    const prevDoneKey = [...this.state.completedInteractions].sort().join(',');
+    const nextDoneKey = [...next.completedInteractions].sort().join(',');
+
     this.state = next;
-    if (mapChanged) {
-      this.map = next.mapId === 'surface' && next.destination
-        ? surfaceHabitatFor(next.destination)
-        : MAPS[next.mapId];
+    this.map = this.resolveMapDef(next);
+
+    if (next.mapId === 'surface') {
+      if (modeChanged || destinationChanged) {
+        this.teardownTraining();
+        this.buildSurface();
+      } else if (this.tiledPlayer) {
+        this.tiledPlayer.setAppearance(textureKeyForArt(next.playerArt), next.playerName);
+        this.tiledPlayer.speedMultiplier = next.speed;
+        this.tiledPlayer.canMove = !next.frozen;
+        this.tiledPlayer.reducedMotion = this.reducedMotion;
+        if (respawn) {
+          this.tiledRoute = [];
+          this.tiledPlayer.stop();
+          this.tiledPlayer.setPosition(next.x || this.map.spawn.x, next.y || this.map.spawn.y);
+          this.followerCamera?.snap();
+        }
+      }
+      if (prevActiveKey !== nextActiveKey || prevDoneKey !== nextDoneKey || modeChanged || destinationChanged) {
+        this.syncSurfaceStations();
+      }
+      this.emitSurfacePrompt(true);
+      this.emitSurfaceRoom(true);
+      return;
+    }
+
+    // Training Deck path
+    if (modeChanged || destinationChanged) {
+      this.teardownSurface();
       this.sim = createPlayerState(next.x || this.map.spawn.x, next.y || this.map.spawn.y);
       this.camTargetX = this.sim.x;
       this.camTargetY = this.sim.y;
       this.camSnap = true;
-      this.buildMap();
-      this.createPlayer();
-      this.createOverlay();
-    } else if (respawn) {
+      this.buildTrainingMap();
+      this.createTrainingPlayer();
+      this.activeMode = 'training';
+    } else if (respawn || this.playerRoot) {
       this.sim.x = next.x;
       this.sim.y = next.y;
       this.sim.prevX = next.x;
       this.sim.prevY = next.y;
-      this.camTargetX = next.x;
-      this.camTargetY = next.y;
-      this.camSnap = true;
-    } else if (this.playerRoot) {
-      this.sim.x = next.x;
-      this.sim.y = next.y;
-      this.sim.prevX = next.x;
-      this.sim.prevY = next.y;
+      if (respawn) {
+        this.sim.route = [];
+        this.sim.routeIndex = 0;
+        this.camTargetX = next.x;
+        this.camTargetY = next.y;
+        this.camSnap = true;
+      }
     }
     this.playerRoot?.setAlpha(next.frozen ? 0.72 : 1);
-    this.updateMarkers(lengthBefore);
-    this.updateVision(true);
-    if (this.darkLayer) this.darkLayer.setVisible(next.visionEnabled);
+    this.createTrainingMarkers();
     this.promptKey = '';
-    this.updatePrompt(true);
+    this.updateTrainingPrompt(true);
     this.cameras.main.setBounds(0, 0, this.map.width, this.map.height);
   }
 
   update(time: number, deltaMs: number): void {
-    if (!this.ready || !this.playerRoot) return;
+    if (!this.ready) return;
+
+    const now = performance.now();
+    if (now - this.lastFpsEvent >= 320) {
+      this.lastFpsEvent = now;
+      this.onEvent({ type: 'fps', fps: Math.max(1, Math.round(this.game.loop.actualFps)) });
+    }
+
+    if (this.activeMode === 'surface') {
+      this.updateSurface(deltaMs, now);
+    } else if (this.activeMode === 'training') {
+      this.updateTraining(time, deltaMs, now);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Surface Station (Merged Tiled Map + Arcade Physics + FollowerCamera)
+  // ---------------------------------------------------------------------------
+
+  private buildSurface(): void {
+    this.teardownSurface();
+    this.activeMode = 'surface';
+
+    const mars = this.state.destination === 'mars';
+    this.cameras.main.setBackgroundColor(mars ? '#17100f' : '#080d18');
+    this.cameras.main.setZoom(CAMERA.zoom);
+
+    const loader = new MapLoader(this, MapKeys.station);
+    this.tiledMap = loader.load({
+      onVentTrigger: (ventId) => this.handleVentInteract(ventId),
+      artTint: mars ? 0xffeae0 : undefined,
+    });
+
+    const m = this.tiledMap.minimap;
+    this.tiledGrid = gridFromTiles(m.cols, m.rows, m.walls);
+
+    const bounds = this.tiledMap.bounds;
+    this.physics.world.setBounds(bounds.x, bounds.y, bounds.width, bounds.height);
+
+    const startX = this.state.x || this.tiledMap.spawn.x;
+    const startY = this.state.y || this.tiledMap.spawn.y;
+    this.tiledPlayer = new Player(
+      this,
+      startX,
+      startY,
+      this.state.playerName,
+      textureKeyForArt(this.state.playerArt),
+    );
+    this.tiledPlayer.speedMultiplier = this.state.speed;
+    this.tiledPlayer.canMove = !this.state.frozen;
+    this.tiledPlayer.reducedMotion = this.reducedMotion;
+
+    this.wallCollider = this.physics.add.collider(this.tiledPlayer.sprite, this.tiledMap.wallLayer);
+
+    this.followerCamera = new FollowerCamera(this);
+    this.followerCamera.setTarget(this.tiledPlayer.position);
+    this.followerCamera.setBounds(bounds);
+    this.followerCamera.setReducedMotion(this.reducedMotion);
+    this.followerCamera.snap();
+
+    this.tiledDepthSort.register(this.tiledPlayer.sprite, () => this.tiledPlayer?.sprite.y ?? 0);
+
+    for (const vent of this.tiledMap.vents) {
+      this.tiledInteraction.register(vent);
+    }
+
+    this.spawnSurfaceStations();
+    this.spawnSurfaceCrew();
+    this.spawnSurfaceDecor();
+
+    this.lastEmittedRoom = '';
+    this.promptKey = '';
+  }
+
+  private teardownSurface(): void {
+    this.wallCollider?.destroy();
+    this.wallCollider = undefined;
+    this.tiledPlayer?.destroy();
+    this.tiledPlayer = undefined;
+    this.followerCamera = undefined;
+    for (const st of this.tiledStations) st.destroy();
+    this.tiledStations.length = 0;
+    for (const npc of this.tiledCrew) npc.destroy();
+    this.tiledCrew.length = 0;
+    for (const prop of this.tiledDecor) prop.destroy();
+    this.tiledDecor.length = 0;
+    if (this.tiledMap) {
+      this.tiledMap.spawn.destroy();
+      for (const vent of this.tiledMap.vents) vent.destroy();
+      this.tiledMap.artImage.destroy();
+      this.tiledMap.floorLayer.destroy();
+      this.tiledMap.wallLayer.destroy();
+      this.tiledMap.overheadLayer.destroy();
+      this.tiledMap.map.destroy();
+      this.tiledMap = undefined;
+    }
+    this.tiledGrid = undefined;
+    this.tiledRoute = [];
+    this.tiledInteraction.clear();
+    this.tiledDepthSort.clear();
+  }
+
+  private spawnSurfaceStations(): void {
+    const activeSet = new Set(this.state.activeInteractions);
+    const doneSet = new Set(this.state.completedInteractions);
+    for (const task of SURFACE_HABITAT.interactions) {
+      const accent = task.accent
+        ? Phaser.Display.Color.HexStringToColor(task.accent).color
+        : 0xf5c451;
+      const station = new TaskStation(this, task.x - 28, task.y - 32, 56, 64, {
+        id: task.id,
+        name: task.name,
+        roomName: getRoomName(task.roomId),
+        accent,
+        iconKey: `icon-${task.icon}`,
+        assigned: activeSet.has(task.id),
+        completed: doneSet.has(task.id),
+        onTrigger: (taskId) => this.handleSurfaceTaskInteract(taskId),
+      });
+      this.tiledStations.push(station);
+      this.tiledInteraction.register(station);
+    }
+  }
+
+  private syncSurfaceStations(): void {
+    const activeSet = new Set(this.state.activeInteractions);
+    const doneSet = new Set(this.state.completedInteractions);
+    for (const station of this.tiledStations) {
+      station.setState(activeSet.has(station.id), doneSet.has(station.id));
+    }
+  }
+
+  private spawnSurfaceCrew(): void {
+    if (!this.tiledMap) return;
+    const textureById: Record<string, string> = {
+      russet: AssetKeys.crewRepairman,
+      pip: AssetKeys.crewFarmer,
+      tater: AssetKeys.crewResearcher,
+    };
+    for (const member of this.map.crew) {
+      const npc = new CrewNPC(
+        this,
+        textureById[member.id] ?? AssetKeys.crewFarmer,
+        member.x,
+        member.y,
+        {
+          id: member.id,
+          label: member.name,
+          role: member.role,
+          accent: member.accent,
+          lines: member.lines,
+          home: { x: member.x, y: member.y },
+          wanderRadius: 150,
+          findPath: (from, to) => this.findSurfacePath(from, to),
+          onTalk: (crew) => {
+            if (!this.state.frozen) {
+              this.onEvent({ type: 'crew', crewId: crew.id, name: crew.name, lines: crew.lines });
+            }
+          },
+        },
+      );
+      this.tiledCrew.push(npc);
+      this.tiledInteraction.register(npc);
+    }
+
+    // Add an extra ambient station specialist in Comms Dome
+    const commsHome = this.roomWalkTarget('Comms Dome');
+    if (commsHome) {
+      const chip = new CrewNPC(this, AssetKeys.crewResearcher, commsHome.x, commsHome.y, {
+        id: 'chip',
+        label: 'Chip',
+        role: 'Comms Tech',
+        accent: '#a9b6ff',
+        lines: ['Deep-space telemetry link is locked. Keep the dish aligned when solar weather hits.'],
+        home: commsHome,
+        wanderRadius: 140,
+        findPath: (from, to) => this.findSurfacePath(from, to),
+        onTalk: (crew) => {
+          if (!this.state.frozen) {
+            this.onEvent({ type: 'crew', crewId: crew.id, name: crew.name, lines: crew.lines });
+          }
+        },
+      });
+      this.tiledCrew.push(chip);
+      this.tiledInteraction.register(chip);
+    }
+  }
+
+  private spawnSurfaceDecor(): void {
+    const props: { key: string; x: number; y: number }[] = [
+      { key: AssetKeys.propBarrel, x: 1060, y: 560 },
+      { key: AssetKeys.propCrate, x: 1100, y: 700 },
+      { key: AssetKeys.propPlant, x: 810, y: 760 },
+      { key: AssetKeys.propPlant, x: 1120, y: 930 },
+      { key: AssetKeys.propCrate, x: 1930, y: 1140 },
+      { key: AssetKeys.propBarrel, x: 1330, y: 700 },
+      { key: AssetKeys.propPlant, x: 620, y: 1080 },
+      { key: AssetKeys.propCrate, x: 700, y: 1180 },
+      { key: AssetKeys.propPlant, x: 1200, y: 1700 },
+      { key: AssetKeys.propBarrel, x: 1560, y: 1240 },
+      { key: AssetKeys.propCrate, x: 1540, y: 1860 },
+      { key: AssetKeys.propCrate, x: 1900, y: 440 },
+      { key: AssetKeys.propPlant, x: 620, y: 120 },
+    ];
+    for (const prop of props) {
+      const img = this.add.image(prop.x, prop.y, prop.key);
+      img.setDepth(prop.y);
+      this.tiledDecor.push(img);
+    }
+  }
+
+  private handleSurfaceTaskInteract(taskId: string): void {
+    if (this.state.frozen) return;
+    this.tiledRoute = [];
+    this.onEvent({ type: 'interact', interactionId: taskId, kind: 'task' });
+  }
+
+  private handleVentInteract(ventId: string): void {
+    if (this.state.frozen || !this.tiledMap || !this.tiledPlayer) return;
+    const others = this.tiledMap.vents.filter((v) => v.id !== ventId);
+    const dest = others[0];
+    if (dest) {
+      this.tiledRoute = [];
+      this.tiledPlayer.setPosition(dest.position.x, dest.position.y);
+      this.followerCamera?.snap();
+    }
+    this.onEvent({ type: 'interact', interactionId: ventId, kind: 'vent' });
+  }
+
+  private findSurfacePath(
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+  ): { x: number; y: number }[] | null {
+    if (!this.tiledMap || !this.tiledGrid) return null;
+    const ts = this.tiledMap.minimap.tileSize;
+    const startTile = nearestWalkableTile(this.tiledGrid, tileAtPixel(from, ts));
+    const goalTile = nearestWalkableTile(this.tiledGrid, tileAtPixel(to, ts));
+    if (!startTile || !goalTile) return null;
+    const tiles = findPath(this.tiledGrid, startTile, goalTile);
+    if (!tiles) return null;
+    const compressed = compressPath(tiles);
+    const half = ts / 2;
+    return compressed.map((t) => ({ x: t.x * ts + half, y: t.y * ts + half }));
+  }
+
+  private roomWalkTarget(roomName: string): { x: number; y: number } | null {
+    if (!this.tiledMap || !this.tiledGrid) return null;
+    const m = this.tiledMap.minimap;
+    const room = m.rooms.find((r) => r.name === roomName);
+    if (!room) return null;
+    const center = tileAtPixel(
+      { x: room.bounds.x + room.bounds.width / 2, y: room.bounds.y + room.bounds.height / 2 },
+      m.tileSize,
+    );
+    const found = nearestWalkableTile(this.tiledGrid, center);
+    if (!found) return null;
+    const half = m.tileSize / 2;
+    return { x: found.x * m.tileSize + half, y: found.y * m.tileSize + half };
+  }
+
+  private routeSurfaceTo(x: number, y: number): void {
+    if (!this.tiledPlayer) return;
+    const path = this.findSurfacePath(this.tiledPlayer.position, { x, y });
+    if (!path || path.length === 0) return;
+    this.tiledRoute = path.length > 1 ? path.slice(1) : [{ x, y }];
+  }
+
+  private updateSurface(deltaMs: number, now: number): void {
+    if (!this.tiledInput || !this.tiledPlayer || !this.followerCamera || !this.tiledMap) return;
+
+    this.tiledInput.update();
+    const move = this.tiledInput.getMoveVector();
+    const freeCam = this.tiledInput.isShiftDown() && !this.state.frozen;
+
+    if (this.tiledInput.justPressed('interact') && !this.state.frozen) {
+      this.tiledInteraction.interact();
+    }
+    if (this.tiledInput.justPressed('snapCamera')) {
+      this.followerCamera.snap();
+    }
+    if (this.tiledInput.justPressed('demoPan') && !this.state.frozen) {
+      this.followerCamera.panTo(
+        this.tiledMap.bounds.width / 2,
+        this.tiledMap.bounds.height / 2,
+        DEMO_PAN_DURATION,
+      );
+    }
+
+    if (this.state.frozen) {
+      this.tiledRoute = [];
+      this.tiledPlayer.stop();
+    } else if (freeCam) {
+      this.tiledRoute = [];
+      this.tiledPlayer.stop();
+      const step = DEBUG_PAN_SPEED * (deltaMs / 1000);
+      this.followerCamera.debugPanBy(move.x * step, move.y * step);
+    } else if (move.x !== 0 || move.y !== 0) {
+      this.tiledRoute = [];
+      if (this.followerCamera.isPanning()) {
+        this.followerCamera.cancelPan();
+      }
+      this.tiledPlayer.applyInput(move);
+    } else if (this.tiledRoute.length > 0) {
+      const next = this.tiledRoute[0];
+      const dx = next.x - this.tiledPlayer.position.x;
+      const dy = next.y - this.tiledPlayer.position.y;
+      if (Math.hypot(dx, dy) <= 14) {
+        this.tiledRoute.shift();
+        if (this.tiledRoute.length === 0) {
+          this.tiledPlayer.stop();
+        }
+      } else {
+        this.tiledPlayer.applyInput({ x: dx, y: dy });
+      }
+    } else {
+      this.tiledPlayer.stop();
+    }
+
+    this.tiledInteraction.update(this.tiledPlayer.position);
+    this.tiledPlayer.preUpdate(deltaMs);
+
+    if (!freeCam) {
+      this.followerCamera.update(deltaMs);
+    }
+
+    this.tiledDepthSort.update();
+    for (const member of this.tiledCrew) {
+      member.preUpdate();
+    }
+
+    this.emitSurfacePrompt(false);
+    this.emitSurfaceRoom(false, now);
+  }
+
+  private surfaceRoomName(x: number, y: number): string {
+    if (!this.tiledMap) return 'Central Hub';
+    return roomAt(this.tiledMap.rooms, { x, y }) ?? 'Station Corridor';
+  }
+
+  private emitSurfaceRoom(force: boolean, now = performance.now()): void {
+    if (!this.tiledPlayer) return;
+    const pos = this.tiledPlayer.position;
+    const room = this.surfaceRoomName(pos.x, pos.y);
+    if (force || room !== this.lastEmittedRoom || now - this.lastMoveEvent > 140) {
+      this.lastMoveEvent = now;
+      this.lastEmittedRoom = room;
+      this.onEvent({ type: 'move', x: pos.x, y: pos.y, room });
+    }
+  }
+
+  private emitSurfacePrompt(force: boolean): void {
+    if (!this.tiledPlayer) return;
+    const nearest = this.tiledInteraction.getNearest();
+    const room = this.surfaceRoomName(this.tiledPlayer.position.x, this.tiledPlayer.position.y);
+    const key = `${nearest?.id ?? ''}:${nearest?.kind ?? ''}:${room}`;
+    if (!force && key === this.promptKey) return;
+    this.promptKey = key;
+    this.onEvent({
+      type: 'prompt',
+      interactionId: nearest?.id ?? null,
+      name: nearest?.promptText ?? '',
+      kind: nearest?.kind ?? '',
+      room,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Training Deck (Earth Simulator procedural canvas)
+  // ---------------------------------------------------------------------------
+
+  private updateTraining(time: number, deltaMs: number, now: number): void {
+    if (!this.playerRoot || !this.geometry) return;
     const delta = Math.min(MOVEMENT.maxFrameDelta, deltaMs / 1000);
     const input: InputSnapshot = this.state.frozen
       ? { axisX: 0, axisY: 0, moveRequest: null }
-      : this.readInput();
+      : this.readTrainingInput();
 
     this.accumulator += delta;
     let steps = 0;
@@ -254,45 +734,29 @@ export class StationScene extends Phaser.Scene {
       this.playerBody.setScale(this.sim.facing, 1);
       this.playerBody.y = bob;
     }
-    if (this.playerLabel) this.playerLabel.setScale(1);
 
-    this.updateCamera(renderX, renderY, delta);
-    this.updateCrew(time);
-    this.updateVision(false, renderX, renderY);
-    this.updatePrompt(false);
+    this.updateTrainingCamera(renderX, renderY, delta);
+    this.updateTrainingCrew(time);
+    this.updateTrainingPrompt(false);
 
-    const now = performance.now();
-    if (now - this.lastMoveEvent > 140) {
+    const room = this.geometry.roomAt(this.sim.x, this.sim.y)?.name ?? 'Main Corridor';
+    if (room !== this.lastEmittedRoom || now - this.lastMoveEvent > 140) {
       this.lastMoveEvent = now;
-      const room = this.geometry.roomAt(this.sim.x, this.sim.y)?.name ?? 'Main Corridor';
+      this.lastEmittedRoom = room;
       this.onEvent({ type: 'move', x: this.sim.x, y: this.sim.y, room });
-    }
-
-    if (this.debugVisible && this.debugText) {
-      const room = this.geometry.roomAt(this.sim.x, this.sim.y)?.name ?? 'Main Corridor';
-      this.debugText.setText([
-        `FPS ${Math.round(this.game.loop.actualFps)}  POS ${Math.round(this.sim.x)},${Math.round(this.sim.y)}`,
-        `ROOM ${room.toUpperCase()}`,
-        `ROUTE ${Math.max(0, this.sim.route.length - this.sim.routeIndex)} WAYPOINTS`,
-        `VISION ${this.state.visionEnabled ? 'ON' : 'OFF'}  BODY ${MOVEMENT.bodyHalfWidth * 2}x${MOVEMENT.bodyHalfHeight * 2}`,
-      ].join('\n'));
-      if (now % 500 < 20) {
-        this.onEvent({
-          type: 'debug', fps: Math.round(this.game.loop.actualFps), x: Math.round(this.sim.x),
-          y: Math.round(this.sim.y), room, waypoints: Math.max(0, this.sim.route.length - this.sim.routeIndex),
-          vision: this.state.visionEnabled,
-        });
-      }
     }
   }
 
   private canStand = (x: number, y: number): boolean => (
-    this.geometry.canStand(x, y, MOVEMENT.bodyHalfWidth, MOVEMENT.bodyHalfHeight)
+    this.geometry?.canStand(x, y, MOVEMENT.bodyHalfWidth, MOVEMENT.bodyHalfHeight) ?? false
   );
 
-  private readInput(): InputSnapshot {
+  private readTrainingInput(): InputSnapshot {
     const keys = this.keys;
-    if (!keys) return { axisX: 0, axisY: 0, moveRequest: null };
+    const tag = document.activeElement?.tagName;
+    if (!keys || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+      return { axisX: 0, axisY: 0, moveRequest: null };
+    }
     const axisX = Number(keys.D?.isDown || keys.RIGHT?.isDown) - Number(keys.A?.isDown || keys.LEFT?.isDown);
     const axisY = Number(keys.S?.isDown || keys.DOWN?.isDown) - Number(keys.W?.isDown || keys.UP?.isDown);
     return { axisX, axisY, moveRequest: null };
@@ -301,20 +765,18 @@ export class StationScene extends Phaser.Scene {
   private handlePointer(pointer: Phaser.Input.Pointer): void {
     if (this.state.frozen) return;
     const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-    const target = this.nearestInteraction(world.x, world.y, 130);
-    const destination = target ? { x: target.x, y: target.y } : { x: world.x, y: world.y };
-    if (!this.geometry.isFloor(destination.x, destination.y)) {
-      const path = this.geometry.findPath({ x: this.sim.x, y: this.sim.y }, destination);
-      if (!path.length) return;
-      this.sim.route = path;
-      this.sim.routeIndex = 0;
+    if (this.activeMode === 'surface') {
+      this.routeSurfaceTo(world.x, world.y);
       return;
     }
+    if (!this.geometry) return;
+    const target = this.nearestTrainingInteraction(world.x, world.y, 130);
+    const destination = target ? { x: target.x, y: target.y } : { x: world.x, y: world.y };
     this.sim.route = this.geometry.findPath({ x: this.sim.x, y: this.sim.y }, destination);
     this.sim.routeIndex = 0;
   }
 
-  private updateCamera(x: number, y: number, delta: number): void {
+  private updateTrainingCamera(x: number, y: number, delta: number): void {
     const deadX = CAMERA.deadzoneX;
     const deadY = CAMERA.deadzoneY;
     if (x < this.camTargetX - deadX) this.camTargetX = x + deadX;
@@ -340,30 +802,7 @@ export class StationScene extends Phaser.Scene {
     }
   }
 
-  private updateVision(force: boolean, renderX = this.sim.x, renderY = this.sim.y): void {
-    if (!this.visionGraphics || !this.visionMask) return;
-    if (!this.state.visionEnabled) {
-      this.visionGraphics.clear();
-      this.visionMask.setInvertAlpha(true);
-      return;
-    }
-    const now = performance.now();
-    const moved = Math.hypot(renderX - this.lastVisionX, renderY - this.lastVisionY);
-    const interval = 1000 / VISION.updateHz;
-    if (!force && moved < VISION.minMoveBeforeUpdate && now - this.lastVisionAt < interval) return;
-    if (!force && now - this.lastVisionAt < interval) return;
-    this.lastVisionAt = now;
-    this.lastVisionX = renderX;
-    this.lastVisionY = renderY;
-
-    const polygon = castVision({ x: renderX, y: renderY }, VISION.radius, this.geometry.seamSegments(), VISION.rays);
-    this.visionGraphics.clear();
-    this.visionGraphics.fillStyle(0xffffff, 1);
-    this.visionGraphics.fillPoints(polygon, true);
-    this.visionMask.setInvertAlpha(true);
-  }
-
-  private updateCrew(time: number): void {
+  private updateTrainingCrew(time: number): void {
     if (!this.crewLayer) return;
     for (const child of this.crewLayer.getAll()) {
       if (!(child instanceof Phaser.GameObjects.Container)) continue;
@@ -373,7 +812,11 @@ export class StationScene extends Phaser.Scene {
     }
   }
 
-  private nearestInteraction(x: number, y: number, range: number): { id: string; name: string; kind: string; x: number; y: number } | null {
+  private nearestTrainingInteraction(
+    x: number,
+    y: number,
+    range: number,
+  ): { id: string; name: string; kind: string; x: number; y: number } | null {
     const active = new Set(this.state.activeInteractions);
     let best: { id: string; name: string; kind: string; x: number; y: number } | null = null;
     let bestDistance = range;
@@ -395,16 +838,17 @@ export class StationScene extends Phaser.Scene {
     return best;
   }
 
-  private updatePrompt(force: boolean): void {
-    const nearest = this.nearestInteraction(this.sim.x, this.sim.y, MOVEMENT.interactionRange);
+  private updateTrainingPrompt(force: boolean): void {
+    if (!this.geometry) return;
+    const nearest = this.nearestTrainingInteraction(this.sim.x, this.sim.y, MOVEMENT.interactionRange);
     const room = this.geometry.roomAt(this.sim.x, this.sim.y)?.name ?? 'Main Corridor';
     const key = `${nearest?.id ?? ''}:${nearest?.kind ?? ''}:${room}`;
     if (!force && key === this.promptKey) return;
     this.promptKey = key;
     const detail = nearest
       ? nearest.kind === 'crew'
-        ? this.map.crew.find(crew => crew.id === nearest.id)
-        : this.map.interactions.find(interaction => interaction.id === nearest.id)
+        ? this.map.crew.find((crew) => crew.id === nearest.id)
+        : this.map.interactions.find((interaction) => interaction.id === nearest.id)
       : undefined;
     const displayName = nearest
       ? nearest.kind === 'crew'
@@ -420,26 +864,35 @@ export class StationScene extends Phaser.Scene {
     });
   }
 
-  private tryInteract(): void {
+  private tryInteractTraining(): void {
     if (this.state.frozen) return;
-    const nearest = this.nearestInteraction(this.sim.x, this.sim.y, MOVEMENT.interactionRange);
+    const nearest = this.nearestTrainingInteraction(this.sim.x, this.sim.y, MOVEMENT.interactionRange);
     if (!nearest) return;
     if (nearest.kind === 'crew') {
-      const crew = this.map.crew.find(item => item.id === nearest.id);
+      const crew = this.map.crew.find((item) => item.id === nearest.id);
       if (crew) this.onEvent({ type: 'crew', crewId: crew.id, name: crew.name, lines: crew.lines });
       return;
     }
     this.onEvent({ type: 'interact', interactionId: nearest.id, kind: nearest.kind });
   }
 
-  private buildMap(): void {
+  private teardownTraining(): void {
     this.mapLayer?.destroy(true);
+    this.mapLayer = undefined;
     this.markerLayer?.destroy(true);
+    this.markerLayer = undefined;
     this.crewLayer?.destroy(true);
-    this.darkLayer?.destroy(true);
-    this.visionGraphics?.destroy();
-    this.visionMask?.destroy();
-    this.debugText?.destroy();
+    this.crewLayer = undefined;
+    this.playerRoot?.destroy(true);
+    this.playerRoot = undefined;
+    this.playerBody = undefined;
+    this.geometry = undefined;
+  }
+
+  private buildTrainingMap(): void {
+    this.teardownTraining();
+    this.cameras.main.setBackgroundColor('#03060c');
+    this.cameras.main.setZoom(CAMERA.zoom);
 
     this.geometry = new MapGeometry(this.map, MOVEMENT.bodyHalfWidth, MOVEMENT.bodyHalfHeight, 25);
     this.mapLayer = this.add.container(0, 0).setDepth(0);
@@ -448,7 +901,15 @@ export class StationScene extends Phaser.Scene {
 
     const background = this.add.rectangle(0, 0, this.map.width, this.map.height, this.map.palette.void, 1).setOrigin(0, 0);
     this.mapLayer.add(background);
-    this.drawStars();
+
+    const stars = this.add.graphics();
+    this.mapLayer.add(stars);
+    for (let index = 0; index < 220; index += 1) {
+      const x = (index * 193) % this.map.width;
+      const y = (index * 317) % this.map.height;
+      stars.fillStyle(index % 7 === 0 ? 0x84b7d9 : 0xffffff, index % 5 === 0 ? 0.3 : 0.16);
+      stars.fillCircle(x, y, index % 13 === 0 ? 2 : 1);
+    }
 
     const floor = this.add.graphics();
     this.mapLayer.add(floor);
@@ -488,32 +949,23 @@ export class StationScene extends Phaser.Scene {
 
     for (const room of this.map.rooms) {
       const label = this.add.text(room.x + 20, room.y + 16, `${room.icon}  ${room.name.toUpperCase()}`, {
-        color: room.accent, fontFamily: 'Consolas, monospace', fontSize: '13px', fontStyle: 'bold',
+        color: room.accent,
+        fontFamily: 'Consolas, monospace',
+        fontSize: '13px',
+        fontStyle: 'bold',
       }).setAlpha(0.92);
       this.mapLayer.add(label);
     }
 
     const props = this.add.graphics();
     this.mapLayer.add(props);
-    for (const prop of this.map.props) this.drawProp(props, prop);
+    for (const prop of this.map.props) this.drawTrainingProp(props, prop);
 
-    this.createMarkers();
-    this.createCrew();
-    this.createVision();    this.createPlayerIfNeeded();
+    this.createTrainingMarkers();
+    this.createTrainingCrew();
   }
 
-  private drawStars(): void {
-    const stars = this.add.graphics();
-    this.mapLayer?.add(stars);
-    for (let index = 0; index < 220; index += 1) {
-      const x = (index * 193) % this.map.width;
-      const y = (index * 317) % this.map.height;
-      stars.fillStyle(index % 7 === 0 ? 0x84b7d9 : 0xffffff, index % 5 === 0 ? 0.3 : 0.16);
-      stars.fillCircle(x, y, index % 13 === 0 ? 2 : 1);
-    }
-  }
-
-  private drawProp(graphics: Phaser.GameObjects.Graphics, prop: PropDef): void {
+  private drawTrainingProp(graphics: Phaser.GameObjects.Graphics, prop: PropDef): void {
     const tint = prop.tint ?? 0x4a5f74;
     switch (prop.kind) {
       case 'console':
@@ -532,82 +984,35 @@ export class StationScene extends Phaser.Scene {
         graphics.lineBetween(prop.x, prop.y, prop.x + prop.w, prop.y + prop.h);
         graphics.lineBetween(prop.x + prop.w, prop.y, prop.x, prop.y + prop.h);
         break;
-      case 'pipe':
-        graphics.fillStyle(tint, 1).fillRoundedRect(prop.x, prop.y, prop.w, prop.h, 8);
-        graphics.lineStyle(2, 0xffffff, 0.12).lineBetween(prop.x + 6, prop.y + prop.h / 2, prop.x + prop.w - 6, prop.y + prop.h / 2);
-        break;
-      case 'vent':
-        graphics.fillStyle(tint, 1).fillRoundedRect(prop.x, prop.y, prop.w, prop.h, 6);
-        graphics.lineStyle(2, 0x1b2939, 0.8);
-        for (let index = 6; index < prop.h - 4; index += 8) {
-          graphics.lineBetween(prop.x + 6, prop.y + index, prop.x + prop.w - 6, prop.y + index);
-        }
-        break;
-      case 'bunk':
-        graphics.fillStyle(tint, 1).fillRoundedRect(prop.x, prop.y, prop.w, prop.h, 10);
-        graphics.fillStyle(0xd6e0f0, 0.35).fillRoundedRect(prop.x + 8, prop.y + 8, prop.w * 0.32, prop.h - 16, 6);
+      case 'planter':
+        graphics.fillStyle(0x2f4324, 1).fillRoundedRect(prop.x, prop.y, prop.w, prop.h, 8);
+        graphics.fillStyle(tint, 0.9).fillRoundedRect(prop.x + 6, prop.y + 6, prop.w - 12, prop.h - 12, 6);
         break;
       case 'tank':
         graphics.fillStyle(tint, 0.5).fillRoundedRect(prop.x, prop.y, prop.w, prop.h, prop.w / 2);
         graphics.lineStyle(2, 0xcff6ff, 0.55).strokeRoundedRect(prop.x, prop.y, prop.w, prop.h, prop.w / 2);
         break;
-      case 'planter':
-        graphics.fillStyle(0x2f4324, 1).fillRoundedRect(prop.x, prop.y, prop.w, prop.h, 8);
-        graphics.fillStyle(tint, 0.9).fillRoundedRect(prop.x + 6, prop.y + 6, prop.w - 12, prop.h - 12, 6);
-        graphics.fillStyle(0x9bd15a, 0.85);
-        for (let index = 0; index < 6; index += 1) {
-          graphics.fillCircle(prop.x + 18 + (index % 3) * 40, prop.y + 24 + Math.floor(index / 3) * 34, 7);
-        }
-        break;
-      case 'reactor':
-        graphics.fillStyle(0x1b1418, 1).fillCircle(prop.x + prop.w / 2, prop.y + prop.h / 2, prop.w / 2);
-        graphics.lineStyle(7, tint, 0.5).strokeCircle(prop.x + prop.w / 2, prop.y + prop.h / 2, prop.w * 0.38);
-        graphics.lineStyle(3, 0xf5c451, 0.7).strokeCircle(prop.x + prop.w / 2, prop.y + prop.h / 2, prop.w * 0.24);
-        graphics.fillStyle(0xffc45d, 0.7).fillCircle(prop.x + prop.w / 2, prop.y + prop.h / 2, 16);
-        break;
-      case 'window':
+      case 'window': {
         graphics.fillStyle(0x07111f, 0.98).fillRoundedRect(prop.x, prop.y, prop.w, prop.h, 8);
-        const planetKey = this.state.mapId === 'training'
-          ? 'planet-earth'
-          : this.state.destination === 'mars' ? 'planet-mars' : 'planet-moon';
-        if (this.textures.exists(planetKey)) {
+        if (this.textures.exists('planet-earth')) {
           const size = Math.max(16, Math.min(prop.h - 8, prop.w - 12));
-          const planet = this.add.image(prop.x + prop.w / 2, prop.y + prop.h / 2, planetKey)
+          const planet = this.add.image(prop.x + prop.w / 2, prop.y + prop.h / 2, 'planet-earth')
             .setDisplaySize(size, size).setAlpha(0.9);
           this.mapLayer?.add(planet);
         }
-        const frame = this.add.graphics();
-        frame.lineStyle(3, tint, 0.9).strokeRoundedRect(prop.x, prop.y, prop.w, prop.h, 8);
-        frame.lineStyle(1, 0xcff6ff, 0.72).strokeRoundedRect(prop.x + 4, prop.y + 4, prop.w - 8, prop.h - 8, 6);
-        this.mapLayer?.add(frame);
         break;
-      case 'rock':
-        graphics.fillStyle(tint, 1).fillEllipse(prop.x + prop.w / 2, prop.y + prop.h / 2, prop.w, prop.h);
-        graphics.fillStyle(0xffffff, 0.13).fillEllipse(prop.x + prop.w * 0.38, prop.y + prop.h * 0.35, prop.w * 0.42, prop.h * 0.28);
-        graphics.lineStyle(2, 0x10151d, 0.65).strokeEllipse(prop.x + prop.w / 2, prop.y + prop.h / 2, prop.w, prop.h);
-        break;
-      case 'solar-panel':
-        graphics.fillStyle(0x172b44, 1).fillRect(prop.x, prop.y, prop.w, prop.h);
-        graphics.lineStyle(3, tint, 0.9).strokeRect(prop.x, prop.y, prop.w, prop.h);
-        graphics.lineStyle(1, 0xa7d5ef, 0.45);
-        for (let x = prop.x + 20; x < prop.x + prop.w; x += 24) graphics.lineBetween(x, prop.y + 2, x, prop.y + prop.h - 2);
-        for (let y = prop.y + 20; y < prop.y + prop.h; y += 20) graphics.lineBetween(prop.x + 2, y, prop.x + prop.w - 2, y);
-        break;
-      case 'antenna':
-        graphics.lineStyle(5, tint, 1).lineBetween(prop.x + prop.w / 2, prop.y + prop.h, prop.x + prop.w / 2, prop.y + 8);
-        graphics.lineStyle(3, tint, 0.9).lineBetween(prop.x + prop.w * 0.25, prop.y + prop.h * 0.75, prop.x + prop.w * 0.75, prop.y + prop.h * 0.75);
-        graphics.lineStyle(2, 0x9be5f5, 0.8).strokeCircle(prop.x + prop.w / 2, prop.y + prop.h * 0.25, Math.min(prop.w, prop.h) * 0.28);
-        break;
+      }
       case 'airlock':
         graphics.fillStyle(0x182838, 1).fillRoundedRect(prop.x, prop.y, prop.w, prop.h, 8);
         graphics.lineStyle(4, tint, 0.95).strokeRoundedRect(prop.x, prop.y, prop.w, prop.h, 8);
-        graphics.lineStyle(2, 0x9be5f5, 0.72).lineBetween(prop.x + prop.w / 2, prop.y + 8, prop.x + prop.w / 2, prop.y + prop.h - 8);
-        graphics.fillStyle(0x8fe6a8, 0.85).fillCircle(prop.x + prop.w - 10, prop.y + 12, 4);
+        break;
+      default:
+        graphics.fillStyle(tint, 1).fillRoundedRect(prop.x, prop.y, prop.w, prop.h, 8);
         break;
     }
   }
 
-  private createMarkers(): void {
+  private createTrainingMarkers(): void {
     if (!this.markerLayer) return;
     this.markerLayer.removeAll(true);
     const active = new Set(this.state.activeInteractions);
@@ -626,20 +1031,26 @@ export class StationScene extends Phaser.Scene {
         container.add(icon);
       } else {
         const glyph = this.add.text(0, 0, ICON_GLYPHS[interaction.icon] ?? '◆', {
-          color: complete ? '#66d98d' : (interaction.accent ?? '#f5c451'), fontFamily: 'Consolas, monospace', fontSize: '15px',
+          color: complete ? '#66d98d' : (interaction.accent ?? '#f5c451'),
+          fontFamily: 'Consolas, monospace',
+          fontSize: '15px',
         }).setOrigin(0.5);
         container.add(glyph);
       }
       const label = this.add.text(0, 32, interaction.name.toUpperCase(), {
-        color: complete ? '#9fc9ac' : '#e7dcc0', fontFamily: 'Consolas, monospace', fontSize: '9px', fontStyle: 'bold',
-        backgroundColor: 'rgba(4,8,14,0.72)', padding: { x: 4, y: 2 },
+        color: complete ? '#9fc9ac' : '#e7dcc0',
+        fontFamily: 'Consolas, monospace',
+        fontSize: '9px',
+        fontStyle: 'bold',
+        backgroundColor: 'rgba(4,8,14,0.72)',
+        padding: { x: 4, y: 2 },
       }).setOrigin(0.5).setAlpha(complete ? 0.6 : 1);
       container.add(label);
       this.markerLayer.add(container);
     }
   }
 
-  private createCrew(): void {
+  private createTrainingCrew(): void {
     if (!this.crewLayer) return;
     this.crewLayer.removeAll(true);
     this.map.crew.forEach((crew, index) => {
@@ -656,21 +1067,23 @@ export class StationScene extends Phaser.Scene {
       body.setScale(crew.facing, 1);
       root.add(body);
       root.add(this.add.text(0, -74, crew.name.toUpperCase(), {
-        color: '#dce7f5', fontFamily: 'Consolas, monospace', fontSize: '10px', fontStyle: 'bold',
-        backgroundColor: 'rgba(4,8,14,0.62)', padding: { x: 4, y: 2 },
+        color: '#dce7f5',
+        fontFamily: 'Consolas, monospace',
+        fontSize: '10px',
+        fontStyle: 'bold',
+        backgroundColor: 'rgba(4,8,14,0.62)',
+        padding: { x: 4, y: 2 },
       }).setOrigin(0.5));
       root.add(this.add.text(0, -62, crew.role.toUpperCase(), {
-        color: crew.accent, fontFamily: 'Consolas, monospace', fontSize: '8px',
+        color: crew.accent,
+        fontFamily: 'Consolas, monospace',
+        fontSize: '8px',
       }).setOrigin(0.5));
       this.crewLayer?.add(root);
     });
   }
 
-  private createPlayerIfNeeded(): void {
-    if (!this.playerRoot) this.createPlayer();
-  }
-
-  private createPlayer(): void {
+  private createTrainingPlayer(): void {
     this.playerRoot?.destroy(true);
     const color = colorHex(this.state.colorId);
     const root = this.add.container(this.sim.x, this.sim.y).setDepth(30);
@@ -684,43 +1097,18 @@ export class StationScene extends Phaser.Scene {
     body.add(this.add.ellipse(0, 4, 42, 13, 0x02060b, 0.42));
     root.add(body);
     const label = this.add.text(0, -80, this.state.playerName.toUpperCase(), {
-      color: '#fff1be', fontFamily: 'Consolas, monospace', fontSize: '11px', fontStyle: 'bold',
-      backgroundColor: 'rgba(4,8,14,0.7)', padding: { x: 5, y: 2 },
+      color: '#fff1be',
+      fontFamily: 'Consolas, monospace',
+      fontSize: '11px',
+      fontStyle: 'bold',
+      backgroundColor: 'rgba(4,8,14,0.7)',
+      padding: { x: 5, y: 2 },
     }).setOrigin(0.5);
     root.add(label);
     const marker = this.add.triangle(0, -96, 0, 0, 8, 0, 4, 8, 0xf5c451, 1).setName('caret');
     root.add(marker);
     this.playerRoot = root;
     this.playerBody = body;
-    this.playerLabel = label;
-  }
-
-  private createVision(): void {
-    this.createOverlay();
-  }
-
-  private createOverlay(): void {
-    this.visionGraphics?.destroy();
-    this.visionMask?.destroy();
-
-    this.visionGraphics = this.add.graphics().setVisible(false);
-    this.visionMask = this.visionGraphics.createGeometryMask();
-    this.visionMask.setInvertAlpha(true);
-
-    // Removed darkLayer - vision is now purely a visibility mask, not full darkness
-    // this.darkLayer = this.add.rectangle(0, 0, this.map.width, this.map.height, 0x02040a, VISION.darkness)
-    //   .setOrigin(0, 0).setDepth(20);
-    // this.darkLayer.setMask(this.visionMask);
-    // this.darkLayer.setVisible(this.state.visionEnabled);
-
-    this.debugText = this.add.text(16, this.cameras.main.height - 108, '', {
-      color: '#9be8ff', fontFamily: 'Consolas, monospace', fontSize: '12px', backgroundColor: 'rgba(3,8,14,0.82)',
-      padding: { x: 8, y: 6 },
-    }).setScrollFactor(0).setDepth(60).setVisible(this.debugVisible);
-  }
-
-  private updateMarkers(_previous: string): void {
-    this.createMarkers();
   }
 }
 
@@ -735,12 +1123,13 @@ function defaultState(): SceneGameState {
     speed: 1,
     frozen: false,
     visionEnabled: true,
-    activeInteractions: TRAINING_DECK.interactions.map(interaction => interaction.id),
+    activeInteractions: TRAINING_DECK.interactions.map((interaction) => interaction.id),
     completedInteractions: [],
     objective: 'MOVEMENT CHECK',
   };
 }
 
+/** Create the main Phaser station canvas with Arcade Physics for Tiled collision. */
 export function createStationGame(parent: HTMLElement, onEvent: (event: GameEvent) => void): Phaser.Game {
   return new Phaser.Game({
     type: Phaser.AUTO,
@@ -748,6 +1137,13 @@ export function createStationGame(parent: HTMLElement, onEvent: (event: GameEven
     width: CAMERA.viewWidth,
     height: CAMERA.viewHeight,
     backgroundColor: '#03060c',
+    physics: {
+      default: 'arcade',
+      arcade: {
+        gravity: { x: 0, y: 0 },
+        debug: false,
+      },
+    },
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     render: { antialias: true, roundPixels: false, powerPreference: 'high-performance' },
     scene: [new StationScene(onEvent, defaultState())],
@@ -771,4 +1167,9 @@ export function setSceneReducedMotion(game: Phaser.Game, reduced: boolean): void
 export function navigateStationTo(game: Phaser.Game, x: number, y: number): void {
   const scene = game.scene.getScene('station') as StationScene | null;
   scene?.navigateTo(x, y);
+}
+
+export function interactStation(game: Phaser.Game): void {
+  const scene = game.scene.getScene('station') as StationScene | null;
+  scene?.interactNow();
 }

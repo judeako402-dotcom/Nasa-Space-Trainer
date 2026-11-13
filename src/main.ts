@@ -117,9 +117,11 @@ type ConstellationIconId =
   | 'vision'
   | 'cert'
   | 'launch'
-  | 'forward';
+  | 'forward'
+  | 'fps';
 
 const CONSTELLATION_ICON_MARKUP: Record<ConstellationIconId, string> = {
+  fps: '<circle cx="18" cy="18" r="10" fill="none" /><line x1="18" y1="18" x2="25" y2="12" /><line x1="8" y1="18" x2="11" y2="18" /><line x1="18" y1="8" x2="18" y2="11" /><line x1="25" y1="18" x2="28" y2="18" /><circle cx="18" cy="18" r="2.3" /><circle cx="25" cy="12" r="2.0" /><circle cx="18" cy="8" r="1.7" />',
   play: '<line x1="8" y1="10" x2="26" y2="16" /><line x1="26" y1="16" x2="14" y2="27" /><line x1="14" y1="27" x2="8" y2="10" /><circle cx="8" cy="10" r="2.5" /><circle cx="26" cy="16" r="3" /><circle cx="14" cy="27" r="2.2" />',
   training: '<line x1="9" y1="9" x2="27" y2="27" /><line x1="27" y1="9" x2="9" y2="27" /><circle cx="9" cy="9" r="2.2" /><circle cx="27" cy="27" r="2.2" /><circle cx="27" cy="9" r="2.2" /><circle cx="9" cy="27" r="2.2" /><circle cx="18" cy="18" r="2.6" />',
   options: '<circle cx="18" cy="18" r="5" fill="none" /><line x1="18" y1="5" x2="18" y2="10" /><line x1="18" y1="26" x2="18" y2="31" /><line x1="5" y1="18" x2="10" y2="18" /><line x1="26" y1="18" x2="31" y2="18" />',
@@ -171,6 +173,7 @@ app.innerHTML = `
               <span class="task-meter-track" aria-hidden="true"><span id="task-fill"></span></span>
             </div>
             <span class="alive-pill" id="crew-progress">COOPERATIVE TRIAL</span>
+            <span class="spud-fps-badge" id="hud-fps" hidden>-- FPS</span>
           </div>
           <nav class="mission-toolbar" aria-label="In-game menus">
             ${GAME_MENU_BUTTONS.map(({ action, label, key, icon }) => `
@@ -189,7 +192,10 @@ app.innerHTML = `
           <div class="id-copy">
             <strong id="hud-player-name">SPUDNAUT</strong>
             <small id="hud-player-meta">SPECIALIST · DESTINATION</small>
-            <span id="hud-room">CAFETERIA</span>
+            <div class="spud-room-badge">
+              <span class="spud-room-dot" aria-hidden="true"></span>
+              <span id="hud-room">CENTRAL HUB</span>
+            </div>
           </div>
         </div>
         <div class="action-cluster">
@@ -679,13 +685,20 @@ function renderTrainingHud(): void {
   trainingHud.innerHTML = `
     <section class="training-panel ${trainingHudExpanded ? 'expanded' : ''}">
       <header class="training-head">
-        <div><span class="training-kicker">EARTH SIMULATOR</span><strong>TRAINING DECK</strong></div>
+        <div>
+          <span class="training-kicker">EARTH SIMULATOR</span>
+          <strong>TRAINING DECK</strong>
+          <div class="spud-room-badge is-training">
+            <span class="spud-room-dot" aria-hidden="true"></span>
+            <span id="training-room">${escapeHtml(training.room.toUpperCase())}</span>
+          </div>
+        </div>
         <div class="training-head-actions">
+          <span class="spud-fps-badge" id="training-fps" ${save.options.showFps ? '' : 'hidden'}>-- FPS</span>
           <button class="training-map" type="button" data-training-map aria-haspopup="dialog" aria-keyshortcuts="M">${renderConstellationIcon('map')}<span>Map</span><kbd aria-hidden="true">M</kbd></button>
           <button class="training-exit" type="button" data-training-exit>${renderConstellationIcon('back')}<span>Exit</span></button>
         </div>
       </header>
-      <div class="training-controls">Move <kbd>WASD</kbd> / <kbd>ARROWS</kbd> <span aria-hidden="true">·</span> Click to walk <span aria-hidden="true">·</span> <kbd>E</kbd> interact</div>
       <button class="training-toggle" type="button" data-training-toggle aria-expanded="${trainingHudExpanded}"><span>OBJECTIVES · ${inspected} / ${systems.length}</span><span>${trainingHudExpanded ? 'HIDE ▲' : 'SHOW ▼'}</span></button>
       <div class="training-list">
         ${systems.map(interaction => `<div class="training-objective ${training.completed.includes(interaction.id) ? 'done' : ''}" style="--accent:${interaction.accent ?? '#7ad7ea'}"><img src="/assets/ui/icons/${interaction.icon}.png" alt="" /><span>${escapeHtml(interaction.name)}</span><b>${training.completed.includes(interaction.id) ? '✓' : '○'}</b></div>`).join('')}
@@ -788,12 +801,19 @@ function onGameEvent(event: GameEvent): void {
     if (currentScreen === 'training') {
       training.x = event.x;
       training.y = event.y;
-      training.room = event.room;
+      if (training.room !== event.room) {
+        training.room = event.room;
+        const roomEl = document.querySelector<HTMLElement>('#training-room');
+        if (roomEl) roomEl.textContent = event.room.toUpperCase();
+      }
     } else {
       mission.playerX = event.x;
       mission.playerY = event.y;
-      mission.room = event.room;
-      updateHUD();
+      if (mission.room !== event.room) {
+        mission.room = event.room;
+        const roomEl = document.querySelector<HTMLElement>('#hud-room');
+        if (roomEl) roomEl.textContent = event.room.toUpperCase();
+      }
     }
     return;
   }
@@ -804,8 +824,11 @@ function onGameEvent(event: GameEvent): void {
       kind: event.kind,
       room: event.room,
     };
-    if (currentScreen === 'training') training.room = event.room;
-    else {
+    if (currentScreen === 'training') {
+      training.room = event.room;
+      const roomEl = document.querySelector<HTMLElement>('#training-room');
+      if (roomEl) roomEl.textContent = event.room.toUpperCase();
+    } else {
       mission.room = event.room;
       updateHUD();
     }
@@ -813,17 +836,41 @@ function onGameEvent(event: GameEvent): void {
     return;
   }
   if (event.type === 'interact') {
+    if (event.kind === 'vent') {
+      sfx.click();
+      showToast('Traversed Maintenance Duct');
+      return;
+    }
     if (currentScreen === 'training') handleTrainingInteract(event.interactionId);
     else openMissionTask(event.interactionId);
     return;
   }
   if (event.type === 'crew') {
-    talkToCrew(event.crewId);
+    talkToCrew(event.crewId, event.name, event.lines);
+    return;
+  }
+  if (event.type === 'fps') {
+    if (!save.options.showFps) return;
+    const text = `${event.fps} FPS`;
+    const badge = currentScreen === 'training'
+      ? document.querySelector<HTMLElement>('#training-fps')
+      : document.querySelector<HTMLElement>('#hud-fps');
+    if (badge && badge.textContent !== text) badge.textContent = text;
   }
 }
 
-function talkToCrew(crewId: string): void {
-  const crew = activeMap().crew.find(item => item.id === crewId);
+function talkToCrew(crewId: string, fallbackName?: string, fallbackLines?: string[]): void {
+  const crew = activeMap().crew.find(item => item.id === crewId) ?? (fallbackName && fallbackLines?.length ? {
+    id: crewId,
+    name: fallbackName,
+    role: 'Station Specialist',
+    art: '/assets/potato-researcher.png',
+    x: 0,
+    y: 0,
+    facing: 1 as const,
+    accent: '#9beeff',
+    lines: fallbackLines,
+  } : undefined);
   if (!crew) return;
   if (currentScreen === 'training' && !training.crew.includes(crew.id)) {
     training.crew.push(crew.id);
@@ -1571,6 +1618,29 @@ function renderOptionsContentMarkup(returnScreen: 'menu' | 'training' | 'mission
             }).join('')}
           </div>
         </section>
+
+        <section class="spud-display-section" aria-label="Telemetry Settings">
+          <div class="spud-section-heading">DISPLAY</div>
+          <div class="spud-toggle-row">
+            <div class="spud-vol-icon-wrap">${renderConstellationIcon('fps', 'spud-vol-icon')}</div>
+            <div class="spud-vol-copy">
+              <label class="spud-vol-label" for="opt-show-fps">Show FPS</label>
+              <small class="spud-vol-sub">Displays live frame rate during gameplay</small>
+            </div>
+            <button
+              type="button"
+              class="spud-constellation-switch ${options.showFps ? 'is-on' : ''}"
+              id="opt-show-fps"
+              data-toggle-option="showFps"
+              role="switch"
+              aria-checked="${options.showFps ? 'true' : 'false'}"
+              aria-label="Toggle FPS readout"
+            >
+              <span class="spud-switch-track" aria-hidden="true"><span class="spud-switch-node"></span></span>
+              <span class="spud-switch-state">${options.showFps ? 'ON' : 'OFF'}</span>
+            </button>
+          </div>
+        </section>
       </div>
 
       <footer class="spud-options-footer">
@@ -1654,6 +1724,14 @@ function showOptions(): void {
         input.style.setProperty('--fill', `${val}%`);
       }
     }
+    const fpsSwitch = optionsRoot.querySelector<HTMLButtonElement>('[data-toggle-option="showFps"]');
+    if (fpsSwitch) {
+      const enabled = Boolean(options.showFps);
+      fpsSwitch.classList.toggle('is-on', enabled);
+      fpsSwitch.setAttribute('aria-checked', enabled ? 'true' : 'false');
+      const stateEl = fpsSwitch.querySelector<HTMLElement>('.spud-switch-state');
+      if (stateEl) stateEl.textContent = enabled ? 'ON' : 'OFF';
+    }
   };
 
   const refresh = (): void => {
@@ -1661,6 +1739,12 @@ function showOptions(): void {
     applyOptions();
     saveSettings();
   };
+
+  optionsRoot.querySelector('[data-toggle-option="showFps"]')?.addEventListener('click', () => {
+    options.showFps = !options.showFps;
+    sfx.click();
+    refresh();
+  });
 
   optionsRoot.querySelectorAll<HTMLButtonElement>('[data-mute-pill]').forEach(pill => pill.addEventListener('click', () => {
     const target = pill.dataset.mutePill;
@@ -3342,7 +3426,9 @@ function updateHUD(): void {
   const meta = document.querySelector<HTMLElement>('#hud-player-meta');
   if (meta) meta.textContent = `${specialistById(lobby.specialist).shortName} · ${destinationById(lobby.destination).name.toUpperCase()}`;
   const room = document.querySelector<HTMLElement>('#hud-room');
-  if (room) room.textContent = (mission.room || 'Cafeteria').toUpperCase();
+  if (room) room.textContent = (mission.room || 'Central Hub').toUpperCase();
+  const fpsBadge = document.querySelector<HTMLElement>('#hud-fps');
+  if (fpsBadge) fpsBadge.hidden = !save.options.showFps;
   const dot = document.querySelector<HTMLElement>('#hud-color-dot');
   if (dot) dot.style.background = getColor(save.colorId).css;
   const systems = document.querySelector<HTMLDivElement>('#hud-systems');
@@ -3357,15 +3443,19 @@ function updateActionButtons(): void {
   const use = document.querySelector<HTMLButtonElement>('[data-action="use"]');
   if (!prompt || !use) return;
   const id = currentPrompt.id;
-  const relevant = Boolean(id) && (currentScreen === 'training' || mission.tasks.includes(id ?? ''));
-  if (currentScreen === 'training') {
-    prompt.textContent = id ? `${currentPrompt.name} · ${currentPrompt.room}` : 'WASD / ARROWS MOVE · E INTERACT';
+  const isSpecial = currentPrompt.kind === 'crew' || currentPrompt.kind === 'vent';
+  const relevant = Boolean(id) && (currentScreen === 'training' || isSpecial || mission.tasks.includes(id ?? ''));
+  if (!id) {
+    prompt.textContent = '';
+    prompt.hidden = true;
+  } else if (currentScreen === 'training') {
+    prompt.textContent = `${currentPrompt.name} · ${currentPrompt.room}`;
+    prompt.hidden = false;
   } else {
-    prompt.textContent = id && relevant
+    prompt.textContent = relevant
       ? `${currentPrompt.name} · ${currentPrompt.room}`
-      : id
-        ? `${currentPrompt.name} · NOT SCHEDULED TODAY`
-        : 'WASD / ARROWS MOVE · E INTERACT';
+      : `${currentPrompt.name} · NOT SCHEDULED TODAY`;
+    prompt.hidden = false;
   }
   prompt.classList.toggle('has-task', relevant);
   use.hidden = !relevant;
@@ -3427,7 +3517,8 @@ function openMap(): void {
           </div>
           ${gameMenuClose('map')}
         </header>
-        <div class="spud-map-blueprint map-canvas" style="height:${height}px;">
+        <div class="spud-map-blueprint map-canvas ${map.id === 'surface' ? 'is-surface' : ''}" style="${map.id === 'surface' ? '' : `height:${height}px;`}">
+          ${map.id === 'surface' ? '<img class="spud-map-art" src="/assets/maps/spudnaut-station.png" alt="" aria-hidden="true" />' : ''}
           ${map.rooms.map(room => `
             <button type="button" class="spud-map-room map-room" data-map-walk-x="${Math.round(room.x + room.w / 2)}" data-map-walk-y="${Math.round(room.y + room.h / 2)}" data-map-walk-label="${escapeHtml(room.name)}" title="Click to walk to ${escapeHtml(room.name)}" style="left:${(room.x / map.width) * 100}%;top:${(room.y / map.height) * 100}%;width:${(room.w / map.width) * 100}%;height:${(room.h / map.height) * 100}%;--room-accent:${room.accent};">
               <span>${escapeHtml(room.name.toUpperCase())}</span>
@@ -3693,6 +3784,11 @@ function applyOptions(): void {
     document.documentElement.style.setProperty('--parallax-y', '0');
   }
   if (game && sceneReady) void import('./game').then(({ setSceneReducedMotion }) => setSceneReducedMotion(game!, save.options.reducedMotion));
+  const fpsEnabled = Boolean(save.options.showFps);
+  const hudFps = document.querySelector<HTMLElement>('#hud-fps');
+  if (hudFps) hudFps.hidden = !fpsEnabled;
+  const trainingFps = document.querySelector<HTMLElement>('#training-fps');
+  if (trainingFps) trainingFps.hidden = !fpsEnabled;
   if (currentScreen === 'mission' || currentScreen === 'training') configureScene();
 }
 
@@ -3803,7 +3899,7 @@ function wireControls(): void {
     if (!currentPrompt.id) return;
     sfx.click();
     if (currentScreen === 'training') handleTrainingInteract(currentPrompt.id);
-    else openMissionTask(currentPrompt.id);
+    else if (game) void import('./game').then(({ interactStation }) => interactStation(game!));
   });
 
   const unlockAudio = (): void => {
