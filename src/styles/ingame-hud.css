@@ -1,0 +1,652 @@
+:root {
+  --station-ui-ink: #121744;
+  --station-ui-blue: #292483;
+  --station-ui-light: #dce9fa;
+  --station-ui-gold: #ffb327;
+  --station-ui-map-rim: url('/assets/ui/spudnaut/ingame/map-rim.webp');
+}
+
+.mission-hud {
+  --hud-glass: #202251f2;
+  --hud-ice: #8cf5ed;
+  --hud-stroke: #8398bb;
+  --hud-ink: #f3f8ff;
+  --hud-muted: #d4e5fb;
+  --hud-edge: clamp(10px, 1.45vw, 24px);
+  --hud-bottom: max(var(--hud-edge), env(safe-area-inset-bottom));
+}
+
+.mission-hud .hud-top-left {
+  top: max(var(--hud-edge), env(safe-area-inset-top));
+  left: max(var(--hud-edge), env(safe-area-inset-left));
+  z-index: 12;
+  width: auto;
+  max-width: min(260px, 60vw);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.mission-hud .hud-task-card {
+  padding: 9px 11px;
+  border: 2px solid var(--station-ui-blue);
+  border-top-color: var(--station-ui-light);
+  border-radius: 9px;
+  background: var(--hud-glass);
+  box-shadow: 0 3px #131345;
+  color: var(--hud-ink);
+}
+
+.mission-hud .hud-task-card-row { margin-bottom: 6px; gap: 6px; }
+.mission-hud .hud-task-eyebrow { letter-spacing: .07em; }
+.mission-hud .hud-task-count { white-space: nowrap; }
+.mission-hud .hud-task-track { height: 6px; background: #111631; }
+.mission-hud .hud-task-track #task-fill { background: linear-gradient(90deg, #34e0b2, #53e9ff); box-shadow: none; }
+
+.mission-hud .hud-shift-meta { gap: 4px 9px; background: var(--hud-glass); }
+.mission-hud .hud-shift-meta .day-clock { color: #91f4eb; }
+
+.mission-hud .hud-left-rail {
+  position: relative;
+  inset: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: clamp(92px, 11vw, 122px);
+  aspect-ratio: auto;
+  padding: 0;
+  background: none;
+  filter: drop-shadow(0 3px 4px #161333a0);
+}
+
+.mission-hud .hud-drawer-tab {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  min-width: 0;
+  width: 100%;
+  min-height: 56px;
+  gap: 3px;
+  padding: 7px 6px;
+  border: 2px solid var(--station-ui-blue);
+  border-top-color: #d6ecff;
+  border-radius: 9px;
+  background: linear-gradient(180deg, #9ce6df 0%, #6ec5c9 100%);
+  color: var(--station-ui-ink);
+  box-shadow: 0 3px #131345;
+  backdrop-filter: none;
+  transition: transform 140ms ease, filter 140ms ease, background 140ms ease;
+}
+
+.mission-hud .hud-drawer-tab:hover {
+  filter: brightness(1.06);
+  transform: translateX(2px);
+}
+
+.mission-hud .hud-drawer-tab.is-active {
+  background: linear-gradient(180deg, #ecfffa 0%, #a2f3e8 100%);
+  color: var(--station-ui-ink);
+  box-shadow: inset 0 0 0 2px var(--station-ui-blue), 0 3px #131345;
+  transform: translateX(3px);
+}
+.mission-hud .hud-tab-label {
+  writing-mode: horizontal-tb;
+  transform: none;
+  font: 800 clamp(10px, 1vw, 13px)/1.1 system-ui, sans-serif;
+  letter-spacing: .035em;
+}
+.mission-hud .hud-glyph--rail {
+  width: clamp(23px, 3vw, 38px);
+  height: auto;
+  margin: 0;
+  filter: brightness(0) saturate(100%) invert(13%) sepia(27%) saturate(3233%) hue-rotate(222deg) brightness(85%);
+}
+.mission-hud .hud-drawer-tab kbd {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  border: 0;
+  background: var(--station-ui-ink);
+  color: #fff;
+}
+
+.mission-hud .hud-top-right {
+  top: max(var(--hud-edge), env(safe-area-inset-top));
+  right: max(var(--hud-edge), env(safe-area-inset-right));
+  flex-direction: row;
+  align-items: flex-start;
+  gap: clamp(6px, 1vw, 14px);
+}
+.mission-hud .hud-settings-btn {
+  width: clamp(44px, 4.7vw, 66px);
+  height: auto;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  backdrop-filter: none;
+}
+.mission-hud .hud-settings-btn img { display: block; width: 100%; }
+.mission-hud .hud-map-btn {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: auto;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  backdrop-filter: none;
+}
+.mission-hud :is(.hud-settings-btn, .hud-map-btn):hover {
+  background: none;
+  box-shadow: none;
+  filter: brightness(1.13);
+}
+.mission-hud .hud-radar {
+  width: clamp(78px, 13vw, 175px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #222436;
+  box-shadow: 0 3px 8px #090c29b0;
+  filter: none;
+}
+.mission-hud .hud-radar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--station-ui-map-rim) center / 100% 100% no-repeat;
+}
+.mission-hud .hud-radar-viewport { inset: 13%; width: auto; height: auto; }
+.mission-hud .hud-radar-topology,
+.mission-hud .hud-radar-pings {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 1;
+}
+.mission-hud .hud-map-caption {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border: 1px solid #8c9ec3;
+  border-radius: 5px;
+  background: var(--hud-glass);
+  color: var(--hud-ink);
+  font: 800 11px/1.2 system-ui, sans-serif;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.mission-hud .hud-bottom-left {
+  left: max(var(--hud-edge), env(safe-area-inset-left));
+  bottom: var(--hud-bottom);
+  width: clamp(216px, 23vw, 330px);
+  aspect-ratio: 3444 / 1341;
+}
+.mission-hud .hud-profile-content {
+  position: absolute;
+  inset: 0;
+  display: block;
+  padding: 0;
+  container-type: inline-size;
+}
+.mission-hud .hud-portrait-wrap {
+  position: absolute;
+  top: 19.5%;
+  left: 5.1%;
+  width: 23.5%;
+  height: auto;
+  aspect-ratio: 1;
+  container-type: size;
+}
+.mission-hud .hud-portrait-img {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.mission-hud .hud-portrait-img .spud-sprite-stage { --sprite-h: 96cqh; }
+.mission-hud .hud-portrait-img > img {
+  width: 86%;
+  height: 86%;
+  object-fit: contain;
+}
+.mission-hud .hud-bottom-left .id-copy {
+  position: absolute;
+  top: 18%;
+  left: 35%;
+  right: 14%;
+  height: 38%;
+  gap: 2px;
+  justify-content: center;
+  align-items: flex-start;
+  color: var(--station-ui-ink);
+  text-shadow: none;
+}
+.mission-hud .hud-bottom-left .id-copy strong {
+  max-width: 100%;
+  padding-bottom: 1px;
+  color: inherit;
+  font: 900 clamp(10px, 5.2cqw, 17px)/1.15 system-ui, sans-serif;
+  letter-spacing: .025em;
+}
+.mission-hud .hud-room-row {
+  color: inherit;
+  font: 750 clamp(8px, 3.65cqw, 12px)/1.15 system-ui, sans-serif;
+  letter-spacing: .035em;
+  max-width: 100%;
+}
+.mission-hud #hud-room { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mission-hud .hud-helmet-btn {
+  position: absolute;
+  top: 64%;
+  left: 42%;
+  margin: 0;
+  height: auto;
+  min-height: 19px;
+  padding: 2px 4px;
+  border-color: #343584;
+  background: #f3f8ff;
+  color: var(--station-ui-ink);
+  box-shadow: none;
+  font-size: clamp(8px, 3.3cqw, 11px);
+  white-space: nowrap;
+}
+.mission-hud .hud-helmet-btn.is-sealed { background: #c7ffe1; color: #163e31; }
+.mission-hud .hud-helmet-btn.is-hazard { background: #932842; color: white; }
+.mission-hud .hud-helmet-btn[hidden] { display: none; }
+.mission-hud .hud-helmet-btn kbd { color: inherit; }
+.mission-hud .hud-helmet-btn::after { content: ''; position: absolute; inset: -8px -4px; }
+
+.mission-hud .action-cluster.hud-bottom-right {
+  right: max(var(--hud-edge), env(safe-area-inset-right));
+  bottom: var(--hud-bottom);
+}
+.mission-hud .action-button.use {
+  width: clamp(58px, 7vw, 92px);
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  aspect-ratio: 1;
+  gap: 4px;
+  border: 2px solid var(--station-ui-blue);
+  border-top-color: var(--station-ui-light);
+  border-radius: 9px;
+  background: linear-gradient(135deg, #4af0e4, #39b899);
+  box-shadow: 0 3px #171657;
+  color: var(--station-ui-ink);
+}
+.mission-hud .action-button.use.is-inactive { background: #c4cde0; color: #20284b; opacity: .8; }
+.mission-hud .action-button.use .hud-glyph { width: 28px; height: 28px; margin: 0; filter: brightness(0) saturate(0); }
+.mission-hud .action-button.use kbd { background: #242658; color: #fff; }
+.mission-hud .interaction-prompt:not([hidden]) { max-width: min(34vw, 330px); background: var(--hud-glass); }
+.mission-hud .hud-status-bars .mission-status { background: var(--hud-glass); border-color: #8296bd; }
+.mission-hud .toast {
+  bottom: max(118px, calc(var(--hud-bottom) + 78px));
+  z-index: 7;
+  width: max-content;
+  max-width: min(calc(100vw - 24px), 460px);
+  background: var(--hud-glass);
+  border: 1px solid var(--hud-stroke);
+  border-radius: 7px;
+  text-align: center;
+}
+
+.mission-hud :is(button, summary):focus-visible,
+.station-map-dialog button:focus-visible,
+.ingame-options-screen :is(button, input, summary):focus-visible {
+  outline: 2px solid #ffd560;
+  outline-offset: 3px;
+}
+.mission-hud .hud-map-btn:focus-visible {
+  outline: none;
+}
+.mission-hud .hud-map-btn:focus-visible .hud-radar {
+  box-shadow: 0 0 0 3px #8cf5ed, 0 3px 8px #090c29b0;
+}
+
+@keyframes hudExpandRight {
+  from {
+    opacity: 0;
+    transform: translateX(-14px) scaleX(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scaleX(1);
+  }
+}
+
+.mission-hud .hud-drawer-backdrop { z-index: 10; background: rgba(10, 14, 34, 0.22); }
+.mission-hud .hud-drawer-panel {
+  left: max(var(--hud-edge), env(safe-area-inset-left));
+  top: calc(max(var(--hud-edge), env(safe-area-inset-top)) + 166px);
+  translate: 0 0;
+  width: calc(100vw - 2 * var(--hud-edge));
+  max-height: calc(100dvh - 240px);
+  overflow-y: auto;
+  z-index: 11;
+  padding: 12px;
+  border: 3px solid var(--station-ui-blue);
+  border-top-color: #8c83db;
+  border-radius: 10px;
+  background: repeating-linear-gradient(90deg, #b0bfd4 0 40px, #a5b5cc 40px 43px);
+  box-shadow: 0 5px #100e54, 0 16px 38px #10112d88;
+  color: var(--station-ui-ink);
+  backdrop-filter: none;
+  transform-origin: left top;
+  animation: hudExpandRight 170ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mission-hud .hud-drawer-panel { animation: none; }
+}
+.mission-hud .hud-drawer-view:not([hidden]) { display: grid; gap: 10px; }
+.mission-hud .hud-drawer-head { align-items: center; gap: 8px; }
+.mission-hud .hud-drawer-title h2 { margin: 0; }
+.mission-hud .hud-drawer-title img { display: block; width: clamp(97px, 18vw, 163px); }
+.mission-hud .hud-drawer-head-right { gap: 6px; }
+.mission-hud .hud-drawer-status-summary { color: var(--station-ui-ink); font-size: 10px; }
+.mission-hud .hud-live-badge { background: #133d39; color: #b7ffcb; }
+.mission-hud .hud-drawer-close {
+  min-width: 44px;
+  min-height: 44px;
+  border: 2px solid var(--station-ui-blue);
+  border-radius: 6px;
+  background: #e8effa;
+  color: var(--station-ui-ink);
+  font-size: 26px;
+}
+.mission-hud .hud-drawer-close:hover { background: #fcd881; border-color: var(--station-ui-blue); color: var(--station-ui-ink); }
+.mission-hud .hud-tasks-grid { grid-template-columns: 1fr; gap: 6px; }
+.mission-hud .hud-task-card-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) fit-content(40%);
+  gap: 3px 8px;
+  min-height: 0;
+  padding: 7px 9px;
+  border: 2px solid var(--station-ui-blue);
+  border-radius: 5px;
+  background: linear-gradient(152deg, #3d4770 40%, #303958 41%);
+  color: #fff;
+  opacity: 1;
+}
+.mission-hud .hud-task-card-item.is-pending { border-color: var(--station-ui-blue); }
+.mission-hud .hud-task-card-item.is-pending:hover { background: #29275c; }
+.mission-hud .hud-task-card-item.is-emergency {
+  border-color: #ff5a5f;
+  background: linear-gradient(152deg, #6b2434 40%, #491a27 41%);
+  box-shadow: 0 0 0 1px #ff8d8f, 0 3px #2d0d16;
+}
+.mission-hud .hud-task-card-item.is-emergency .hud-task-item-kicker { color: #ffd4d6; font-weight: 800; }
+.mission-hud .hud-task-card-item.is-emergency .hud-task-item-status { background: #4a1120; color: #ffcfd2; }
+.mission-hud .hud-radar-ping.is-emergency {
+  background: #ff5a5f;
+  box-shadow: 0 0 0 3px rgba(255, 90, 95, 0.55);
+  width: 10px;
+  height: 10px;
+}
+.mission-hud .hud-task-card-item.is-done { background: #294950; }
+.mission-hud .hud-task-item-kicker { grid-column: 1; color: #bad9ee; }
+.mission-hud .hud-task-item-title { grid-column: 1; font: 750 14px/1.2 system-ui, sans-serif; }
+.mission-hud .hud-task-item-desc { grid-column: 1; color: #e1e8f6; font: 500 12px/1.25 system-ui, sans-serif; }
+.mission-hud .hud-task-item-status {
+  grid-column: 2;
+  grid-row: 1 / 4;
+  align-self: center;
+  padding: 5px;
+  border-radius: 4px;
+  background: #141e3a;
+  color: #b7fcff;
+  line-height: 1.3;
+  letter-spacing: .035em;
+}
+.mission-hud .hud-task-route-dot { flex: none; }
+.mission-hud .hud-task-empty { color: var(--station-ui-ink); }
+.mission-hud .hud-drawer-foot {
+  margin-top: 0;
+  border: 0;
+  color: var(--station-ui-ink);
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.mission-hud .hud-drawer-crumb { color: inherit; }
+.mission-hud .hud-drawer-link {
+  min-height: 44px;
+  padding: 4px 8px;
+  border: 1px solid #3e4b7e;
+  border-radius: 5px;
+  background: #f1f6ff;
+  color: var(--station-ui-ink);
+}
+.mission-hud .hud-drawer-link kbd { color: inherit; border-color: currentColor; }
+.mission-hud .hud-drawer-link:hover { background: #fff1be; color: var(--station-ui-ink); }
+.mission-hud .hud-status-content { display: grid; grid-template-columns: .88fr 1fr; gap: 10px; align-items: start; }
+.mission-hud .hud-status-monitor {
+  width: 100%;
+  aspect-ratio: 344 / 287;
+  background: url('/assets/ui/spudnaut/ingame/status-monitor.webp') center / contain no-repeat;
+}
+.mission-hud .hud-systems.hud-status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.mission-hud .hud-status-card { min-width: 0; padding: 8px; gap: 5px; color: #fff; background: #1c3150; }
+.mission-hud .hud-status-card .hud-status-card-detail { color: #c8d9f1; overflow-wrap: anywhere; }
+
+@media (min-width: 640px) and (min-height: 461px) {
+  .mission-hud .hud-drawer-panel {
+    left: calc(max(var(--hud-edge), env(safe-area-inset-left)) + clamp(104px, 12vw, 134px));
+    top: max(var(--hud-edge), env(safe-area-inset-top));
+    translate: 0 0;
+    width: min(460px, calc(100vw - clamp(260px, 28vw, 400px)));
+    max-height: calc(100dvh - 2 * var(--hud-edge));
+    aspect-ratio: auto;
+    padding: 12px;
+    overflow-y: auto;
+    border: 3px solid var(--station-ui-blue);
+    border-top-color: #8c83db;
+    border-radius: 10px;
+    background: repeating-linear-gradient(90deg, #b0bfd4 0 40px, #a5b5cc 40px 43px);
+    box-shadow: 0 5px #100e54, 0 16px 38px #10112d88;
+  }
+  .mission-hud .hud-status-content { grid-template-columns: 1fr; }
+  .mission-hud .hud-status-monitor { display: none; }
+  .mission-hud .hud-systems.hud-status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+}
+
+.game-map-dialog .spud-map-marker {
+  background: var(--marker-color);
+  color: var(--marker-color);
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+}
+dialog.game-menu-dialog.station-map-dialog {
+  width: min(740px, calc(100vw - 20px));
+  padding: 10px;
+  border: 0;
+  background: none;
+  text-shadow: none;
+}
+.station-map-dialog::backdrop { backdrop-filter: blur(4px); }
+.station-map-dialog .map-card { gap: 8px; }
+.station-map-dialog .spud-modal-top {
+  align-items: center;
+  padding: 6px 10px;
+  border: 2px solid #817bcc;
+  border-radius: 9px;
+  background: #222453;
+}
+.station-map-dialog .spud-modal-top h2 {
+  margin: 0;
+  font: 850 clamp(14px, 2.6vw, 24px)/1.1 system-ui, sans-serif;
+  letter-spacing: .03em;
+  color: #fff;
+  background: none;
+  -webkit-text-fill-color: currentColor;
+  -webkit-text-stroke: 0;
+  text-shadow: none;
+}
+.station-map-porthole {
+  position: relative;
+  display: grid;
+  place-items: center;
+  margin-inline: auto;
+  width: min(100%, 67dvh, 640px);
+  aspect-ratio: 1;
+  background: radial-gradient(circle at center, #222435 65%, transparent 65.5%);
+}
+.station-map-porthole::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--station-ui-map-rim) center / 100% 100% no-repeat;
+  pointer-events: none;
+}
+.station-map-porthole .spud-map-blueprint.is-surface {
+  width: 65%;
+  max-height: none;
+  border: 0;
+  overflow: visible;
+}
+.station-map-dialog .spud-map-art { opacity: 1; }
+.station-map-dialog .spud-map-blueprint .spud-map-room span {
+  max-width: calc(100% - 4px);
+  left: 2px;
+  top: 2px;
+  padding: 2px;
+  font: 700 clamp(7px, 1.4vw, 11px)/1.05 system-ui, sans-serif;
+  letter-spacing: .01em;
+}
+.station-map-dialog .spud-meta-inline {
+  gap: 6px 12px;
+  padding: 8px;
+  border-radius: 6px;
+  background: #222453;
+  color: #fff;
+  font-size: 10px;
+}
+
+.ingame-options-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 12;
+  background: none;
+}
+.ingame-options-screen .spud-options-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: safe center;
+  padding: clamp(14px, 5vh, 48px) 12px;
+  overflow-y: auto;
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  pointer-events: auto;
+  background: #151438a6;
+  backdrop-filter: blur(4px);
+}
+.ingame-options-screen .spud-arcade-settings-panel {
+  width: min(100%, 600px);
+  min-height: 0;
+  max-height: none;
+  flex: none;
+  gap: 12px;
+  padding: clamp(12px, 3vw, 24px);
+  border: 3px solid var(--station-ui-blue);
+  border-top-color: #8c83db;
+  border-radius: 12px;
+  background: #b0bfd4;
+  color: var(--station-ui-ink);
+  box-shadow: 0 5px #100e54, 0 16px 38px #10112d88;
+}
+.ingame-options-screen .spud-arcade-settings-head { position: static; transform: none; margin: 0; }
+.ingame-options-screen #options-window-title {
+  width: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--station-ui-ink);
+  font: 900 clamp(24px, 5vw, 37px)/1.1 system-ui, sans-serif;
+  text-shadow: none;
+  -webkit-text-stroke: 0;
+}
+.ingame-options-screen #options-window-title .ingame-settings-gear { width: clamp(44px, 8vw, 60px); }
+.ingame-options-screen .spud-arcade-setting-row { grid-template-columns: 36px minmax(0, 1fr); gap: 10px; }
+.ingame-options-screen .spud-arcade-setting-row.is-toggle-row { grid-template-columns: 36px minmax(0, 1fr) auto; }
+.ingame-options-screen .spud-toggle-row .spud-vol-sub { display: none; }
+.ingame-options-screen .spud-arcade-icon-slot,
+.ingame-options-screen .spud-vol-label,
+.ingame-options-screen .design-extra-settings,
+.ingame-options-screen .spud-switch-state { color: var(--station-ui-ink); }
+.ingame-options-screen .spud-volume-list { gap: 7px; }
+.ingame-options-screen .spud-arcade-settings-panel .spud-pct-readout {
+  display: inline-grid;
+  min-width: 42px;
+  min-height: 28px;
+  place-items: center;
+  background: #242658;
+  color: #fff;
+}
+.ingame-options-screen .spud-arcade-settings-panel .spud-pct-readout.is-muted { background: #5d2746; }
+.ingame-options-screen .spud-arcade-range { background: #202151; }
+.ingame-options-screen .spud-arcade-range::-webkit-slider-runnable-track {
+  background-image: linear-gradient(#4af0e4, #18997e);
+}
+.ingame-options-screen .spud-arcade-range::-moz-range-track { background: #202151; }
+.ingame-options-screen .spud-arcade-range::-moz-range-progress { background: linear-gradient(#4af0e4, #18997e); }
+.ingame-options-screen .spud-arcade-settings-footer { flex-wrap: wrap; gap: 10px; margin-top: 0; }
+.ingame-options-screen .spud-text-toggle { background: #252653; color: #fff; }
+.ingame-options-screen .spud-vol-sub { color: var(--station-ui-ink); }
+.ingame-options-screen .spud-vol-label { text-shadow: none; }
+.ingame-options-screen .spud-options-action.is-warn {
+  min-height: 44px;
+  border: 1px solid #74243d;
+  border-radius: 6px;
+  background: #f9e0e6;
+  color: #74243d;
+  text-shadow: none;
+}
+
+@media (max-width: 960px) {
+  .mission-hud { --hud-bottom: calc(max(6px, env(safe-area-inset-bottom)) + 61px); }
+}
+
+@media (max-width: 740px) {
+  .mission-hud .hud-bottom-left { width: clamp(176px, 49vw, 260px); }
+  .mission-hud .action-cluster.hud-bottom-right { flex-direction: column; max-width: calc(100vw - 2 * var(--hud-edge)); }
+  .mission-hud .interaction-prompt:not([hidden]) { max-width: 55vw; }
+}
+
+@media (max-width: 640px) {
+  .mission-hud .hud-status-content { grid-template-columns: 1fr; }
+  .mission-hud .hud-status-monitor { justify-self: center; width: min(100%, 160px); }
+}
+
+@media (max-height: 460px) {
+  .mission-hud .hud-top-left { gap: 4px; }
+  .mission-hud .hud-left-rail { width: 88px; gap: 5px; }
+  .mission-hud .hud-drawer-tab { min-height: 46px; padding: 4px; }
+  .mission-hud .hud-radar { width: 76px; }
+  .mission-hud .hud-status-content { grid-template-columns: minmax(76px, 120px) 1fr; }
+  .ingame-options-screen .spud-options-overlay { padding-block: 10px; }
+  .ingame-options-screen .spud-arcade-settings-panel { gap: 7px; padding: 10px 16px; }
+  .ingame-options-screen #options-window-title { font-size: 24px; }
+  .ingame-options-screen #options-window-title .ingame-settings-gear { width: 44px; }
+  .ingame-options-screen .spud-arcade-setting-row { padding-block: 1px; }
+  .ingame-options-screen .spud-arcade-settings-body { gap: 6px; }
+  .ingame-options-screen .spud-volume-list { gap: 4px; }
+  .ingame-options-screen .spud-arcade-range { height: 17px; }
+  .ingame-options-screen .spud-settings-resume-btn.spud-arcade-btn { width: 130px; min-width: 0; }
+}

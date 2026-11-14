@@ -73,17 +73,17 @@ export const TRAINING_DECK: MapDefinition = {
     {
       id: 'sys-life', name: 'Life Support', kind: 'system', system: 'life',
       x: 1490, y: 380, roomId: 'medbay', icon: 'water', accent: '#6fd4e6',
-      dialogue: ['Oxygen loop nominal. Water reclaimer needs a filter calibration.'],
+      dialogue: ['Oxygen loop, pressure seals, and water recycling all flow through Life Support.'],
     },
     {
-      id: 'sys-farming', name: 'Hydroponics', kind: 'system', system: 'farming',
+      id: 'sys-farm', name: 'Hydroponics Farm', kind: 'system', system: 'farm',
       x: 340, y: 900, roomId: 'hydroponics', icon: 'sickle', accent: '#9bd15a',
       dialogue: ['The first starch batch is ready. Grow lights are drawing heavy power.'],
     },
     {
-      id: 'sys-shielding', name: 'Shield Console', kind: 'system', system: 'shielding',
-      x: 1440, y: 850, roomId: 'airlock', icon: 'shield', accent: '#ba9df0',
-      dialogue: ['Hull integrity holding. Liquid shield barriers are at three quarters.'],
+      id: 'sys-research', name: 'Research Console', kind: 'system', system: 'research',
+      x: 1440, y: 850, roomId: 'airlock', icon: 'notepad', accent: '#ba9df0',
+      dialogue: ['Spectrometer arrays and radiation logs convert anomaly scans into Research telemetry.'],
     },
     {
       id: 'spudie', name: 'S.P.U.D.I.E. Terminal', kind: 'terminal',

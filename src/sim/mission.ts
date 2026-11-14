@@ -1,10 +1,10 @@
-import { DAILY_OPERATIONS_DRIFT, DAY, METRIC_START, PASS_THRESHOLDS, SYSTEMS } from '../data/balance';
+import { DAILY_OPERATIONS_DRIFT, DAY, DIFFICULTY_EXCHANGE, METRIC_START, PASS_THRESHOLDS, SYSTEMS } from '../data/balance';
 import { EVENT_CARDS, type EventCard } from '../data/events';
-import type { MissionMetrics, SpecialistId, TaskDef } from '../model';
+import type { DifficultyId, MissionMetrics, SpecialistId, TaskDef } from '../model';
 import type { Rng } from './rng';
 import type { DestinationId } from '../model';
 
-export type AssignmentSystem = 'power' | 'life' | 'farming' | 'shielding' | 'science';
+export type AssignmentSystem = 'life' | 'power' | 'research' | 'farm';
 
 export interface AssignmentOffer {
   taskId: string;
@@ -31,19 +31,22 @@ export interface MissionVerdict {
 }
 
 const SYSTEM_META: Record<AssignmentSystem, { icon: string; accent: string; blurb: string }> = {
-  power: { icon: 'lightning', accent: '#f2b544', blurb: 'Stabilize the power budget before another module browns out.' },
-  life: { icon: 'water', accent: '#6fd4e6', blurb: 'Keep air and water inside the safe operating band.' },
-  farming: { icon: 'sickle', accent: '#9bd15a', blurb: 'Protect the starch supply that feeds the whole crew.' },
-  shielding: { icon: 'shield', accent: '#ba9df0', blurb: 'Patch the hull and hold the radiation barrier together.' },
-  science: { icon: 'notepad', accent: '#d8b06a', blurb: 'Collect the evidence Earth needs for the habitability review.' },
+  life: { icon: 'water', accent: '#6fd4e6', blurb: 'Keep the air clean and the water flowing.' },
+  power: { icon: 'lightning', accent: '#f2b544', blurb: 'Make sure the Moon base has enough electricity.' },
+  research: { icon: 'notepad', accent: '#ba9df0', blurb: 'Find Moon clues and send them to Earth.' },
+  farm: { icon: 'sickle', accent: '#9bd15a', blurb: 'Grow enough tasty potatoes for the crew.' },
 };
 
-const ROLE_SYSTEMS: Record<SpecialistId, AssignmentSystem[]> = {
-  repairman: ['power', 'shielding', 'life'],
-  farmer: ['farming', 'life', 'science'],
-  traveller: ['science', 'power', 'shielding'],
-  researcher: ['science'],
+const ROLE_SYSTEM: Record<SpecialistId, AssignmentSystem> = {
+  repairman: 'power',
+  farmer: 'farm',
+  traveller: 'life',
+  researcher: 'research',
 };
+
+export function specialistBonus(role: SpecialistId, system: AssignmentSystem): number {
+  return ROLE_SYSTEM[role] === system ? 3 : 0;
+}
 
 export function createMetrics(): MissionMetrics {
   return { ...METRIC_START };
@@ -51,12 +54,10 @@ export function createMetrics(): MissionMetrics {
 
 export function systemOfTask(task: TaskDef): AssignmentSystem {
   if (task.system) return task.system;
-  if (task.kind === 'shield') return 'shielding';
   if (['reactor', 'upper-engine', 'lower-engine', 'electrical'].includes(task.roomId)) return 'power';
-  if (['o2', 'medbay'].includes(task.roomId)) return 'life';
-  if (task.roomId === 'cafeteria') return 'farming';
-  if (task.roomId === 'shields') return 'shielding';
-  return 'science';
+  if (['o2', 'medbay', 'shields'].includes(task.roomId) || task.kind === 'shield') return 'life';
+  if (task.roomId === 'cafeteria') return 'farm';
+  return 'research';
 }
 
 export function assignmentOffer(task: TaskDef): AssignmentOffer {
@@ -71,23 +72,20 @@ export function assignmentOffer(task: TaskDef): AssignmentOffer {
 }
 
 export function offersForDay(tasks: TaskDef[], role: SpecialistId, rng: Rng, recentlyAssigned: string[] = []): AssignmentOffer[] {
-  const preferred = ROLE_SYSTEMS[role];
-  const ranked = rng.shuffle(tasks).sort((a, b) => {
-    const aRank = preferred.indexOf(systemOfTask(a));
-    const bRank = preferred.indexOf(systemOfTask(b));
-    return (aRank === -1 ? 99 : aRank) - (bRank === -1 ? 99 : bRank);
-  });
-  const fresh = ranked.filter(task => !recentlyAssigned.includes(task.id));
-  const pool = fresh.length >= DAY.offerCount ? fresh : ranked;
-  const systems = new Set<AssignmentSystem>();
-  const varied = pool.filter(task => {
+  const groups = new Map<AssignmentSystem, TaskDef[]>();
+  for (const task of rng.shuffle(tasks)) {
     const system = systemOfTask(task);
-    if (systems.has(system)) return false;
-    systems.add(system);
-    return true;
+    const group = groups.get(system) ?? [];
+    if (group.length < 2) group.push(task);
+    groups.set(system, group);
+  }
+  const recent = new Set(recentlyAssigned);
+  const pairs = [...groups.entries()].sort(([systemA, a], [systemB, b]) => {
+    const freshness = (group: TaskDef[]) => group.filter(task => !recent.has(task.id)).length;
+    return Number(systemB === ROLE_SYSTEM[role]) - Number(systemA === ROLE_SYSTEM[role])
+      || freshness(b) - freshness(a);
   });
-  const offers = [...varied, ...pool.filter(task => !varied.includes(task))].slice(0, DAY.offerCount);
-  return offers.map(assignmentOffer);
+  return pairs.flatMap(([, group]) => group).slice(0, DAY.offerCount).map(assignmentOffer);
 }
 
 export function eventForDay(rng: Rng, destination: DestinationId = 'moon', day = 1, recentIds: string[] = []): EventCard {
@@ -98,21 +96,24 @@ export function eventForDay(rng: Rng, destination: DestinationId = 'moon', day =
 }
 
 export function applyEvent(metrics: MissionMetrics, event: EventCard): MissionMetrics {
+  return applyMetricExchange(metrics, event.deltas);
+}
+
+export function applyMetricExchange(metrics: MissionMetrics, deltas: Partial<MissionMetrics>): MissionMetrics {
   const next = { ...metrics };
-  for (const [key, delta] of Object.entries(event.deltas)) {
+  for (const [key, delta] of Object.entries(deltas)) {
     const metric = key as keyof MissionMetrics;
     next[metric] = clamp(next[metric] + (delta ?? 0));
   }
   return next;
 }
 
-export function applyDailyOperations(metrics: MissionMetrics): MissionMetrics {
-  const next = { ...metrics };
-  for (const [key, delta] of Object.entries(DAILY_OPERATIONS_DRIFT)) {
-    const metric = key as keyof MissionMetrics;
-    next[metric] = clamp(next[metric] + delta);
-  }
-  return next;
+export function applyDailyOperations(metrics: MissionMetrics, role?: SpecialistId): MissionMetrics {
+  return applyMetricExchange(metrics, {
+    ...DAILY_OPERATIONS_DRIFT,
+    life: DAILY_OPERATIONS_DRIFT.life * (role === 'farmer' ? 0.5 : 1),
+    power: DAILY_OPERATIONS_DRIFT.power * (role === 'repairman' ? 0.5 : 1),
+  });
 }
 
 export function metricDeltas(metrics: MissionMetrics, next: MissionMetrics): Partial<MissionMetrics> {
@@ -124,40 +125,33 @@ export function metricDeltas(metrics: MissionMetrics, next: MissionMetrics): Par
   return deltas;
 }
 
-export function applyTaskCompletion(metrics: MissionMetrics, task: TaskDef, role: SpecialistId): MissionMetrics {
+export function taskExchange(task: TaskDef, role: SpecialistId, difficulty: DifficultyId): Partial<MissionMetrics> {
   const system = systemOfTask(task);
-  const next = { ...metrics };
-  const bonus = ROLE_SYSTEMS[role].includes(system) ? 3 : 0;
-  if (system === 'power') next.power = clamp(next.power + 6 + bonus);
-  else if (system === 'life') {
-    next.oxygen = clamp(next.oxygen + 3 + bonus);
-    next.water = clamp(next.water + 4 + bonus);
-  } else if (system === 'farming') {
-    next.starch = clamp(next.starch + 6 + bonus);
-    next.water = clamp(next.water + 1);
-  } else if (system === 'shielding') {
-    next.hull = clamp(next.hull + 6 + bonus);
-  } else {
-    next.research = clamp(next.research + 5 + bonus);
-  }
-  next.morale = clamp(next.morale + 1);
-  return next;
+  const { benefit, cost } = DIFFICULTY_EXCHANGE[difficulty];
+  return {
+    [system]: (task.cost ? benefit : 6) + specialistBonus(role, system),
+    ...(task.cost ? { [task.cost]: -cost } : {}),
+  };
+}
+
+export function applyTaskCompletion(
+  metrics: MissionMetrics, task: TaskDef, role: SpecialistId, difficulty: DifficultyId = 'crew',
+): MissionMetrics {
+  return applyMetricExchange(metrics, taskExchange(task, role, difficulty));
 }
 
 export function applyMissedDay(metrics: MissionMetrics, role: SpecialistId): MissionMetrics {
   const next = { ...metrics };
   const farmerMitigation = role === 'farmer' ? 0.5 : 1;
   const repairMitigation = role === 'repairman' ? 0.6 : 1;
-  next.power = clamp(next.power - Math.round(4 * repairMitigation));
-  next.oxygen = clamp(next.oxygen - Math.round(3 * repairMitigation));
-  next.water = clamp(next.water - 3);
-  next.starch = clamp(next.starch - Math.round(5 * farmerMitigation));
-  next.hull = clamp(next.hull - 4);
-  next.morale = clamp(next.morale - 6);
+  next.life = clamp(next.life - Math.round(6 * farmerMitigation));
+  next.power = clamp(next.power - Math.round(5 * repairMitigation));
+  next.farm = clamp(next.farm - Math.round(6 * farmerMitigation));
+  next.research = clamp(next.research - 2);
   return next;
 }
 
-export function systemHealth(metrics: MissionMetrics, systemId: 'power' | 'life' | 'farming' | 'shielding'): number {
+export function systemHealth(metrics: MissionMetrics, systemId: 'life' | 'power' | 'research' | 'farm'): number {
   const definition = SYSTEMS.find(system => system.id === systemId);
   if (!definition) return 0;
   const values = definition.metrics.map(metric => metrics[metric]);
@@ -172,13 +166,10 @@ export function evaluateMission(
   const completion = totalAssigned ? totalCompleted / totalAssigned : 0;
   const requirements: Requirement[] = [
     requirement('completion', 'Assignments', completion * 100, PASS_THRESHOLDS.completion * 100),
+    requirement('life', 'Life', metrics.life, PASS_THRESHOLDS.life),
     requirement('power', 'Power', metrics.power, PASS_THRESHOLDS.power),
-    requirement('oxygen', 'Oxygen', metrics.oxygen, PASS_THRESHOLDS.oxygen),
-    requirement('water', 'Water', metrics.water, PASS_THRESHOLDS.water),
-    requirement('starch', 'Starch', metrics.starch, PASS_THRESHOLDS.starch),
-    requirement('hull', 'Shielding / Hull', metrics.hull, PASS_THRESHOLDS.hull),
-    requirement('morale', 'Morale', metrics.morale, PASS_THRESHOLDS.morale),
     requirement('research', 'Research', metrics.research, PASS_THRESHOLDS.research),
+    requirement('farm', 'Farm', metrics.farm, PASS_THRESHOLDS.farm),
   ];
   return { passed: requirements.every(item => item.met), requirements, completion };
 }

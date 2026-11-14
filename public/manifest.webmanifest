@@ -1,0 +1,19 @@
+{
+  "name": "Spudnaut: The Great Starch Migration",
+  "short_name": "Spudnaut",
+  "description": "Cooperative browser survival trainer: complete a 30-day lunar or Martian habitat trial and report telemetry to Earth.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#05070d",
+  "background_color": "#05070d",
+  "icons": [
+    {
+      "src": "/assets/loading/loading-poster.png",
+      "sizes": "340x440",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

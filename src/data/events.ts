@@ -1,5 +1,4 @@
-import type { DestinationId } from '../model';
-import type { DonkiReport } from './donki';
+import type { DestinationId, DifficultyId, DonkiReport } from '../model';
 
 export interface EventCard {
   id: string;
@@ -9,77 +8,68 @@ export interface EventCard {
   responses?: { id: string; label: string; description: string; deltas: EventCard['deltas'] }[];
   description: string;
   effect: string;
-  deltas: Partial<Record<'power' | 'oxygen' | 'water' | 'starch' | 'hull' | 'morale' | 'research', number>>;
+  deltas: Partial<Record<'life' | 'power' | 'research' | 'farm', number>>;
   source?: DonkiReport;
+  majorEvent?: { difficulty: DifficultyId; severity: 'low' | 'moderate' | 'high'; type: DonkiReport['type'] };
 }
 
 export const EVENT_CARDS: EventCard[] = [
   {
-    id: 'oxygen-alarm', name: 'First Scenario: Oxygen Levels Down', kind: 'hazard',
-    description: 'The habitat oxygen loop drops below its safe band during the first shift. The training deck taught you where to look.',
-    effect: 'Oxygen and morale fall while the crew isolates the scrubber fault. The repair data is logged for Earth.',
-    deltas: { oxygen: -9, morale: -2, research: 3 },
+    id: 'oxygen-alarm', name: 'First Scenario: Life Loop Drop', kind: 'hazard',
+    description: 'Cabin air scrubbers dip below target band during the first shift. The training deck showed you where to patch the loop.',
+    effect: 'Life drops while the crew isolates the fault, but the repair telemetry boosts Research.',
+    deltas: { life: -9, research: 3 },
   },
   {
     id: 'solar-flare', name: 'Solar Flare Watch', kind: 'hazard',
     description: 'A coronal mass ejection will graze the habitat during the shift.',
-    effect: 'Shielding drains while the crew shelters. Research continues through the storm.',
-    deltas: { hull: -7, power: -4, research: 4 },
+    effect: 'Life seals and Power array buses strain during peak radiation while Research records storm particles.',
+    deltas: { life: -6, power: -5, research: 4 },
     responses: [
-      { id: 'shelter', label: 'SHELTER & SECURE THE ARRAY', description: 'Reduce exposure and lose some generation time.', deltas: { hull: -2, power: -7, morale: -1 } },
-      { id: 'continue', label: 'CONTINUE THE SURVEY', description: 'Keep the field study moving, accepting higher exposure.', deltas: { hull: -8, power: -3, research: 5 } },
+      { id: 'shelter', label: 'SHELTER & SECURE THE ARRAY', description: 'Protect Life systems by throttling station Power output.', deltas: { life: -2, power: -7, research: 1 } },
+      { id: 'continue', label: 'CONTINUE THE SURVEY', description: 'Keep instruments powered for higher Research, accepting higher Life strain.', deltas: { life: -8, power: -3, research: 6 } },
     ],
   },
   {
     id: 'lunar-dust-intrusion', name: 'Lunar Dust at the Airlock', kind: 'hazard', destinations: ['moon'],
     description: 'A suited crew member returns with clingy regolith around the suit service area.',
-    effect: 'Dust-control work protects seals and filters. Lunar dust has sharp grains; it is not weather blown by lunar winds.',
-    deltas: { power: -9, hull: -2 },
-  },
-  {
-    id: 'mars-dust-storm', name: 'Mars Dust Storm Watch', kind: 'hazard', destinations: ['mars'],
-    description: 'Orbital weather reports rising dust over the outpost region.',
-    effect: 'Reduce outdoor work and inspect solar generation. Local storms can grow much larger.',
-    deltas: { power: -8, morale: -2 },
-    responses: [
-      { id: 'shelter', label: 'PAUSE EVA & SECURE PANELS', description: 'Protect the crew and inspect generation from inside.', deltas: { power: -5, morale: -1 } },
-      { id: 'continue', label: 'SEND THE ROVER', description: 'Collect weather data while accepting reduced power output.', deltas: { power: -10, research: 4 } },
-    ],
+    effect: 'Abrasive regolith strains Power seals and Life filters. Lunar dust is static-charged silica, not windblown dust.',
+    deltas: { power: -8, life: -4 },
   },
   {
     id: 'water-reclaimer', name: 'Reclaimer Fault', kind: 'hazard',
-    description: 'The water reclaimer is cycling dirty. Every litre is being counted twice.',
-    effect: 'Water reserves drop, but the repair data is valuable.',
-    deltas: { water: -10, research: 3 },
+    description: 'The Life Support water loop is cycling dirty and stressing the Farm feed.',
+    effect: 'Life and Farm output dip slightly, while diagnostics add Research telemetry.',
+    deltas: { life: -8, farm: -3, research: 3 },
   },
   {
-    id: 'sprout-anxiety', name: 'Sprouting Anxiety', kind: 'crew',
-    description: 'The crew is dreaming of Earth soil and waking up with sprouts.',
-    effect: 'Morale falls unless someone spends time in the cafeteria.',
-    deltas: { morale: -8 },
+    id: 'sprout-anxiety', name: 'Growth Tray Stall', kind: 'crew',
+    description: 'Cold soil modules slow tuber rooting before morning inspection.',
+    effect: 'Farm and Life output dip unless hydroponics receives attention.',
+    deltas: { farm: -7, life: -2 },
   },
   {
     id: 'good-harvest', name: 'Good Harvest', kind: 'opportunity',
-    description: 'The hydroponics bay produces a batch better than the projections.',
-    effect: 'Starch and morale rise across the habitat.',
-    deltas: { starch: 8, morale: 4 },
+    description: 'The hydroponics bay produces a clean tuber batch ahead of schedule.',
+    effect: 'Farm reserves and crew Life readiness climb across the habitat.',
+    deltas: { farm: 8, life: 3 },
   },
   {
-    id: 'clear-skies', name: 'Clear Skies', kind: 'opportunity',
-    description: 'The sky is quiet. The panels run at full rated output.',
-    effect: 'Power reserves recover and the crew gets a clean working day.',
-    deltas: { power: 7, morale: 2 },
+    id: 'clear-skies', name: 'Peak Solar Window', kind: 'opportunity',
+    description: 'Direct orbital insolation hits every array panel without thermal clipping.',
+    effect: 'Power reserves surge and Farm grow lights run at peak efficiency.',
+    deltas: { power: 7, farm: 3 },
   },
   {
-    id: 'sample-cache', name: 'Ancient Sample', kind: 'science',
-    description: 'A drill core turns up layered ice and unfamiliar mineral grains.',
-    effect: 'Research jumps, but the analysis consumes power and water.',
-    deltas: { research: 9, power: -3, water: -3 },
+    id: 'sample-cache', name: 'Ancient Core Sample', kind: 'science',
+    description: 'A subsurface drill core turns up layered ice and unfamiliar mineral grains.',
+    effect: 'Research jumps, while lab centrifuges draw Power and Life Support coolant.',
+    deltas: { research: 9, power: -3, life: -3 },
   },
   {
-    id: 'commander-visit', name: 'Commander Russet Calls', kind: 'crew',
-    description: 'A gruff voice from Earth reminds the crew why the trial matters.',
-    effect: 'Morale and research improve after the briefing.',
-    deltas: { morale: 5, research: 2 },
+    id: 'commander-visit', name: 'Commander Russet Briefs', kind: 'crew',
+    description: 'A direct Earth relay briefing tightens team coordination for the shift.',
+    effect: 'Life and Research climb after reviewing priority checklists.',
+    deltas: { life: 4, research: 3 },
   },
 ];

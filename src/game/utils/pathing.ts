@@ -34,6 +34,76 @@ export function tileAtPixel(pos: { x: number; y: number }, tileSize: number): Ti
   return { x: Math.floor(pos.x / tileSize), y: Math.floor(pos.y / tileSize) };
 }
 
+/**
+ * Wraps a base WalkableGrid so any tile whose world-pixel center lies outside
+ * `bounds` (or lacks optional collider clearance) is treated as blocked.
+ */
+export function createBoundedWalkGrid(
+  base: WalkableGrid,
+  tileSize: number,
+  bounds: { x: number; y: number; width: number; height: number },
+  clearance?: { width: number; height: number },
+): WalkableGrid {
+  const maxX = bounds.x + bounds.width;
+  const maxY = bounds.y + bounds.height;
+  const half = tileSize / 2;
+  return {
+    cols: base.cols,
+    rows: base.rows,
+    isBlocked(col, row) {
+      if (base.isBlocked(col, row)) return true;
+      const cx = col * tileSize + half;
+      const cy = row * tileSize + half;
+      if (cx < bounds.x || cx > maxX || cy < bounds.y || cy > maxY) {
+        return true;
+      }
+      if (clearance && !hasTileClearance(base, tileSize, { x: cx, y: cy }, clearance.width, clearance.height)) {
+        return true;
+      }
+      return false;
+    },
+  };
+}
+
+/**
+ * Collect valid walkable world coordinates inside `bounds`, offset cleanly for
+ * sprite feet alignment and kept clear of interactive stations when specified.
+ */
+export function collectWalkableWaypoints(
+  grid: WalkableGrid,
+  tileSize: number,
+  bounds: { x: number; y: number; width: number; height: number },
+  options: {
+    feetOffsetY?: number;
+    avoid?: readonly { x: number; y: number }[];
+    avoidRadius?: number;
+  } = {},
+): { x: number; y: number }[] {
+  const feetOffsetY = options.feetOffsetY ?? 0;
+  const avoid = options.avoid ?? [];
+  const avoidRadius = options.avoidRadius ?? 52;
+  const minCol = Math.max(0, Math.floor(bounds.x / tileSize));
+  const maxCol = Math.min(grid.cols - 1, Math.floor((bounds.x + bounds.width) / tileSize));
+  const minRow = Math.max(0, Math.floor(bounds.y / tileSize));
+  const maxRow = Math.min(grid.rows - 1, Math.floor((bounds.y + bounds.height) / tileSize));
+  const half = tileSize / 2;
+  const out: { x: number; y: number }[] = [];
+
+  for (let row = minRow; row <= maxRow; row++) {
+    for (let col = minCol; col <= maxCol; col++) {
+      if (grid.isBlocked(col, row)) continue;
+      const feetX = col * tileSize + half;
+      const feetY = row * tileSize + half;
+      const spriteY = feetY - feetOffsetY;
+      if (avoid.some((pt) => Math.hypot(pt.x - feetX, pt.y - spriteY) < avoidRadius || Math.hypot(pt.x - feetX, pt.y - feetY) < avoidRadius)) {
+        continue;
+      }
+      out.push({ x: feetX, y: spriteY });
+    }
+  }
+  return out;
+}
+
 /** Test the full collision rectangle against every tile it overlaps. */
 export function hasTileClearance(
   grid: WalkableGrid, tileSize: number, center: Tile, width: number, height: number,

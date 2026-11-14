@@ -1,23 +1,179 @@
-import type { TaskKind } from './model';
+import type { MissionMetric, TaskKind } from './model';
 import { shuffle } from './model';
+import { sfx } from './sfx';
+import { assignmentGameTip, mountAssignmentGame } from './hud/assignmentGames';
 
 type Complete = () => void;
 type Cleanups = (() => void)[];
 
-export function renderTaskGame(kind: TaskKind, host: HTMLElement, complete: Complete, cleanups: Cleanups, taskName?: string): void {
+export interface ConsolePillarMeta {
+  id: MissionMetric;
+  label: string;
+  bay: string;
+  toolLabel: string;
+  image: string;
+  accent: string;
+  scanSummary: string;
+}
+
+export const SYSTEM_CONSOLE_META: Record<MissionMetric, ConsolePillarMeta> = {
+  life: {
+    id: 'life',
+    label: 'LIFE SUPPORT',
+    bay: 'HULL & AIRLOCK CONSOLE',
+    toolLabel: 'PRESSURE SEAL KIT',
+    image: '/assets/ui/spudnaut/minigames/console-hull-panel.jpg',
+    accent: '#6ec4ff',
+    scanSummary: 'Valve manifold mapped. Apply Pressure Seal Kit below to lock containment.',
+  },
+  power: {
+    id: 'power',
+    label: 'POWER GRID',
+    bay: 'SOLAR & BUS RELAY DECK',
+    toolLabel: 'BUS RELAY DRIVER',
+    image: '/assets/ui/spudnaut/minigames/console-power-bus.jpg',
+    accent: '#ffd56a',
+    scanSummary: 'Load imbalance isolated on main bus. Engage Bus Relay Driver to stabilize.',
+  },
+  research: {
+    id: 'research',
+    label: 'SCIENCE BAY',
+    bay: 'SPECTROMETER & TELEMETRY',
+    toolLabel: 'OPTIC LAB SCANNER',
+    image: '/assets/ui/spudnaut/minigames/console-lab-tray.jpg',
+    accent: '#9beeff',
+    scanSummary: 'Sample carrier aligned. Use Optic Lab Scanner below to finish analysis.',
+  },
+  farm: {
+    id: 'farm',
+    label: 'HYDRO FARM',
+    bay: 'SPUD AEROPONICS TRAY',
+    toolLabel: 'NUTRIENT & LUX KIT',
+    image: '/assets/ui/spudnaut/minigames/console-hydro-tray.jpg',
+    accent: '#8fe6a8',
+    scanSummary: 'Root misting manifold checked. Apply Nutrient & Lux Kit to restore yield.',
+  },
+};
+
+export function inferTaskSystem(kind: TaskKind, taskName = ''): MissionMetric {
+  const lower = taskName.toLowerCase();
+  if (lower.includes('grow-light') || lower.includes('hydroponic') || lower.includes('nutrient') || lower.includes('farm') || lower.includes('greenhouse')) {
+    return lower.includes('power') ? 'power' : 'farm';
+  }
+  if (lower.includes('power') || lower.includes('battery') || lower.includes('solar') || lower.includes('thermal') || kind === 'fuel' || kind === 'wiring') {
+    return 'power';
+  }
+  if (lower.includes('scrubber') || lower.includes('water') || lower.includes('suit') || lower.includes('seal') || lower.includes('pressure') || lower.includes('hull') || kind === 'shield' || kind === 'swipe' || kind === 'garbage' || kind === 'cards') {
+    return 'life';
+  }
+  return 'research';
+}
+
+export function renderTaskGame(
+  kind: TaskKind,
+  host: HTMLElement,
+  complete: Complete,
+  cleanups: Cleanups,
+  taskName?: string,
+  system?: MissionMetric,
+): void {
+  if (mountAssignmentGame(kind, host, complete, cleanups)) return;
+  if (kind === 'wiring' && taskName === 'Spark-Wire Color Match') {
+    renderWiring(host, complete, cleanups);
+    return;
+  }
+  const resolvedSystem = system ?? inferTaskSystem(kind, taskName);
+  const meta = SYSTEM_CONSOLE_META[resolvedSystem];
+
+  const shell = document.createElement('div');
+  shell.className = `spud-console-shell is-system-${resolvedSystem}`;
+  shell.style.setProperty('--console-accent', meta.accent);
+  shell.innerHTML = `
+    <div class="spud-console-banner">
+      <img class="spud-console-art" src="${meta.image}" alt="" draggable="false" />
+      <div class="spud-console-banner-scrim" aria-hidden="true"></div>
+      <div class="spud-console-banner-copy">
+        <span class="spud-console-bay">${meta.bay}</span>
+        <strong class="spud-console-step-tag" data-step-tag>STEP 1 OF 2 · DIAGNOSTIC SCAN</strong>
+      </div>
+    </div>
+    <div class="spud-tool-dock" role="group" aria-label="Console diagnostic tool dock">
+      <button type="button" class="spud-tool-btn is-scan is-ready" data-tool-btn="scan">
+        <span class="spud-tool-index">01</span>
+        <span class="spud-tool-text">
+          <strong>SCAN FAULT</strong>
+          <small>Run telemetry check</small>
+        </span>
+      </button>
+      <button type="button" class="spud-tool-btn is-kit" data-tool-btn="kit" disabled>
+        <span class="spud-tool-index">02</span>
+        <span class="spud-tool-text">
+          <strong>${meta.toolLabel}</strong>
+          <small data-kit-state>Locked until scan</small>
+        </span>
+      </button>
+    </div>
+    <p class="spud-console-scan-note" data-scan-note aria-live="polite">Step 1: Press SCAN FAULT to unlock the ${meta.toolLabel.toLowerCase()} board.</p>
+    <div class="spud-console-board is-locked" data-console-board></div>
+  `;
+  host.append(shell);
+
+  const scanBtn = shell.querySelector<HTMLButtonElement>('[data-tool-btn="scan"]')!;
+  const kitBtn = shell.querySelector<HTMLButtonElement>('[data-tool-btn="kit"]')!;
+  const kitState = shell.querySelector<HTMLElement>('[data-kit-state]')!;
+  const stepTag = shell.querySelector<HTMLElement>('[data-step-tag]')!;
+  const scanNote = shell.querySelector<HTMLElement>('[data-scan-note]')!;
+  const board = shell.querySelector<HTMLDivElement>('[data-console-board]')!;
+
+  let boardMounted = false;
+  const unlockBoard = (): void => {
+    if (boardMounted) return;
+    boardMounted = true;
+    sfx.click();
+    scanBtn.classList.remove('is-ready');
+    scanBtn.classList.add('is-done');
+    scanBtn.setAttribute('aria-pressed', 'true');
+    scanBtn.disabled = true;
+    kitBtn.disabled = false;
+    kitBtn.classList.add('is-active');
+    kitBtn.setAttribute('aria-pressed', 'true');
+    kitState.textContent = 'Active on console';
+    stepTag.textContent = `STEP 2 OF 2 · ${meta.toolLabel}`;
+    scanNote.textContent = meta.scanSummary;
+    board.classList.remove('is-locked');
+    mountBoardKind(kind, board, complete, cleanups, taskName, resolvedSystem);
+    const firstControl = board.querySelector<HTMLElement>('button, [tabindex="0"]');
+    firstControl?.focus({ preventScroll: true });
+  };
+
+  scanBtn.addEventListener('click', unlockBoard);
+  kitBtn.addEventListener('click', () => {
+    if (!boardMounted) return;
+    board.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });
+  });
+}
+
+function mountBoardKind(
+  kind: TaskKind,
+  host: HTMLElement,
+  complete: Complete,
+  cleanups: Cleanups,
+  taskName: string | undefined,
+  system: MissionMetric,
+): void {
   switch (kind) {
-    case 'wiring': renderWiring(host, complete); break;
-    case 'swipe': renderSwipe(host, complete); break;
+    case 'wiring': renderWiring(host, complete, cleanups); break;
+    case 'swipe': renderSwipe(host, complete, cleanups); break;
     case 'download': renderDownload(host, complete, cleanups); break;
     case 'fuel': renderClicker(host, complete, taskName ?? 'RESTORE POWER', 8, '⚡'); break;
-    case 'calibrate': renderCalibrate(host, complete, cleanups); break;
-    case 'inspect': renderInspect(host, complete); break;
+    case 'calibrate': renderCalibrate(host, complete, cleanups, system); break;
+    case 'inspect': renderInspect(host, complete, cleanups, system); break;
     case 'shield': renderShield(host, complete); break;
     case 'garbage': renderHold(host, complete, cleanups, {
-      help: 'Clear the reusable filter tray, then confirm the airflow indicator is back in range.',
+      help: 'Hold to purge clogged intake particulates until airflow returns to nominal.',
       label: 'CLEAN FILTER',
       done: 'FILTER SERVICE COMPLETE',
-      duration: 2200,
+      duration: 2000,
       className: 'garbage',
     }); break;
     case 'cards': renderCards(host, complete); break;
@@ -41,11 +197,16 @@ function statusLine(host: HTMLElement, text: string): HTMLElement {
   return div;
 }
 
-function renderWiring(host: HTMLElement, complete: Complete): void {
-  header(host, 'Connect each wire to its matching color.');
-  const colors = ['#ef5350', '#42a5f5', '#ffd54f', '#66bb6a'];
-  const leftColors = shuffle(colors);
-  const rightColors = shuffle(colors);
+function renderWiring(host: HTMLElement, complete: Complete, cleanups: Cleanups): void {
+  header(host, assignmentGameTip('wiring')!);
+  const channels = [
+    { color: '#ef5350', name: 'RED 24V' },
+    { color: '#42a5f5', name: 'CYAN BUS' },
+    { color: '#ffd54f', name: 'AMBER AUX' },
+    { color: '#66bb6a', name: 'GREEN GND' },
+  ];
+  const leftColors = shuffle(channels);
+  const rightColors = shuffle(channels);
   const board = document.createElement('div');
   board.className = 'wiring-board';
   const leftCol = document.createElement('div');
@@ -57,76 +218,92 @@ function renderWiring(host: HTMLElement, complete: Complete): void {
   rightCol.className = 'wire-column';
   board.append(leftCol, middle, rightCol);
   host.append(board);
-  const status = statusLine(host, `0 / ${colors.length} CONNECTED`);
+  const status = statusLine(host, `0 / ${channels.length} CONNECTED`);
   let selected: string | null = null;
   let matched = 0;
+  const wrongTimers: number[] = [];
+  cleanups.push(() => {
+    while (wrongTimers.length) window.clearTimeout(wrongTimers.pop());
+  });
 
-  const makeNode = (color: string, side: 'left' | 'right'): HTMLButtonElement => {
+  const makeNode = (entry: { color: string; name: string }, side: 'left' | 'right'): HTMLButtonElement => {
     const button = document.createElement('button');
+    button.type = 'button';
     button.className = `wire-node ${side}`;
-    button.style.setProperty('--wire', color);
-    button.setAttribute('aria-label', `${side} wire ${color}`);
+    button.style.setProperty('--wire', entry.color);
+    button.setAttribute('aria-label', `${side} ${entry.name} wire`);
     button.addEventListener('click', () => {
       if (button.classList.contains('matched')) return;
       if (side === 'left') {
-        leftCol.querySelectorAll('.wire-node.selected').forEach(node => node.classList.remove('selected'));
+        leftCol.querySelectorAll('.wire-node.selected').forEach((node) => node.classList.remove('selected'));
         button.classList.add('selected');
-        selected = color;
+        selected = entry.color;
+        sfx.click();
+        status.textContent = `${entry.name} SELECTED — PICK MATCHING SOCKET`;
         return;
       }
       if (!selected) {
-        status.textContent = 'PICK A LEFT WIRE FIRST';
+        status.textContent = 'PICK A LEFT TERMINAL FIRST';
         return;
       }
-      if (selected === color) {
-        const left = leftCol.querySelector<HTMLButtonElement>(`.wire-node.selected`);
+      if (selected === entry.color) {
+        const left = leftCol.querySelector<HTMLButtonElement>('.wire-node.selected');
         left?.classList.add('matched');
         left?.classList.remove('selected');
         button.classList.add('matched');
         matched += 1;
-        status.textContent = `${matched} / ${colors.length} CONNECTED`;
+        sfx.click();
+        status.textContent = `${matched} / ${channels.length} CONNECTED`;
         selected = null;
-        if (matched >= colors.length) complete();
+        if (matched >= channels.length) complete();
       } else {
         button.classList.add('wrong');
-        window.setTimeout(() => button.classList.remove('wrong'), 320);
-        status.textContent = 'WRONG WIRE — TRY AGAIN';
+        wrongTimers.push(window.setTimeout(() => button.classList.remove('wrong'), 320));
+        status.textContent = 'WRONG TERMINAL — TRY AGAIN';
       }
     });
     return button;
   };
 
-  leftColors.forEach(color => leftCol.append(makeNode(color, 'left')));
-  rightColors.forEach(color => rightCol.append(makeNode(color, 'right')));
+  leftColors.forEach((entry) => leftCol.append(makeNode(entry, 'left')));
+  rightColors.forEach((entry) => rightCol.append(makeNode(entry, 'right')));
 }
 
-function renderSwipe(host: HTMLElement, complete: Complete): void {
-  header(host, 'Follow the suit-lock checklist and pass the pressure-seal verification at a steady pace.');
+function renderSwipe(host: HTMLElement, complete: Complete, cleanups: Cleanups): void {
+  header(host, 'Slide the gasket lock smoothly across the track (or press Enter / Space).');
   const track = document.createElement('div');
   track.className = 'swipe-track';
   const reader = document.createElement('div');
   reader.className = 'swipe-reader';
   reader.textContent = 'SUIT CHECK';
-  const card = document.createElement('div');
+  const card = document.createElement('button');
+  card.type = 'button';
   card.className = 'swipe-card';
   card.textContent = 'SEAL CHECK';
+  card.setAttribute('aria-label', 'Slide seal card right (or press Enter / Space to run verification)');
   track.append(reader, card);
   host.append(track);
-  const status = statusLine(host, 'DRAG THE CARD →');
+  const status = statusLine(host, 'DRAG CARD TO LOCK →');
   let activePointer: number | null = null;
   let startX = 0;
   let startTime = 0;
   let currentX = 0;
+  let verifyTimer = 0;
 
   const maxX = (): number => Math.max(1, track.clientWidth - card.clientWidth - 14);
-  card.addEventListener('pointerdown', event => {
-    if (activePointer !== null || event.button !== 0) return;
+  const resetDrag = (): void => {
+    activePointer = null;
+    card.style.transform = 'translateX(0)';
+    currentX = 0;
+  };
+  card.addEventListener('pointerdown', (event) => {
+    if (activePointer !== null || event.button !== 0 || verifyTimer) return;
     activePointer = event.pointerId;
     startX = event.clientX;
     startTime = performance.now();
     card.setPointerCapture(event.pointerId);
   });
-  card.addEventListener('pointermove', event => {
+  card.addEventListener('pointermove', (event) => {
     if (activePointer !== event.pointerId) return;
     currentX = Math.max(0, Math.min(maxX(), event.clientX - startX));
     card.style.transform = `translateX(${currentX}px)`;
@@ -136,31 +313,48 @@ function renderSwipe(host: HTMLElement, complete: Complete): void {
     activePointer = null;
     const distance = currentX / maxX();
     if (event.type === 'pointerup' && distance > 0.88) {
-      const speed = distance / ((performance.now() - startTime) / 1000);
+      const speed = distance / Math.max(0.05, (performance.now() - startTime) / 1000);
       if (speed > 0.32 && speed < 3.4) {
-        status.textContent = 'CARD ACCEPTED';
+        status.textContent = 'SEAL VERIFIED';
         complete();
         return;
       }
       status.textContent = speed <= 0.32 ? 'TOO SLOW — TRY AGAIN' : 'TOO FAST — TRY AGAIN';
     }
-    card.style.transform = 'translateX(0)';
-    currentX = 0;
+    resetDrag();
   };
   card.addEventListener('pointerup', release);
   card.addEventListener('pointercancel', release);
   card.addEventListener('lostpointercapture', release);
+  card.addEventListener('keydown', (event) => {
+    if (verifyTimer || (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'ArrowRight')) return;
+    event.preventDefault();
+    status.textContent = 'VERIFYING SEAL...';
+    card.style.transform = `translateX(${maxX()}px)`;
+    verifyTimer = window.setTimeout(() => {
+      verifyTimer = 0;
+      status.textContent = 'SEAL VERIFIED';
+      complete();
+    }, 600);
+  });
+  const onWindowBlur = (): void => resetDrag();
+  window.addEventListener('blur', onWindowBlur);
+  cleanups.push(() => {
+    window.removeEventListener('blur', onWindowBlur);
+    if (verifyTimer) window.clearTimeout(verifyTimer);
+  });
 }
 
 function renderDownload(host: HTMLElement, complete: Complete, cleanups: Cleanups): void {
-  header(host, 'Download the station data to your tablet.');
+  header(host, 'Transfer validated packet stream from the lab console to Earth Relay.');
   const visual = document.createElement('div');
   visual.className = 'download-visual';
-  visual.innerHTML = '<span>▤</span><span>→</span><span>▣</span>';
+  visual.innerHTML = '<span>▤ LAB</span><span>→</span><span>▣ EARTH</span>';
   host.append(visual);
   const button = document.createElement('button');
+  button.type = 'button';
   button.className = 'task-primary';
-  button.textContent = 'START DOWNLOAD';
+  button.textContent = 'START TRANSFER';
   host.append(button);
   const track = document.createElement('div');
   track.className = 'progress-track';
@@ -168,20 +362,21 @@ function renderDownload(host: HTMLElement, complete: Complete, cleanups: Cleanup
   fill.className = 'progress-fill';
   track.append(fill);
   host.append(track);
-  const status = statusLine(host, 'READY');
+  const status = statusLine(host, 'READY TO TRANSMIT');
   let raf = 0;
   let started = false;
   button.addEventListener('click', () => {
     if (started) return;
     started = true;
+    sfx.click();
     button.disabled = true;
-    status.textContent = 'DOWNLOADING...';
+    status.textContent = 'TRANSFERRING TELEMETRY...';
     const start = performance.now();
     const tick = (): void => {
-      const progress = Math.min(100, ((performance.now() - start) / 3000) * 100);
+      const progress = Math.min(100, ((performance.now() - start) / 2400) * 100);
       fill.style.width = `${progress}%`;
       if (progress >= 100) {
-        status.textContent = 'DOWNLOAD COMPLETE';
+        status.textContent = 'TRANSFER COMPLETE';
         complete();
         return;
       }
@@ -193,29 +388,42 @@ function renderDownload(host: HTMLElement, complete: Complete, cleanups: Cleanup
 }
 
 function renderClicker(host: HTMLElement, complete: Complete, label: string, count: number, icon: string): void {
-  header(host, `Tap the power panel targets to complete: ${label}.`);
+  header(host, `Engage all ${count} battery bank breaker cells: ${label}.`);
   const grid = document.createElement('div');
   grid.className = 'clicker-grid';
   host.append(grid);
-  const status = statusLine(host, `0 / ${count}`);
+  const status = statusLine(host, `0 / ${count} ONLINE`);
   let hits = 0;
   for (let i = 0; i < count; i += 1) {
     const button = document.createElement('button');
+    button.type = 'button';
     button.className = 'clicker-target';
-    button.textContent = icon;
+    button.innerHTML = `<span>${icon}</span><small>${String(i + 1).padStart(2, '0')}</small>`;
+    button.setAttribute('aria-label', `Engage breaker cell ${i + 1}`);
     button.addEventListener('click', () => {
       if (button.classList.contains('done')) return;
       button.classList.add('done');
       hits += 1;
-      status.textContent = `${hits} / ${count}`;
+      sfx.click();
+      status.textContent = `${hits} / ${count} ONLINE`;
       if (hits >= count) complete();
     });
     grid.append(button);
   }
 }
 
-function renderCalibrate(host: HTMLElement, complete: Complete, cleanups: Cleanups): void {
-  header(host, 'Stop the marker inside the green zone. Three clean calibrations required.');
+function renderCalibrate(
+  host: HTMLElement,
+  complete: Complete,
+  cleanups: Cleanups,
+  system: MissionMetric,
+): void {
+  const prompt = system === 'farm'
+    ? 'Lock the PAR grow-light wave inside the emerald band three times.'
+    : system === 'research'
+      ? 'Center the spectrometer beam inside the cyan sweet spot three times.'
+      : 'Lock the phase marker inside the target band three times.';
+  header(host, prompt);
   const track = document.createElement('div');
   track.className = 'calibrate-track';
   const zone = document.createElement('div');
@@ -225,10 +433,11 @@ function renderCalibrate(host: HTMLElement, complete: Complete, cleanups: Cleanu
   track.append(zone, marker);
   host.append(track);
   const button = document.createElement('button');
+  button.type = 'button';
   button.className = 'task-primary';
   button.textContent = 'CALIBRATE';
   host.append(button);
-  const status = statusLine(host, '0 / 3');
+  const status = statusLine(host, '0 / 3 LOCKED');
   let pos = 0;
   let hits = 0;
   let raf = 0;
@@ -236,7 +445,7 @@ function renderCalibrate(host: HTMLElement, complete: Complete, cleanups: Cleanu
   let lastHitPass = -1;
   const start = performance.now();
   const tick = (now: number): void => {
-    const progress = Math.max(0, now - start) / 1500;
+    const progress = Math.max(0, now - start) / 1550;
     pass = Math.floor(progress);
     const fraction = progress - pass;
     pos = pass % 2 === 0 ? fraction : 1 - fraction;
@@ -245,40 +454,65 @@ function renderCalibrate(host: HTMLElement, complete: Complete, cleanups: Cleanu
   };
   raf = requestAnimationFrame(tick);
   button.addEventListener('click', () => {
-    if (pos > 0.42 && pos < 0.58) {
+    if (pos > 0.39 && pos < 0.61) {
       if (lastHitPass === pass) return;
       lastHitPass = pass;
       hits += 1;
-      status.textContent = `${hits} / 3`;
+      sfx.click();
+      status.textContent = `${hits} / 3 LOCKED`;
       if (hits >= 3) {
         cancelAnimationFrame(raf);
         complete();
       }
     } else {
-      status.textContent = 'MISSED — TRY AGAIN';
+      status.textContent = 'OUT OF BAND — TRY AGAIN';
     }
   });
   cleanups.push(() => cancelAnimationFrame(raf));
 }
 
-function renderInspect(host: HTMLElement, complete: Complete): void {
-  header(host, 'One sample does not match the batch. Select the anomaly.');
+function renderInspect(
+  host: HTMLElement,
+  complete: Complete,
+  cleanups: Cleanups,
+  system: MissionMetric,
+): void {
+  const isFarm = system === 'farm';
+  header(
+    host,
+    isFarm
+      ? 'Four aeroponic pods hold nominal pH. Flag the imbalanced pod tray.'
+      : 'One regolith core sample shows off-nominal fluorescence. Select the anomaly.',
+  );
   const odd = Math.floor(Math.random() * 5);
   const grid = document.createElement('div');
   grid.className = 'inspect-grid';
   host.append(grid);
-  statusLine(host, 'SELECT A SAMPLE');
+  const status = statusLine(host, isFarm ? 'INSPECT POD TRAYS' : 'SELECT ANOMALOUS CORE');
+  const timers: number[] = [];
+  cleanups.push(() => {
+    while (timers.length) window.clearTimeout(timers.pop());
+  });
   for (let i = 0; i < 5; i += 1) {
+    const isOdd = i === odd;
     const button = document.createElement('button');
-    button.className = `inspect-sample${i === odd ? ' odd' : ''}`;
-    button.innerHTML = `<i></i><span>${String(i + 1).padStart(2, '0')}</span>`;
+    button.type = 'button';
+    button.className = `inspect-sample${isOdd ? ' odd' : ''}`;
+    const readout = isFarm
+      ? (isOdd ? 'pH 8.4' : 'pH 6.2')
+      : (isOdd ? 'FLUX!' : 'NOM');
+    button.innerHTML = `<i></i><span>${String(i + 1).padStart(2, '0')}</span><small>${readout}</small>`;
+    button.setAttribute('aria-label', `${isFarm ? 'Pod' : 'Sample'} ${i + 1} readout ${readout}`);
     button.addEventListener('click', () => {
-      if (i === odd) {
+      if (isOdd) {
         button.classList.add('selected');
+        sfx.click();
+        status.textContent = 'ANOMALY ISOLATED';
         complete();
       } else {
         button.classList.add('wrong');
-        window.setTimeout(() => button.classList.remove('wrong'), 320);
+        status.textContent = `${isFarm ? 'POD' : 'SAMPLE'} ${String(i + 1).padStart(2, '0')} NOMINAL — KEEP CHECKING`;
+        timers.push(window.setTimeout(() => button.classList.remove('wrong'), 320));
       }
     });
     grid.append(button);
@@ -286,21 +520,24 @@ function renderInspect(host: HTMLElement, complete: Complete): void {
 }
 
 function renderShield(host: HTMLElement, complete: Complete): void {
-  header(host, 'Activate all six shield nodes.');
+  header(host, 'Engage all six magnetic bulkhead seal actuators.');
   const grid = document.createElement('div');
   grid.className = 'shield-grid';
   host.append(grid);
-  const status = statusLine(host, '0 / 6');
+  const status = statusLine(host, '0 / 6 SEALED');
   let active = 0;
   for (let i = 0; i < 6; i += 1) {
     const button = document.createElement('button');
+    button.type = 'button';
     button.className = 'shield-node';
-    button.textContent = '⬡';
+    button.innerHTML = `<span>⬡</span><small>S${i + 1}</small>`;
+    button.setAttribute('aria-label', `Activate shield actuator S${i + 1}`);
     button.addEventListener('click', () => {
       if (button.classList.contains('active')) return;
       button.classList.add('active');
       active += 1;
-      status.textContent = `${active} / 6`;
+      sfx.click();
+      status.textContent = `${active} / 6 SEALED`;
       if (active >= 6) complete();
     });
     grid.append(button);
@@ -313,12 +550,13 @@ function renderHold(
   cleanups: Cleanups,
   options: { help?: string; label?: string; done?: string; duration?: number; className?: string } = {},
 ): void {
-  const help = options.help ?? 'Hold the override button for three seconds to stabilize the reactor.';
+  const help = options.help ?? 'Hold the override switch until containment locks.';
   const label = options.label ?? 'HOLD';
   const doneText = options.done ?? 'STABILIZED';
-  const duration = options.duration ?? 3000;
+  const duration = options.duration ?? 2200;
   header(host, help);
   const button = document.createElement('button');
+  button.type = 'button';
   button.className = `hold-button${options.className ? ` ${options.className}` : ''}`;
   button.textContent = label;
   host.append(button);
@@ -328,7 +566,7 @@ function renderHold(
   fill.className = 'progress-fill';
   track.append(fill);
   host.append(track);
-  const status = statusLine(host, 'READY');
+  const status = statusLine(host, 'HOLD BUTTON OR SPACE / ENTER');
   let holding = false;
   let start = 0;
   let raf = 0;
@@ -348,7 +586,7 @@ function renderHold(
     if (holding) return;
     holding = true;
     start = performance.now();
-    status.textContent = 'HOLDING...';
+    status.textContent = 'PURGING...';
     tick();
   };
   const release = (): void => {
@@ -356,20 +594,20 @@ function renderHold(
     holding = false;
     cancelAnimationFrame(raf);
     fill.style.width = '0%';
-    status.textContent = 'RELEASED — HOLD LONGER';
+    status.textContent = 'RELEASED — HOLD UNTIL COMPLETE';
   };
-  button.addEventListener('pointerdown', event => {
+  button.addEventListener('pointerdown', (event) => {
     if (event.isPrimary && event.button === 0) beginHold();
   });
   button.addEventListener('pointerup', release);
   button.addEventListener('pointerleave', release);
   button.addEventListener('pointercancel', release);
-  button.addEventListener('keydown', event => {
+  button.addEventListener('keydown', (event) => {
     if (event.key !== ' ' && event.key !== 'Enter') return;
     event.preventDefault();
     if (!event.repeat) beginHold();
   });
-  button.addEventListener('keyup', event => {
+  button.addEventListener('keyup', (event) => {
     if (event.key !== ' ' && event.key !== 'Enter') return;
     event.preventDefault();
     release();
@@ -382,18 +620,18 @@ function renderHold(
 }
 
 function renderCards(host: HTMLElement, complete: Complete): void {
-  header(host, 'Select any three matching containment seals to complete the sequence.');
+  header(host, 'Arm any three containment interlock seals, then press COMPLETE.');
   const task = document.createElement('div');
   task.className = 'spud-cards-task';
   task.innerHTML = `
     <div class="spud-symbols-grid">
-      <button class="spud-symbol-tile" type="button" aria-pressed="false"><span>□</span></button>
-      <button class="spud-symbol-tile" type="button" aria-pressed="false"><span>◉</span></button>
-      <button class="spud-symbol-tile" type="button" aria-pressed="false"><span>✚</span></button>
-      <button class="spud-symbol-tile" type="button" aria-pressed="false"><span>△</span></button>
+      <button class="spud-symbol-tile" type="button" aria-pressed="false" aria-label="Square gasket seal"><span>□</span></button>
+      <button class="spud-symbol-tile" type="button" aria-pressed="false" aria-label="Core ring seal"><span>◉</span></button>
+      <button class="spud-symbol-tile" type="button" aria-pressed="false" aria-label="Cross valve seal"><span>✚</span></button>
+      <button class="spud-symbol-tile" type="button" aria-pressed="false" aria-label="Delta hatch seal"><span>△</span></button>
     </div>
     <div class="spud-cards-footer">
-      <span class="task-status">0 / 3 MATCHED</span>
+      <span class="task-status">0 / 3 ARMED</span>
       <button class="task-primary" type="button">COMPLETE</button>
     </div>
   `;
@@ -411,7 +649,8 @@ function renderCards(host: HTMLElement, complete: Complete): void {
       tile.classList.toggle('selected', next);
       tile.setAttribute('aria-pressed', String(next));
       matched += next ? 1 : -1;
-      statusEl.textContent = `${matched} / ${targetCount} MATCHED`;
+      sfx.click();
+      statusEl.textContent = `${matched} / ${targetCount} ARMED`;
     });
   });
 
@@ -420,6 +659,6 @@ function renderCards(host: HTMLElement, complete: Complete): void {
       complete();
       return;
     }
-    statusEl.textContent = `SELECT ${targetCount - matched} MORE (${matched} / ${targetCount})`;
+    statusEl.textContent = `ARM ${targetCount - matched} MORE (${matched} / ${targetCount})`;
   });
 }

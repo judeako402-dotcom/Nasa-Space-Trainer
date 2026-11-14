@@ -7,7 +7,6 @@ export const AssetKeys = {
   tileset: 'placeholder',
   door: 'prop_door',
   spawn: 'prop_spawn',
-  collisionMask: 'station_collision_mask',
   /** Illustrated station artwork traced by spudnaut-station.tmj. */
   mapImage: 'station_map_art',
   /** Separated base floor & walls artwork (rendered at DEPTH_FLOOR). */
@@ -23,7 +22,7 @@ export const AssetKeys = {
   /** Figma direct room layers (3072x3072 transparent PNGs). */
   figmaLayerWalls: 'figma_layer_walls',
   figmaLayerCore: 'figma_layer_core',
-  figmaLayerShields: 'figma_layer_shields',
+  figmaLayerResearch: 'figma_layer_research',
   figmaLayerLiferoom: 'figma_layer_liferoom',
   figmaLayerLiferoomTop: 'figma_layer_liferoom_top',
   figmaLayerHallway: 'figma_layer_hallway',
@@ -35,6 +34,7 @@ export const AssetKeys = {
   crewFarmer: 'potato-farmer',
   crewResearcher: 'potato-researcher',
   crewRepairman: 'potato-repairman',
+  crewTraveller: 'potato-traveller',
   /** Loading screen animated sheet. */
   loadingRunnerSheet: 'loading-runner-sheet',
   /** Station floor decor placeholders. */
@@ -46,5 +46,18 @@ export const AssetKeys = {
 /** Tiled map keys. */
 export const MapKeys = {
   station: 'spudnaut-station',
+} as const;
+
+// Keep the station artwork and collision grid on the same asset revision.
+const stationMapRevision = '?v=4';
+export const StationMapUrls = {
+  tiles: `/assets/maps/spudnaut-station.tmj${stationMapRevision}`,
+  floorPlan: `/assets/maps/figma/floor-plan.png${stationMapRevision}`,
+  objectsSheet: `/assets/maps/figma/objects-sheet.png${stationMapRevision}`,
+  hydroponicsCabinet: `/assets/maps/figma/layers/liferoom-top.png${stationMapRevision}`,
+  fallbackHydroponicsCabinet: `/assets/maps/figma/hydroponics-platform.png${stationMapRevision}`,
+  fallbackFloor: `/assets/maps/spudnaut-station-floor.png${stationMapRevision}`,
+  fallbackObjects: `/assets/maps/spudnaut-station-objects.png${stationMapRevision}`,
+  overview: `/assets/maps/spudnaut-station.webp${stationMapRevision}`,
 } as const;
 

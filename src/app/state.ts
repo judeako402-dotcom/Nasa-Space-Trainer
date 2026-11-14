@@ -1,10 +1,11 @@
 import type {
-  EarthProgressReport, ExamQuestion, GamePhase, TrialProgress,
+  DifficultyId, EarthProgressReport, ExamQuestion, GamePhase, MajorEventRun, MissionCheckpoint, TrialProgress,
 } from '../model';
 import { PLAYER_SPAWN } from '../model';
 import { TRAINING_DECK } from '../data/trainingDeck';
 import type { EventCard } from '../data/events';
 import { createMetrics, type AssignmentOffer } from '../sim/mission';
+import { createMajorEventRun } from '../sim/majorEvents';
 import type { SceneGameState } from '../game';
 
 export type ScreenId =
@@ -22,6 +23,9 @@ export interface MissionState extends TrialProgress {
   offers: AssignmentOffer[];
   selected: string[];
   eventCard: EventCard | null;
+  majorEventRun: MajorEventRun;
+  pendingDisaster: boolean;
+  checkpoint?: MissionCheckpoint;
   playerX: number;
   playerY: number;
   room: string;
@@ -55,12 +59,13 @@ export const createInitialExam = (): ExamState => ({
   questions: [], index: 0, score: 0, selected: [], submitted: false, missed: [],
 });
 
-export function createMissionState(): MissionState {
+export function createMissionState(difficulty: DifficultyId = 'crew'): MissionState {
   return {
     phase: 'menu', day: 1, penaltyDay: 0, totalAssigned: 0, totalCompleted: 0,
     missedDays: 0, metrics: createMetrics(), dayStartedAt: 0, shiftDurationMs: 0, pausedDuration: 0,
     pauseStartedAt: 0, tasks: [], completed: [], offers: [], selected: [],
-    eventCard: null, playerX: PLAYER_SPAWN.x, playerY: PLAYER_SPAWN.y,
+    eventCard: null, pendingDisaster: false, majorEventRun: createMajorEventRun(undefined, difficulty),
+    playerX: PLAYER_SPAWN.x, playerY: PLAYER_SPAWN.y,
     room: 'Central Hub', report: null, reports: [], modalOpen: false,
   };
 }
@@ -78,4 +83,36 @@ export function createTrainingState(): TrainingState {
     completed: [], crew: [], x: TRAINING_DECK.spawn.x, y: TRAINING_DECK.spawn.y,
     room: 'Cafeteria', modalOpen: false,
   };
+}
+
+/** True when a world coordinate is on the external Landing Pad apron outside the airlock door. */
+export function isExteriorApron(pos: { x: number; y: number }): boolean {
+  return pos.x >= 1460 && pos.x <= 1940 && pos.y >= 1776;
+}
+
+/** True when a room name or world position lies in an unpressurized EVA zone. */
+function isVacuumZone(roomName: string, pos?: { x: number; y: number }): boolean {
+  const normalized = roomName.toLowerCase();
+  if (
+    normalized.includes('airlock')
+    || normalized.includes('landing pad')
+    || normalized.includes('exterior')
+  ) {
+    return true;
+  }
+  return Boolean(pos && isExteriorApron(pos));
+}
+
+/** True when entering an unpressurized/airlock room or low life-support state should auto-seal the helmet. */
+export function shouldAutoSealHelmet(roomName: string, life: number, pos?: { x: number; y: number }): boolean {
+  return isVacuumZone(roomName, pos) || life < 45;
+}
+
+/** True when the astronaut is in an unpressurized EVA zone without a sealed helmet. */
+export function isUnpressurizedHazard(
+  roomName: string,
+  helmetSealed: boolean,
+  pos?: { x: number; y: number },
+): boolean {
+  return !helmetSealed && isVacuumZone(roomName, pos);
 }

@@ -20,26 +20,16 @@ export interface PlayerColor {
 }
 
 export type GamePhase = 'menu' | 'story' | 'exam' | 'launch' | 'playing' | 'report' | 'penalty' | 'complete';
-export type DestinationId = 'moon' | 'mars';
+export type DestinationId = 'moon';
 export type SpecialistId = 'repairman' | 'farmer' | 'traveller' | 'researcher';
 export type DifficultyId = 'cadet' | 'crew' | 'veteran';
-export type MissionMetric =
-  | 'power'
-  | 'oxygen'
-  | 'water'
-  | 'starch'
-  | 'hull'
-  | 'morale'
-  | 'research';
+export type MissionMetric = 'life' | 'power' | 'research' | 'farm';
 
 export interface MissionMetrics {
+  life: number;
   power: number;
-  oxygen: number;
-  water: number;
-  starch: number;
-  hull: number;
-  morale: number;
   research: number;
+  farm: number;
 }
 
 export interface EarthProgressReport {
@@ -63,6 +53,28 @@ export interface TrialProgress {
   metrics: MissionMetrics;
 }
 
+export interface DonkiReport {
+  id: string;
+  type: 'FLR' | 'CME' | 'SEP' | 'GST';
+  date: string;
+  url: string;
+  summary: string;
+  simulated?: boolean;
+}
+
+export interface MajorEventCandidate {
+  report: DonkiReport;
+  triggered: boolean;
+}
+
+export interface MajorEventRun {
+  seed: number;
+  difficulty: DifficultyId;
+  reportsLoaded: boolean;
+  candidates: MajorEventCandidate[];
+  nextCandidateIndex: number;
+}
+
 export interface SavedTrial extends TrialProgress {
   phase: 'playing' | 'report' | 'penalty';
   tasks: string[];
@@ -73,9 +85,23 @@ export interface SavedTrial extends TrialProgress {
   remainingMs?: number;
   shiftDurationMs?: number;
   eventChoiceId?: string;
-  donkiReport?: { id: string; type: 'FLR' | 'CME' | 'SEP' | 'GST'; date: string; url: string; summary: string };
+  donkiReport?: DonkiReport;
+  majorEventRun?: MajorEventRun;
   position?: { x: number; y: number };
-  planning?: { eventBase: MissionMetrics; selected: string[] };
+  planning?: { eventBase: MissionMetrics; selected: string[]; majorEventReportId?: string; offers?: string[] };
+  pendingDisaster?: boolean;
+  checkpoint?: MissionCheckpoint;
+}
+
+export interface MissionCheckpoint {
+  reason: 'shift-start' | 'after-task' | 'before-major-event';
+  metrics: MissionMetrics;
+  completed: string[];
+  totalCompleted: number;
+  remainingMs: number;
+  position: { x: number; y: number };
+  pendingDisaster: boolean;
+  failures: number;
 }
 
 export interface RoomDef {
@@ -105,7 +131,8 @@ export type TaskKind =
   | 'inspect'
   | 'shield'
   | 'garbage'
-  | 'cards';
+  | 'cards'
+  | 'rainbow' | 'harvest' | 'scrub' | 'pipes' | 'solar' | 'crystals' | 'signal';
 
 export interface TaskDef {
   id: string;
@@ -114,7 +141,9 @@ export interface TaskDef {
   roomId: string;
   x: number;
   y: number;
-  system?: 'power' | 'life' | 'farming' | 'shielding' | 'science';
+  system?: MissionMetric;
+  cost?: MissionMetric;
+  isEmergency?: boolean;
 }
 
 export interface GameOptions {
@@ -139,6 +168,9 @@ export interface PlayerSave {
   certified: boolean;
   trainingComplete: boolean;
   trainingRank: 'S' | 'A' | 'B' | null;
+  tutorialComplete: boolean;
+  seenMinigames: string[];
+  medals: number;
   examBest: number;
   trialDay: number;
   activeTrial: SavedTrial | null;
@@ -209,7 +241,7 @@ export function getColor(id: PlayerColorId): PlayerColor {
 
 export const ROOMS: RoomDef[] = [
   { id: 'reactor', name: 'Reactor Dome', x: 555, y: 10, w: 622, h: 460, tint: 0x5b4654, icon: '◉' },
-  { id: 'communications', name: 'Comms Dome', x: 1278, y: 115, w: 685, h: 355, tint: 0x4b4470, icon: '⌁' },
+  { id: 'communications', name: 'Researcher Room', x: 1278, y: 115, w: 685, h: 355, tint: 0x4b4470, icon: '⌁' },
   { id: 'cafeteria', name: 'Hydroponics Bay', x: 105, y: 445, w: 560, h: 520, tint: 0x3e6a58, icon: '❀' },
   { id: 'admin', name: 'Central Hub', x: 782, y: 700, w: 365, h: 455, tint: 0x476252, icon: '▤' },
   { id: 'storage', name: 'Cargo Bay', x: 1290, y: 640, w: 670, h: 520, tint: 0x5e5040, icon: '▦' },
@@ -229,30 +261,54 @@ export const CORRIDORS: CorridorDef[] = [
   { x: 1548, y: 1120, w: 155, h: 180 },
 ];
 
-export const TASKS: TaskDef[] = [
+const PREVIOUS_TASKS: TaskDef[] = [
   { id: 'fuel-upper', name: 'Balance Solar-Battery Load', kind: 'fuel', roomId: 'reactor', x: 688, y: 400, system: 'power' },
   { id: 'align-engine', name: 'Align Sun-Tracking Array', kind: 'calibrate', roomId: 'reactor', x: 784, y: 400, system: 'power' },
   { id: 'wiring-cafeteria', name: 'Route Greenhouse Power', kind: 'wiring', roomId: 'cafeteria', x: 352, y: 800, system: 'power' },
-  { id: 'garbage', name: 'Sort Galley Water Filters', kind: 'garbage', roomId: 'cafeteria', x: 480, y: 800, system: 'life' },
-  { id: 'grow-light-balance', name: 'Balance Grow-Light Spectrum', kind: 'calibrate', roomId: 'cafeteria', x: 608, y: 784, system: 'farming' },
-  { id: 'nutrient-loop', name: 'Check Hydroponics Nutrient Loop', kind: 'inspect', roomId: 'cafeteria', x: 544, y: 928, system: 'farming' },
-  { id: 'asteroids', name: 'Survey EVA Safe Route', kind: 'inspect', roomId: 'admin', x: 928, y: 800, system: 'science' },
-  { id: 'steering', name: 'Plan Rover Traverse', kind: 'calibrate', roomId: 'communications', x: 1360, y: 368, system: 'science' },
-  { id: 'download-nav', name: 'Upload Surface Weather', kind: 'download', roomId: 'communications', x: 1792, y: 384, system: 'science' },
+  { id: 'garbage', name: 'Sort Galley Water Filters', kind: 'garbage', roomId: 'cafeteria', x: 304, y: 880, system: 'life' },
+  { id: 'grow-light-balance', name: 'Balance Grow-Light Spectrum', kind: 'calibrate', roomId: 'cafeteria', x: 608, y: 784, system: 'farm' },
+  { id: 'nutrient-loop', name: 'Check Hydroponics Nutrient Loop', kind: 'inspect', roomId: 'cafeteria', x: 544, y: 928, system: 'farm' },
+  { id: 'asteroids', name: 'Survey EVA Safe Route', kind: 'inspect', roomId: 'admin', x: 928, y: 800, system: 'research' },
+  { id: 'steering', name: 'Plan Rover Traverse', kind: 'calibrate', roomId: 'communications', x: 1360, y: 368, system: 'research' },
+  { id: 'download-nav', name: 'Upload Surface Weather', kind: 'download', roomId: 'communications', x: 1776, y: 368, system: 'research' },
   { id: 'reactor-start', name: 'Tune Thermal Control', kind: 'calibrate', roomId: 'reactor', x: 736, y: 416, system: 'power' },
-  { id: 'inspect', name: 'Analyze Regolith Sample', kind: 'inspect', roomId: 'medbay', x: 736, y: 1376, system: 'science' },
+  { id: 'inspect', name: 'Analyze Regolith Sample', kind: 'inspect', roomId: 'medbay', x: 736, y: 1376, system: 'research' },
   { id: 'calibrate', name: 'Balance Habitat Power Bus', kind: 'calibrate', roomId: 'reactor', x: 864, y: 416, system: 'power' },
-  { id: 'swipe', name: 'Check Suit Pressure Seal', kind: 'swipe', roomId: 'storage', x: 1568, y: 800, system: 'shielding' },
-  { id: 'upload-admin', name: 'Send Earth Science Log', kind: 'download', roomId: 'communications', x: 1568, y: 352, system: 'science' },
+  { id: 'swipe', name: 'Check Suit Pressure Seal', kind: 'swipe', roomId: 'storage', x: 1568, y: 800, system: 'life' },
+  { id: 'upload-admin', name: 'Send Earth Science Log', kind: 'download', roomId: 'communications', x: 1568, y: 352, system: 'research' },
   { id: 'fuel-storage', name: 'Replace Battery Module', kind: 'fuel', roomId: 'storage', x: 1376, y: 736, system: 'power' },
-  { id: 'shields', name: 'Prime Shields', kind: 'shield', roomId: 'security', x: 416, y: 1312 },
+  { id: 'shields', name: 'Seal Habitat Pressure Barrier', kind: 'shield', roomId: 'security', x: 528, y: 1488, system: 'life' },
   { id: 'wiring-electrical', name: 'Reconnect Power Distribution Bus', kind: 'wiring', roomId: 'reactor', x: 1104, y: 400, system: 'power' },
-  { id: 'review-cams', name: 'Review Rover Terrain Images', kind: 'download', roomId: 'security', x: 240, y: 1200, system: 'science' },
-  { id: 'clean-o2', name: 'Service CO2 Scrubber Filter', kind: 'garbage', roomId: 'storage', x: 1808, y: 752, system: 'life' },
-  { id: 'reboot-comms', name: 'Align Deep-Space Antenna', kind: 'calibrate', roomId: 'communications', x: 1760, y: 352, system: 'science' },
-  { id: 'eva-sample', name: 'Collect Geology Sample', kind: 'inspect', roomId: 'exterior', x: 1568, y: 1568, system: 'science' },
+  { id: 'review-cams', name: 'Review Rover Terrain Images', kind: 'download', roomId: 'security', x: 240, y: 1200, system: 'research' },
+  { id: 'clean-o2', name: 'Service CO2 Scrubber Filter', kind: 'garbage', roomId: 'storage', x: 1808, y: 848, system: 'life' },
+  { id: 'reboot-comms', name: 'Align Deep-Space Antenna', kind: 'calibrate', roomId: 'communications', x: 1712, y: 304, system: 'research' },
+  { id: 'eva-sample', name: 'Collect Geology Sample', kind: 'inspect', roomId: 'exterior', x: 1568, y: 1568, system: 'research' },
   { id: 'eva-array', name: 'Inspect Exterior Power Cable', kind: 'wiring', roomId: 'exterior', x: 1824, y: 1568, system: 'power' },
-  { id: 'eva-route', name: 'Mark Return-to-Airlock Route', kind: 'download', roomId: 'exterior', x: 1696, y: 1760, system: 'science' },
+  { id: 'eva-route', name: 'Mark Return-to-Airlock Route', kind: 'download', roomId: 'exterior', x: 1696, y: 1696, system: 'research' },
+];
+
+export const TASKS: TaskDef[] = [
+  { id: 'grow-light-balance', name: 'Grow-Light Rainbow Tune', kind: 'rainbow', roomId: 'cafeteria', x: 608, y: 784, system: 'farm', cost: 'power' },
+  { id: 'nutrient-loop', name: 'Potato Harvest Catch', kind: 'harvest', roomId: 'cafeteria', x: 544, y: 928, system: 'farm', cost: 'life' },
+  { id: 'inspect', name: 'Moon-Dust Filter Scrub', kind: 'scrub', roomId: 'medbay', x: 736, y: 1376, system: 'life', cost: 'power' },
+  { id: 'med-pipes', name: 'Oxygen & Water Pipe Connect', kind: 'pipes', roomId: 'medbay', x: 800, y: 1472, system: 'life', cost: 'farm' },
+  { id: 'wiring-electrical', name: 'Spark-Wire Color Match', kind: 'wiring', roomId: 'reactor', x: 1104, y: 400, system: 'power', cost: 'life' },
+  { id: 'align-engine', name: 'Sun-Beam Solar Catcher', kind: 'solar', roomId: 'reactor', x: 784, y: 400, system: 'power', cost: 'research' },
+  { id: 'steering', name: 'Moon-Rock Crystal Scanner', kind: 'crystals', roomId: 'communications', x: 1776, y: 432, system: 'research', cost: 'power' },
+  { id: 'upload-admin', name: 'Star-Signal Memory Beat', kind: 'signal', roomId: 'communications', x: 1568, y: 304, system: 'research', cost: 'farm' },
+];
+
+export const EMERGENCY_TASKS: TaskDef[] = [
+  { id: 'emergency-flr', name: 'Damaged Area · Solar Power Bus', kind: 'calibrate', roomId: 'reactor', x: 784, y: 400, system: 'power', isEmergency: true },
+  { id: 'emergency-cme', name: 'Damaged Area · Airlock & Hull Shield', kind: 'shield', roomId: 'security', x: 528, y: 1488, system: 'life', isEmergency: true },
+  { id: 'emergency-sep', name: 'Damaged Area · Comms & Science Sensors', kind: 'calibrate', roomId: 'communications', x: 1776, y: 432, system: 'research', isEmergency: true },
+  { id: 'emergency-gst', name: 'Damaged Area · Hydroponic Grow Pumps', kind: 'inspect', roomId: 'cafeteria', x: 544, y: 928, system: 'farm', isEmergency: true },
+];
+
+export const STATION_TASKS = [
+  ...TASKS,
+  ...EMERGENCY_TASKS,
+  ...PREVIOUS_TASKS.filter(previous => !TASKS.some(task => task.id === previous.id)),
 ];
 
 export const PLAYER_SPAWN = { x: 960, y: 950 };
@@ -264,7 +320,7 @@ export const SPECIALISTS: Specialist[] = [
     shortName: 'REPAIR',
     role: 'Station Systems',
     art: '/assets/potato-repairman.png',
-    perk: 'Power, life-support, and hull jobs gain +3 recovery points.',
+    perk: 'Power jobs give +3 extra Power. You use less Power each shift.',
     description: 'You know every bolt on the station. When the alarms start, you keep the air inside.',
     accent: '#f2b544',
   },
@@ -274,7 +330,7 @@ export const SPECIALISTS: Specialist[] = [
     shortName: 'FARM',
     role: 'Hydroponics',
     art: '/assets/potato-farmer.png',
-    perk: 'Hydroponics and science jobs gain +3 specialist recovery points.',
+    perk: 'Farm jobs give +3 extra Farm. You save water and lose less Life each shift.',
     description: 'Soil, water, light. You can grow a meal in a crater and make it taste like home.',
     accent: '#9bd15a',
   },
@@ -284,7 +340,7 @@ export const SPECIALISTS: Specialist[] = [
     shortName: 'TRAVEL',
     role: 'Surface Scouting',
     art: '/assets/potato-traveller.png',
-    perk: 'Moves 18% faster through the station.',
+    perk: 'Life and airlock repairs give +3 extra Life. You walk 18% faster.',
     description: 'You have walked every dust field on the training map. A long corridor is a short walk.',
     accent: '#e9c27b',
   },
@@ -294,7 +350,7 @@ export const SPECIALISTS: Specialist[] = [
     shortName: 'RESEARCH',
     role: 'Science & Samples',
     art: '/assets/potato-researcher.png',
-    perk: 'Science assignments earn +3 extra research points.',
+    perk: 'Research jobs give +3 extra Research. You get clearer clues during alerts.',
     description: 'You ask questions for a living. The crew will hear your evidence, even twice.',
     accent: '#78d8e8',
   },
@@ -310,27 +366,39 @@ export const DESTINATIONS: Destination[] = [
     gravity: '0.16 G',
     hazard: 'Regolith dust',
   },
-  {
-    id: 'mars',
-    name: 'Mars',
-    tagline: 'Thin air. Long horizon.',
-    description: 'A rust-red basin beneath a butterscotch sky, with thin carbon dioxide air and seasonal dust storms.',
-    accent: '#e98a5c',
-    gravity: '0.38 G',
-    hazard: 'Solar dust storms',
-  },
 ];
 
 export const TASK_RANGE = 82;
-export const TRIAL_MAX_DAY = 30;
-export const PENALTY_MAX_DAY = 15;
+
+export const TRIAL_DAYS_BY_DIFFICULTY: Record<DifficultyId, number> = {
+  cadet: 3,
+  crew: 5,
+  veteran: 7,
+};
+
+export const PENALTY_DAYS_BY_DIFFICULTY: Record<DifficultyId, number> = {
+  cadet: 3,
+  crew: 5,
+  veteran: 7,
+};
+
+export function trialMaxDays(difficulty: DifficultyId = 'crew'): number {
+  return TRIAL_DAYS_BY_DIFFICULTY[difficulty];
+}
+
+export function penaltyMaxDays(difficulty: DifficultyId = 'crew'): number {
+  return PENALTY_DAYS_BY_DIFFICULTY[difficulty];
+}
+
+export const TRIAL_MAX_DAY = TRIAL_DAYS_BY_DIFFICULTY.crew;
+export const PENALTY_MAX_DAY = PENALTY_DAYS_BY_DIFFICULTY.crew;
 export const EXAM_QUESTION_COUNT = 8;
 export const EXAM_PASS_RATIO = 0.7;
 
 export const DIFFICULTY_INFO: Record<DifficultyId, { name: string; description: string }> = {
-  cadet: { name: 'Cadet', description: 'A little more time to finish each day.' },
-  crew: { name: 'Crew', description: 'The intended trial experience.' },
-  veteran: { name: 'Veteran', description: 'A tighter schedule and harsher conditions.' },
+  cadet: { name: 'Cadet', description: '3 shifts · 15% alert chance · bigger boosts and smaller costs.' },
+  crew: { name: 'Crew', description: '5 shifts · 30% alert chance · balanced boosts and costs.' },
+  veteran: { name: 'Veteran', description: '7 shifts · 50% alert chance · tougher tradeoffs and shorter clocks.' },
 };
 
 export const DEFAULT_OPTIONS: GameOptions = {
@@ -427,12 +495,12 @@ export const EXAM_QUESTIONS: ExamQuestion[] = [
   },
   {
     id: 'radiation',
-    topic: 'Shielding',
+    topic: 'Life Support & Protection',
     prompt: 'Why do engineers study hydrogen-rich materials such as water for radiation shielding?',
     options: ['A thin sheet of aluminum foil', 'Water-rich or polyethylene layers', 'A layer of dried potato peel', 'A painted hull'],
     correct: [1],
     explanation: 'Hydrogen-rich materials can help reduce exposure to some energetic particles, but no simple wall blocks every kind of space radiation.',
-    lesson: 'Radiation protection is a design challenge involving shielding, mission timing, shelter, and monitoring. The game’s hull gauge is a simplified teaching model.',
+    lesson: 'Radiation protection is a design challenge involving shielding, mission timing, shelter, and monitoring. The game’s Life Support gauge models cabin air, water, and hull protection together.',
   },
   {
     id: 'gravity-turn',
@@ -446,11 +514,11 @@ export const EXAM_QUESTIONS: ExamQuestion[] = [
   {
     id: 'multi-systems',
     topic: 'Station Systems',
-    prompt: 'Select every critical system the crew must balance on a surface habitat.',
-    options: ['Power supply', 'Life support', 'Farming', 'Radiation and hull shielding', 'Cafeteria playlist'],
+    prompt: 'Select every critical system pillar the crew must balance on a surface habitat.',
+    options: ['Life support', 'Power supply', 'Research lab', 'Hydroponics farm', 'Cafeteria playlist'],
     correct: [0, 1, 2, 3],
-    explanation: 'Power, air and water, food, and shielding are the four interconnected survival systems. Entertainment helps morale, but it is not critical.',
-    lesson: 'The four system conflicts are power, life support, farming, and radiation/hull shielding. Improving one usually costs another.',
+    explanation: 'Life, Power, Research, and Farm are the four interconnected mission pillars. Entertainment helps morale, but is not one of the four critical systems.',
+    lesson: 'The four system pillars are Life, Power, Research, and Farm. Improving one often trades time or power from another.',
   },
   {
     id: 'multi-repair',
@@ -494,7 +562,7 @@ function isSpecialistId(value: unknown): value is SpecialistId {
 }
 
 function isDestinationId(value: unknown): value is DestinationId {
-  return value === 'moon' || value === 'mars';
+  return value === 'moon';
 }
 
 function isDifficultyId(value: unknown): value is DifficultyId {
@@ -512,6 +580,9 @@ export function defaultSave(): PlayerSave {
     certified: false,
     trainingComplete: false,
     trainingRank: null,
+    tutorialComplete: false,
+    seenMinigames: [],
+    medals: 0,
     examBest: 0,
     trialDay: 0,
     activeTrial: null,
@@ -543,54 +614,100 @@ function readRawSave(): string | null {
   }
 }
 
+function parseSaveRecord(parsed: unknown): PlayerSave {
+  const fallback = defaultSave();
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return fallback;
+  const record = parsed as Partial<PlayerSave> & { version?: number };
+  const options = (record.options && typeof record.options === 'object' ? record.options : {}) as Partial<GameOptions>;
+  const difficulty = isDifficultyId(options.difficulty) ? options.difficulty : fallback.options.difficulty;
+  const maxDaySpan = trialMaxDays(difficulty) + penaltyMaxDays(difficulty);
+  return {
+    version: 8,
+    colorId: isColorId(record.colorId) ? record.colorId : fallback.colorId,
+    name: typeof record.name === 'string' && record.name.trim() ? record.name.slice(0, 14) : fallback.name,
+    wins: Number.isFinite(record.wins) ? Number(record.wins) : 0,
+    losses: Number.isFinite(record.losses) ? Number(record.losses) : 0,
+    games: Number.isFinite(record.games) ? Number(record.games) : 0,
+    certified: Boolean(record.certified),
+    trainingComplete: Boolean(record.trainingComplete),
+    trainingRank: record.trainingRank === 'S' || record.trainingRank === 'A' || record.trainingRank === 'B'
+      ? record.trainingRank
+      : null,
+    tutorialComplete: Boolean(record.tutorialComplete),
+    seenMinigames: Array.isArray(record.seenMinigames)
+      ? [...new Set(record.seenMinigames.filter(id => typeof id === 'string' && id.length <= 64))].slice(0, 100)
+      : [],
+    medals: Number.isInteger(record.medals) ? Math.max(0, Number(record.medals)) : 0,
+    examBest: Number.isFinite(record.examBest) ? Number(record.examBest) : 0,
+    trialDay: Number.isFinite(record.trialDay) ? Math.max(0, Math.min(Math.max(45, maxDaySpan), Number(record.trialDay))) : 0,
+    activeTrial: parseSavedTrial(record.activeTrial, difficulty),
+    specialist: isSpecialistId(record.specialist) ? record.specialist : fallback.specialist,
+    destination: isDestinationId(record.destination) ? record.destination : fallback.destination,
+    options: {
+      masterVolume: typeof options.masterVolume === 'number' ? Math.max(0, Math.min(100, options.masterVolume)) : (fallback.options.masterVolume ?? 80),
+      sound: typeof options.sound === 'boolean' ? options.sound : fallback.options.sound,
+      volume: typeof options.volume === 'number' ? Math.max(0, Math.min(100, options.volume)) : fallback.options.volume,
+      music: typeof options.music === 'boolean' ? options.music : fallback.options.music,
+      musicVolume: typeof options.musicVolume === 'number' ? Math.max(0, Math.min(100, options.musicVolume)) : fallback.options.musicVolume,
+      lineOfSight: typeof options.lineOfSight === 'boolean' ? options.lineOfSight : fallback.options.lineOfSight,
+      reducedMotion: typeof options.reducedMotion === 'boolean' ? options.reducedMotion : fallback.options.reducedMotion,
+      showFps: typeof options.showFps === 'boolean' ? options.showFps : fallback.options.showFps,
+      difficulty,
+    },
+  };
+}
+
 export function loadSave(): PlayerSave {
   try {
     const value = readRawSave();
     if (!value) return defaultSave();
-    const parsed = JSON.parse(value) as Partial<PlayerSave> & { version?: number };
-    const fallback = defaultSave();
-    const options = (parsed.options ?? {}) as Partial<GameOptions>;
-    return {
-      version: 8,
-      colorId: isColorId(parsed.colorId) ? parsed.colorId : fallback.colorId,
-      name: typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name.slice(0, 14) : fallback.name,
-      wins: Number.isFinite(parsed.wins) ? Number(parsed.wins) : 0,
-      losses: Number.isFinite(parsed.losses) ? Number(parsed.losses) : 0,
-      games: Number.isFinite(parsed.games) ? Number(parsed.games) : 0,
-      certified: Boolean(parsed.certified),
-      trainingComplete: Boolean(parsed.trainingComplete),
-      trainingRank: parsed.trainingRank === 'S' || parsed.trainingRank === 'A' || parsed.trainingRank === 'B'
-        ? parsed.trainingRank
-        : null,
-      examBest: Number.isFinite(parsed.examBest) ? Number(parsed.examBest) : 0,
-      trialDay: Number.isFinite(parsed.trialDay) ? Math.max(0, Math.min(TRIAL_MAX_DAY + PENALTY_MAX_DAY, Number(parsed.trialDay))) : 0,
-      activeTrial: parseSavedTrial(parsed.activeTrial),
-      specialist: isSpecialistId(parsed.specialist) ? parsed.specialist : fallback.specialist,
-      destination: isDestinationId(parsed.destination) ? parsed.destination : fallback.destination,
-      options: {
-        masterVolume: typeof options.masterVolume === 'number' ? Math.max(0, Math.min(100, options.masterVolume)) : (fallback.options.masterVolume ?? 80),
-        sound: typeof options.sound === 'boolean' ? options.sound : fallback.options.sound,
-        volume: typeof options.volume === 'number' ? Math.max(0, Math.min(100, options.volume)) : fallback.options.volume,
-        music: typeof options.music === 'boolean' ? options.music : fallback.options.music,
-        musicVolume: typeof options.musicVolume === 'number' ? Math.max(0, Math.min(100, options.musicVolume)) : fallback.options.musicVolume,
-        lineOfSight: typeof options.lineOfSight === 'boolean' ? options.lineOfSight : fallback.options.lineOfSight,
-        reducedMotion: typeof options.reducedMotion === 'boolean' ? options.reducedMotion : fallback.options.reducedMotion,
-        showFps: typeof options.showFps === 'boolean' ? options.showFps : fallback.options.showFps,
-        difficulty: isDifficultyId(options.difficulty) ? options.difficulty : fallback.options.difficulty,
-      },
-    };
+    return parseSaveRecord(JSON.parse(value));
   } catch {
     return defaultSave();
   }
 }
 
-function parseSavedTrial(value: unknown): SavedTrial | null {
+/** Serialize the player's save state into a portable recovery JSON payload. */
+export function exportSaveJson(save: PlayerSave): string {
+  return JSON.stringify({
+    app: 'spudnaut',
+    version: save.version,
+    exportedAt: new Date().toISOString(),
+    save,
+  }, null, 2);
+}
+
+/** Validate and normalize a pasted or uploaded JSON save file, returning null when invalid. */
+export function parseImportedSaveJson(raw: string): PlayerSave | null {
+  try {
+    const decoded = JSON.parse(raw) as unknown;
+    if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded)) return null;
+    const candidate = 'app' in decoded && (decoded as { app?: unknown }).app === 'spudnaut' && 'save' in decoded
+      ? (decoded as { save?: unknown }).save
+      : decoded;
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null;
+    const keys = Object.keys(candidate);
+    const knownFields = ['version', 'name', 'colorId', 'options', 'wins', 'certified', 'activeTrial', 'specialist'];
+    if (!keys.some(key => knownFields.includes(key))) return null;
+    return parseSaveRecord(candidate);
+  } catch {
+    return null;
+  }
+}
+
+function parseSavedTrial(value: unknown, difficulty: DifficultyId = 'crew'): SavedTrial | null {
   if (!value || typeof value !== 'object') return null;
   const trial = value as Partial<SavedTrial>;
   if (trial.phase !== 'playing' && trial.phase !== 'report' && trial.phase !== 'penalty') return null;
-  if (!Number.isInteger(trial.day) || Number(trial.day) < 1 || Number(trial.day) > TRIAL_MAX_DAY) return null;
-  if (!Number.isInteger(trial.penaltyDay) || Number(trial.penaltyDay) < 0 || Number(trial.penaltyDay) > PENALTY_MAX_DAY) return null;
-  if (!Array.isArray(trial.tasks) || !trial.tasks.every(id => typeof id === 'string' && TASKS.some(task => task.id === id))) return null;
+  const majorEventRun = parseMajorEventRun(trial.majorEventRun);
+  const runDifficulty = majorEventRun?.difficulty ?? difficulty;
+  const maxDays = trialMaxDays(runDifficulty);
+  const maxPenalty = penaltyMaxDays(runDifficulty);
+  if (!Number.isInteger(trial.day) || Number(trial.day) < 1 || Number(trial.day) > 30) return null;
+  if (!Number.isInteger(trial.penaltyDay) || Number(trial.penaltyDay) < 0 || Number(trial.penaltyDay) > 15) return null;
+  const day = Math.min(maxDays, Number(trial.day));
+  const penaltyDay = Math.min(maxPenalty, Number(trial.penaltyDay));
+  if (!Array.isArray(trial.tasks) || !trial.tasks.every(id => typeof id === 'string' && Boolean(taskById(id)))) return null;
   if (!Array.isArray(trial.completed) || !trial.completed.every(id => typeof id === 'string' && trial.tasks?.includes(id))) return null;
   if (!Number.isFinite(trial.totalAssigned) || !Number.isFinite(trial.totalCompleted) || !Number.isFinite(trial.missedDays)) return null;
   const metrics = migrateMetrics(trial.metrics);
@@ -600,7 +717,7 @@ function parseSavedTrial(value: unknown): SavedTrial | null {
     const raw = value as Partial<EarthProgressReport>;
     if (!Number.isInteger(raw.day) || !Number.isInteger(raw.completed) || !Number.isInteger(raw.assigned) || typeof raw.event !== 'string') return null;
     const validTaskIds = (ids: unknown): string[] | undefined => Array.isArray(ids)
-      ? ids.filter((id): id is string => typeof id === 'string' && TASKS.some(task => task.id === id))
+      ? ids.filter((id): id is string => typeof id === 'string' && Boolean(taskById(id)))
       : undefined;
     return {
       day: Number(raw.day), completed: Number(raw.completed), assigned: Number(raw.assigned), event: raw.event,
@@ -616,13 +733,13 @@ function parseSavedTrial(value: unknown): SavedTrial | null {
   const report = parseReport(trial.report);
   const planningBase = trial.planning && !trial.tasks.length ? migrateMetrics(trial.planning.eventBase) : null;
   const selected = Array.isArray(trial.planning?.selected)
-    ? [...new Set(trial.planning.selected.filter(id => typeof id === 'string' && TASKS.some(task => task.id === id)))]
+    ? [...new Set(trial.planning.selected.filter(id => typeof id === 'string' && Boolean(taskById(id))))]
     : [];
   const position = trial.position;
   return {
     phase: trial.phase,
-    day: Number(trial.day),
-    penaltyDay: Number(trial.penaltyDay),
+    day,
+    penaltyDay,
     tasks: [...trial.tasks],
     completed: [...trial.completed],
     eventId: typeof trial.eventId === 'string' ? trial.eventId : null,
@@ -630,7 +747,7 @@ function parseSavedTrial(value: unknown): SavedTrial | null {
     totalCompleted: Math.max(0, Number(trial.totalCompleted)),
     missedDays: Math.max(0, Number(trial.missedDays)),
     metrics,
-    reports: reports.slice(-TRIAL_MAX_DAY - PENALTY_MAX_DAY),
+    reports: reports.slice(-maxDays - maxPenalty),
     report,
     remainingMs: typeof trial.remainingMs === 'number' && Number.isFinite(trial.remainingMs)
       ? Math.max(0, Math.min(300000, trial.remainingMs)) : undefined,
@@ -638,18 +755,50 @@ function parseSavedTrial(value: unknown): SavedTrial | null {
       ? Math.min(300000, trial.shiftDurationMs) : undefined,
     eventChoiceId: typeof trial.eventChoiceId === 'string' ? trial.eventChoiceId : undefined,
     donkiReport: isSavedDonkiReport(trial.donkiReport) ? trial.donkiReport : undefined,
+    majorEventRun,
     position: position && Number.isFinite(position.x) && Number.isFinite(position.y)
       && position.x > 0 && position.x < WORLD_WIDTH && position.y > 0 && position.y < WORLD_HEIGHT
       ? { x: position.x, y: position.y } : undefined,
-    planning: planningBase ? { eventBase: planningBase, selected } : undefined,
+    pendingDisaster: trial.pendingDisaster === true,
+    checkpoint: parseCheckpoint(trial.checkpoint, trial.tasks),
+    planning: planningBase ? {
+      eventBase: planningBase,
+      selected,
+      majorEventReportId: typeof trial.planning?.majorEventReportId === 'string'
+        ? trial.planning.majorEventReportId : undefined,
+      offers: Array.isArray(trial.planning?.offers)
+        ? [...new Set(trial.planning.offers.filter(id => TASKS.some(task => task.id === id)))].slice(0, 6)
+        : undefined,
+    } : undefined,
+  };
+}
+
+function parseCheckpoint(value: unknown, tasks: string[]): MissionCheckpoint | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Partial<MissionCheckpoint>;
+  const metrics = migrateMetrics(raw.metrics);
+  if (!metrics || !raw.position || !Number.isFinite(raw.position.x) || !Number.isFinite(raw.position.y)
+    || raw.position.x < 0 || raw.position.x > WORLD_WIDTH || raw.position.y < 0 || raw.position.y > WORLD_HEIGHT
+    || !Array.isArray(raw.completed) || !raw.completed.every(id => tasks.includes(id))
+    || !Number.isInteger(raw.totalCompleted) || !Number.isFinite(raw.remainingMs)
+    || (raw.reason !== 'shift-start' && raw.reason !== 'after-task' && raw.reason !== 'before-major-event')) return undefined;
+  return {
+    reason: raw.reason,
+    metrics,
+    completed: [...new Set(raw.completed)],
+    totalCompleted: Math.max(raw.completed.length, Number(raw.totalCompleted)),
+    remainingMs: Math.max(0, Math.min(300000, Number(raw.remainingMs))),
+    position: { x: raw.position.x, y: raw.position.y },
+    pendingDisaster: raw.pendingDisaster === true,
+    failures: Number.isInteger(raw.failures) ? Math.max(0, Number(raw.failures)) : 0,
   };
 }
 
 function isSavedDonkiReport(
   value: unknown,
-): value is NonNullable<SavedTrial['donkiReport']> {
+): value is DonkiReport {
   if (!value || typeof value !== 'object') return false;
-  const report = value as Partial<NonNullable<SavedTrial['donkiReport']>>;
+  const report = value as Partial<DonkiReport>;
   return typeof report.id === 'string'
     && (report.type === 'FLR' || report.type === 'CME' || report.type === 'SEP' || report.type === 'GST')
     && typeof report.date === 'string' && Number.isFinite(Date.parse(report.date))
@@ -657,32 +806,59 @@ function isSavedDonkiReport(
     && typeof report.summary === 'string';
 }
 
-/* v7 saves only tracked oxygen, starch, morale, and research. Fill the new
-   four-system fields with defensible defaults so old runs can resume. */
-function migrateMetrics(value: unknown): MissionMetrics | null {
+function parseMajorEventRun(value: unknown): MajorEventRun | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const run = value as Partial<MajorEventRun>;
+  if (!Number.isInteger(run.seed) || !isDifficultyId(run.difficulty)
+    || typeof run.reportsLoaded !== 'boolean' || !Array.isArray(run.candidates)
+    || !Number.isInteger(run.nextCandidateIndex)) return undefined;
+  const candidates = run.candidates.flatMap(candidate => {
+    if (!candidate || typeof candidate !== 'object'
+      || typeof candidate.triggered !== 'boolean'
+      || !isSavedDonkiReport(candidate.report)) return [];
+    return [{ report: candidate.report, triggered: candidate.triggered }];
+  });
+  return {
+    seed: Number(run.seed) >>> 0,
+    difficulty: run.difficulty,
+    reportsLoaded: run.reportsLoaded,
+    candidates,
+    nextCandidateIndex: Math.max(0, Math.min(candidates.length, Number(run.nextCandidateIndex))),
+  };
+}
+
+/* Migrate v7 and earlier v8 multi-metric saves cleanly to the four core pillars:
+   life, power, research, and farm. */
+export function migrateMetrics(value: unknown): MissionMetrics | null {
   if (!value || typeof value !== 'object') return null;
   const raw = value as Record<string, unknown>;
-  const pick = (key: string, fallback: number): number | null => {
-    if (raw[key] === undefined) return fallback;
+  const readNum = (key: string): number | null | undefined => {
+    if (raw[key] === undefined) return undefined;
     const metric = Number(raw[key]);
     return Number.isFinite(metric) ? Math.max(0, Math.min(100, metric)) : null;
   };
-  const oxygen = pick('oxygen', 82);
-  const starch = pick('starch', 78);
-  const morale = pick('morale', 72);
-  const research = pick('research', 8);
-  const power = pick('power', 74);
-  const water = pick('water', 76);
-  const hull = pick('hull', 80);
-  if ([oxygen, starch, morale, research, power, water, hull].some(metric => metric === null)) return null;
+  const lifeRaw = readNum('life');
+  const powerRaw = readNum('power');
+  const researchRaw = readNum('research');
+  const farmRaw = readNum('farm');
+  const oxygen = readNum('oxygen');
+  const water = readNum('water');
+  const hull = readNum('hull');
+  const starch = readNum('starch');
+  const morale = readNum('morale');
+  if ([lifeRaw, powerRaw, researchRaw, farmRaw, oxygen, water, hull, starch, morale].some(metric => metric === null)) {
+    return null;
+  }
+  const lifeParts = [oxygen, water, hull].filter((v): v is number => v !== undefined);
+  const life = lifeRaw ?? (lifeParts.length
+    ? Math.round(lifeParts.reduce((sum, v) => sum + v, 0) / lifeParts.length)
+    : 80);
+  const farm = farmRaw ?? (starch ?? 78);
   return {
-    power: power as number,
-    oxygen: oxygen as number,
-    water: water as number,
-    starch: starch as number,
-    hull: hull as number,
-    morale: morale as number,
-    research: research as number,
+    life,
+    power: powerRaw ?? 76,
+    research: researchRaw ?? 30,
+    farm,
   };
 }
 
@@ -735,7 +911,7 @@ export function roomAt(x: number, y: number): RoomDef | undefined {
 }
 
 export function taskById(id: string): TaskDef | undefined {
-  return TASKS.find(task => task.id === id);
+  return STATION_TASKS.find(task => task.id === id);
 }
 
 export function specialistById(id: SpecialistId): Specialist {

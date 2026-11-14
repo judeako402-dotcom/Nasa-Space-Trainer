@@ -15,6 +15,8 @@ const OUTLINE_RADIUS_PX = 10;
 const OUTLINE_ALPHA_THRESHOLD = 24;
 const OUTLINE_YELLOW = 0xffdc4a;
 const OUTLINE_YELLOW_HIGHLIGHT = 0xfff59d;
+const OUTLINE_EMERGENCY = 0xff5a5f;
+const OUTLINE_EMERGENCY_HIGHLIGHT = 0xff9b8a;
 
 /**
  * Extract an outer morphological silhouette ring mask from an RGBA image buffer.
@@ -305,7 +307,10 @@ export class TaskStation implements Interactable {
 
   private applyHighlight(): void {
     const missionActive = this.assigned && !this.completed;
-    const color = this.highlighted ? OUTLINE_YELLOW_HIGHLIGHT : OUTLINE_YELLOW;
+    const isEmergency = this.id.startsWith('emergency-');
+    const color = isEmergency
+      ? (this.highlighted ? OUTLINE_EMERGENCY_HIGHLIGHT : OUTLINE_EMERGENCY)
+      : (this.highlighted ? OUTLINE_YELLOW_HIGHLIGHT : OUTLINE_YELLOW);
     if (this.outlineImage) {
       this.outline.clear();
       this.outline.setVisible(false);

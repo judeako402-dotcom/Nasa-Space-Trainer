@@ -117,7 +117,6 @@ export class MapLoader {
     overheadLayer.setVisible(false);
 
     const parsed = this.spawnEntities(map);
-    const collisionMask = this.applyCollisionMask(map, wallLayer);
     wallLayer.setCollisionByExclusion([-1]);
 
     const bounds = {
@@ -127,7 +126,7 @@ export class MapLoader {
       height: map.heightInPixels,
     };
 
-    const minimap = this.buildMinimap(parsed.rooms, parsed.spawn, collisionMask);
+    const minimap = this.buildMinimap(parsed.rooms, parsed.spawn);
 
     return {
       map,
@@ -386,7 +385,6 @@ export class MapLoader {
   private buildMinimap(
     rooms: Room[],
     spawn: SpawnPoint,
-    collisionMask: Uint8Array,
   ): MinimapModel {
     const cached = this.scene.cache.tilemap.get(this.mapKey) as unknown as
       | { data: TiledMapJson }
@@ -408,9 +406,6 @@ export class MapLoader {
         if (layer.name === 'walls') walls[i] = 1;
         if (layer.name === 'floor') floors[i] = 1;
       }
-    }
-    for (let i = 0; i < collisionMask.length; i += 1) {
-      if (collisionMask[i]) walls[i] = 1;
     }
 
     return {
@@ -455,58 +450,6 @@ export class MapLoader {
     }
 
     return { spawn, rooms };
-  }
-
-  private applyCollisionMask(
-    map: Phaser.Tilemaps.Tilemap,
-    wallLayer: Phaser.Tilemaps.TilemapLayer,
-  ): Uint8Array {
-    const collisionTileIndex = wallLayer
-      .getTilesWithin(0, 0, map.width, map.height)
-      .find((tile) => tile.index >= 0)?.index;
-    if (collisionTileIndex === undefined) {
-      throw new Error(`Wall layer in map "${this.mapKey}" has no tile to use for collision`);
-    }
-
-    const texture = this.scene.textures.get(AssetKeys.collisionMask);
-    const source = texture.getSourceImage() as HTMLImageElement | HTMLCanvasElement;
-    if (!source?.width || !source.height) {
-      throw new Error(`Collision mask "${AssetKeys.collisionMask}" has no image data`);
-    }
-
-    const canvas = document.createElement('canvas');
-    canvas.width = map.widthInPixels;
-    canvas.height = map.heightInPixels;
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) {
-      throw new Error('Unable to create a canvas context for the station collision mask');
-    }
-    context.drawImage(source, 0, 0, canvas.width, canvas.height);
-    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-    const collisionMask = new Uint8Array(map.width * map.height);
-    for (let row = 0; row < map.height; row += 1) {
-      for (let col = 0; col < map.width; col += 1) {
-        let wallSamples = 0;
-        let samples = 0;
-        for (let y = row * map.tileHeight; y < (row + 1) * map.tileHeight; y += 2) {
-          for (let x = col * map.tileWidth; x < (col + 1) * map.tileWidth; x += 2) {
-            const pixelIndex = (y * canvas.width + x) * 4;
-            if (pixels[pixelIndex] >= 60) wallSamples += 1;
-            samples += 1;
-          }
-        }
-        const index = row * map.width + col;
-        if (wallSamples / samples < 0.2) continue;
-
-        collisionMask[index] = 1;
-        const tile = wallLayer.getTileAt(col, row);
-        if (!tile || tile.index < 0) {
-          wallLayer.putTileAt(collisionTileIndex, col, row);
-        }
-      }
-    }
-
-    return collisionMask;
   }
 
   private asLayer(

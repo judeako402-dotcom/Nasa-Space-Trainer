@@ -53,10 +53,17 @@ export interface InteractionDef {
   y: number;
   roomId: string;
   icon: string;
-  system?: 'power' | 'life' | 'farming' | 'shielding';
+  system?: 'life' | 'power' | 'research' | 'farm';
   taskKind?: string;
   dialogue?: string[];
   accent?: string;
+}
+
+export interface CrewFutureHook {
+  roleTag: 'explorer' | 'station-crew';
+  status: 'staged' | 'active';
+  missionKind: string;
+  zoneId: string;
 }
 
 export interface CrewDef {
@@ -69,6 +76,11 @@ export interface CrewDef {
   facing: 1 | -1;
   accent: string;
   lines: string[];
+  roomId?: string;
+  patrolBounds?: { x: number; y: number; width: number; height: number };
+  helmeted?: boolean;
+  exteriorOnly?: boolean;
+  futureIntegration?: CrewFutureHook;
 }
 
 export interface MapDefinition {

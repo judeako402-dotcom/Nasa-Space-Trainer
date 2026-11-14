@@ -1,0 +1,167 @@
+.hud-quick-tasks {
+  display: grid;
+  gap: 4px;
+  margin-block: 5px;
+  color: #e3efff;
+  font: 600 12px/1.25 system-ui, sans-serif;
+}
+
+.hud-quick-tasks button {
+  pointer-events: auto;
+  text-align: left;
+  min-height: 29px;
+  padding: 4px 8px;
+  border: 1px solid #55738e;
+  border-radius: 7px;
+  background: #101c35;
+  color: #f1f6ff;
+}
+
+.hud-quick-tasks button:disabled {
+  color: #a9d5ba;
+}
+
+.hud-status-bars {
+  position: absolute;
+  z-index: 5;
+  inset: auto auto max(12px, env(safe-area-inset-bottom)) 50%;
+  translate: -50% 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  width: min(540px, 53vw);
+}
+
+.planning-status-bars {
+  position: sticky;
+  z-index: 1;
+  inset: auto auto 0;
+  translate: none;
+  width: min(100%, 540px);
+  margin-inline: auto;
+}
+
+.mission-status {
+  --bar-color: #81eda9;
+  min-width: 0;
+  border-radius: 8px;
+  border: 1px solid #4d6785;
+  padding: 5px 7px;
+  background: #0c182d;
+  color: #f4f7ff;
+  font: 600 12px/1.25 system-ui, sans-serif;
+}
+
+.mission-status[data-level="watch"] { --bar-color: #f6d36e; }
+.mission-status[data-level="low"] { --bar-color: #ff8b92; }
+.mission-status > div { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; }
+.mission-status b { margin-inline-start: auto; }
+.mission-status em { font-style: normal; }
+.mission-status .gain { color: #81eda9; }
+.mission-status .cost { color: #ff9a9f; }
+.mission-status meter { display: block; width: 100%; height: 9px; }
+.mission-status meter::-webkit-meter-bar { background: #253653; border: 0; height: 6px; }
+.mission-status meter::-webkit-meter-optimum-value { background: var(--bar-color); }
+.mission-status meter::-moz-meter-bar { background: var(--bar-color); }
+
+.shift-planner .shift-offers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.shift-planner .offer-exchange { display: flex; flex-wrap: wrap; gap: 2px 8px; margin-top: 4px; }
+.shift-planner .offer-exchange img { width: 13px; height: 13px; }
+.shift-planner .shift-offer:nth-child(2n + 3) { margin-top: 4px; }
+
+.disaster-card { width: min(630px, 95vw); padding: clamp(15px, 4vw, 30px); }
+.disaster-warning { display: flex; gap: 16px; align-items: center; }
+.disaster-warning > span { font-size: 46px; color: #ffd36a; }
+.disaster-warning h2, .disaster-warning p { margin: 0 0 5px; }
+.disaster-clue { color: #ffe49a; }
+.disaster-tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.disaster-tools button, .assignment-control, .minigame-tutorial button {
+  border: 1px solid #7096b8;
+  border-radius: 10px;
+  background: #1a2b48;
+  color: #fff;
+  padding: 9px;
+  min-height: 44px;
+}
+.disaster-tools button:hover, .assignment-control:hover { background: #294e66; }
+.disaster-tools small { display: block; margin-top: 6px; line-height: 1.3; }
+
+.emergency-rewind {
+  position: fixed;
+  z-index: 1100;
+  inset: 23% auto auto 50%;
+  translate: -50% 0;
+  width: min(440px, 92vw);
+  padding: 18px;
+  border: 2px solid #f6d36e;
+  border-radius: 14px;
+  color: #fff7df;
+  background: #20223c;
+  text-align: center;
+  box-shadow: 0 0 0 9999px #04091bd2;
+}
+.emergency-rewind strong { display: block; margin-bottom: 4px; font-size: 23px; }
+
+.minigame-tutorial { display: flex; gap: 10px; margin-bottom: 8px; align-items: start; }
+.minigame-tutorial p { margin: 0; }
+.minigame-tutorial strong { display: block; color: #ffe49a; }
+.minigame-tutorial [data-minigame-ready] { margin: 4px; }
+.minigame-controls-highlighted { outline: 2px solid #87e6f9; outline-offset: 3px; border-radius: 10px; }
+.assignment-game { color: #f5f8ff; }
+.assignment-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.assignment-grid.can-sweep { touch-action: none; cursor: crosshair; }
+.assignment-grid > .assignment-control { font-size: clamp(16px, 4vw, 25px); min-height: 47px; }
+.assignment-control.is-done, .pipes-grid .is-done > button { background: #164739; color: #a6ffd0; }
+.assignment-control.is-flashing { background: #fff09c; color: #232638; box-shadow: 0 0 16px #ffde5f; }
+.assignment-control:disabled { opacity: .72; }
+.pipes-grid > div { display: grid; gap: 3px; }
+.signal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.assignment-watch { margin-top: 8px; }
+.assignment-game-status { margin: 10px 0 0; min-height: 1.5em; color: #b5efff; }
+.assignment-sliders { display: grid; gap: 8px; }
+.assignment-slider {
+  padding: 6px 9px;
+  display: grid;
+  grid-template-columns: minmax(75px, 1fr) minmax(95px, 2fr) minmax(66px, 1fr);
+  gap: 5px;
+  align-items: center;
+  border-radius: 8px;
+  background: #142943;
+  color: var(--beam);
+}
+.assignment-aim { position: relative; display: grid; align-items: center; }
+.assignment-aim i { position: absolute; left: var(--target); top: 0; height: 10px; border-left: 2px solid var(--beam); }
+.assignment-aim input { width: 100%; accent-color: var(--beam); margin: 8px 0 0; min-height: 29px; }
+.assignment-slider output { text-align: right; font-size: 12px; }
+
+.moon-condition-cards p { padding: 8px 10px; margin: 4px 0; border-left: 2px solid #82dce9; background: #192943; }
+.moon-condition-cards strong { display: block; color: #fcdf8b; }
+.spud-medal-badge { margin: 6px 0; color: #ffe394; font-weight: 700; text-align: center; }
+
+.homecoming { justify-content: center; gap: 12px; text-align: center; overflow: hidden; background: #0b162f; }
+.homecoming-sky { position: absolute; inset: 0; background: radial-gradient(ellipse, #24375b, #070e20 72%); }
+.homecoming > :not(.homecoming-sky) { position: relative; }
+.homecoming-sky img { position: absolute; width: min(26vw, 220px); height: auto; object-fit: contain; }
+.homecoming-sky .homecoming-moon { top: 54%; left: 5%; }
+.homecoming-sky .homecoming-earth { top: 10%; right: 5%; }
+.homecoming-sky .homecoming-rocket {
+  width: clamp(42px, 9vw, 105px);
+  left: 74%;
+  top: 19%;
+  rotate: 48deg;
+  animation: homecoming-flight 3s ease-in-out backwards;
+}
+.homecoming-medal { color: #ffe28b; font-size: clamp(20px, 5vw, 46px); font-weight: 800; }
+@keyframes homecoming-flight { from { left: 14%; top: 52%; } }
+.reduce-motion .homecoming-rocket { animation: none; }
+
+@media (max-width: 740px) {
+  .hud-status-bars:not(.planning-status-bars) { width: min(95vw, 540px); bottom: max(5px, env(safe-area-inset-bottom)); }
+  .mission-hud .hud-bottom-left, .mission-hud .hud-bottom-right { bottom: max(57px, calc(env(safe-area-inset-bottom) + 50px)); }
+  .hud-quick-tasks { max-width: 47vw; }
+  .mission-status { padding: 4px; font-size: 10px; }
+  .mission-status img { width: 12px; height: 12px; }
+  .disaster-tools { grid-template-columns: 1fr; }
+  .shift-planner .shift-offer { padding: 5px; }
+  .shift-planner .shift-offer > img { display: none; }
+}

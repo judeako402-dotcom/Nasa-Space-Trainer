@@ -266,7 +266,7 @@ export function stepTowardTarget(
  * @param state Player state - modified in place
  * @param input Current input snapshot (keyboard/gamepad axes)
  * @param dt Delta time in seconds (fixed-step: 1/60 typically)
- * @param baseSpeed Base movement speed in pixels/second (e.g., 250 from balance.ts)
+ * @param baseSpeed Base movement speed in pixels/second
  * @param canStand Test function: can the player stand at (x, y)?
  * 
  * Example usage in scene update loop:

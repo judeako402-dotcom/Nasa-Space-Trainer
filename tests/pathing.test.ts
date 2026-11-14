@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  collectWalkableWaypoints,
   compressPath,
+  createBoundedWalkGrid,
   findPath,
   gridFromTiles,
   tileAtPixel,
@@ -95,5 +97,42 @@ describe('compressPath', () => {
   it('passes short paths through unchanged', () => {
     expect(compressPath([at(1, 1)])).toEqual([at(1, 1)]);
     expect(compressPath([at(1, 1), at(2, 1)])).toEqual([at(1, 1), at(2, 1)]);
+  });
+});
+
+describe('createBoundedWalkGrid and collectWalkableWaypoints', () => {
+  it('confines paths to bounds and keeps NPCs out of neighboring rooms', () => {
+    const open = gridFromTiles(6, 6, new Array<number>(36).fill(0));
+    const roomBounds = { x: 32, y: 32, width: 96, height: 96 }; // cols 1..3, rows 1..3
+    const bounded = createBoundedWalkGrid(open, 32, roomBounds);
+
+    expect(bounded.isBlocked(0, 1)).toBe(true);
+    expect(bounded.isBlocked(4, 2)).toBe(true);
+    expect(findPath(bounded, at(1, 1), at(0, 1))).toBeNull();
+
+    const route = findPath(bounded, at(1, 1), at(3, 3));
+    expect(route).not.toBeNull();
+    for (const tile of route!) {
+      expect(tile.x).toBeGreaterThanOrEqual(1);
+      expect(tile.x).toBeLessThanOrEqual(3);
+      expect(tile.y).toBeGreaterThanOrEqual(1);
+      expect(tile.y).toBeLessThanOrEqual(3);
+    }
+  });
+
+  it('collects walkable waypoints excluding avoided TaskStation exclusion circles', () => {
+    const open = gridFromTiles(6, 6, new Array<number>(36).fill(0));
+    const bounds = { x: 32, y: 32, width: 96, height: 96 };
+    const bounded = createBoundedWalkGrid(open, 32, bounds);
+    const hazard = { x: 80, y: 80 };
+    const waypoints = collectWalkableWaypoints(bounded, 32, bounds, {
+      feetOffsetY: 22,
+      avoid: [hazard],
+      avoidRadius: 40,
+    });
+    expect(waypoints.length).toBeGreaterThan(0);
+    for (const wp of waypoints) {
+      expect(Math.hypot(wp.x - hazard.x, wp.y + 22 - hazard.y)).toBeGreaterThanOrEqual(40);
+    }
   });
 });

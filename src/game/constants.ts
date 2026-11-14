@@ -1,7 +1,7 @@
 /**
  * Station gameplay constants.
  *
- * Walk speed = 4.5 world units/s (64px per tile = 288 px/s).
+ * Walk speed = 3.15 world units/s (64px per tile = 201.6 px/s).
  * Ghost speed = 3.0 world units/s (192 px/s).
  */
 
@@ -9,13 +9,13 @@
 export const PIXELS_PER_UNIT = 64;
 
 /** Walk speed in world units per second. */
-export const WALK_SPEED_UNITS = 4.5;
+export const WALK_SPEED_UNITS = 3.15;
 
 /** Ghost speed in world units per second. */
 export const GHOST_SPEED_UNITS = 3.0;
 
 /** Walk speed in px/s. */
-export const WALK_SPEED = WALK_SPEED_UNITS * PIXELS_PER_UNIT; // 288
+export const WALK_SPEED = WALK_SPEED_UNITS * PIXELS_PER_UNIT; // 201.6
 
 /** Ghost speed in px/s. */
 export const GHOST_SPEED = GHOST_SPEED_UNITS * PIXELS_PER_UNIT; // 192

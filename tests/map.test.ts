@@ -1,13 +1,22 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { SURFACE_HABITAT } from '../src/data/surfaceHabitat';
 import { PLAYER_FEET } from '../src/game/constants';
-import { findPath, gridFromTiles, hasTileClearance, tileAtPixel, type Tile } from '../src/game/utils/pathing';
+import {
+  collectWalkableWaypoints,
+  createBoundedWalkGrid,
+  findPath,
+  gridFromTiles,
+  hasTileClearance,
+  tileAtPixel,
+  type Tile,
+} from '../src/game/utils/pathing';
 import {
   FIGMA_DESIGN_SIZE,
   FIGMA_LAYER_TEXTURES,
   TASK_OBJECT_OUTLINE_SPECS,
 } from '../src/game/world/figmaMapLayers';
-import { PLAYER_SPAWN, TASKS } from '../src/model';
+import { PLAYER_SPAWN, STATION_TASKS, TASKS } from '../src/model';
 
 /**
  * Validates the generated station map (traced from Sample mapppp.png) against
@@ -128,14 +137,16 @@ describe('station map structure', () => {
     expect(names.sort()).toEqual([
       'Cargo Bay',
       'Central Hub',
-      'Comms Dome',
       'Crew Quarters',
       'Hydroponics Bay',
       'Landing Pad',
       'Med Lab',
       'Reactor Dome',
+      'Researcher Room',
     ]);
     for (const r of roomObjs) {
+      const hudRoom = SURFACE_HABITAT.rooms.find(room => room.name === r.name);
+      expect(hudRoom, r.name).toMatchObject({ x: r.x, y: r.y, w: r.width, h: r.height });
       expect(r.x, `${r.name} x`).toBeGreaterThanOrEqual(0);
       expect(r.y, `${r.name} y`).toBeGreaterThanOrEqual(0);
       expect(r.x + r.width, `${r.name} right`).toBeLessThanOrEqual(map.width * map.tilewidth);
@@ -166,39 +177,52 @@ describe('station map collision', () => {
   });
 
   it('blocks the walls beside doors and solid cargo props', () => {
-    for (const [x, y] of [[1232, 800], [690, 1300], [1860, 860], [1680, 770], [1890, 1060]]) {
+    for (const [x, y] of [[1232, 800], [690, 1300], [1900, 780], [1680, 770], [1890, 1060]]) {
       expect(fits(x, y), `collider fits inside a wall or prop at ${x}, ${y}`).toBe(false);
     }
     expect(fits(1600, 940)).toBe(true);
   });
 
-  it('blocks reactor, comms, and airlock perimeter silhouettes while keeping doorways and tasks clear', () => {
+  it('blocks the reactor and airlock silhouettes while keeping doorways and tasks clear', () => {
     for (const [x, y] of [
       [624, 272],
       [656, 304],
       [912, 368],
-      [1360, 272],
-      [1360, 336],
-      [1424, 304],
-      [1552, 336],
-      [1488, 336],
-      [1856, 288],
       [1776, 1360],
       [1552, 1360],
       [1552, 1456],
-      [1808, 848],
     ]) {
       expect(fits(x, y), `collider overlaps prop perimeter at ${x}, ${y}`).toBe(false);
     }
     for (const [x, y] of [
       [1360, 368],
-      [1792, 384],
-      [1808, 752],
+      [1568, 368],
+      [1808, 880],
       [608, 784],
       [1104, 400],
       [1664, 1360],
     ]) {
       expect(fits(x, y), `walkable task or doorway blocked at ${x}, ${y}`).toBe(true);
+    }
+  });
+
+  it.each([
+    ['research workbench', 1616, 290, 1616, 304],
+    ['health check panel', 1790, 368, 1776, 368],
+    ['crystal scanner', 1798, 432, 1776, 432],
+    ['cargo terminal', 1888, 816, 1808, 848],
+    ['water tank', 268, 880, 288, 880],
+    ['hydroponics grow beds', 432, 720, 336, 720],
+    ['crew whiteboard', 528, 1512, 528, 1488],
+    ['crew bunks', 250, 1568, 250, 1488],
+  ])('blocks the full feet rectangle at the %s edge and leaves a usable approach', (_, x, y, approachX, approachY) => {
+    expect(fits(x, y)).toBe(false);
+    expect(fits(approachX, approachY)).toBe(true);
+  });
+
+  it('opens passage through the former dome and angled crate footprints', () => {
+    for (const [x, y] of [[1488, 336], [1552, 336], [1728, 368], [1872, 912]]) {
+      expect(fits(x, y), `old footprint blocks ${x}, ${y}`).toBe(true);
     }
   });
 
@@ -298,12 +322,12 @@ describe('station map traversability', () => {
     expect(reached / total).toBeGreaterThanOrEqual(0.98);
   });
 
-  it('places PLAYER_SPAWN and every mission task in TASKS on a reachable walkable tile', () => {
+  it('keeps the player spawn and both current and saved task approaches reachable', () => {
     const modelSpawnTile = tileAtPixel(PLAYER_SPAWN, map.tilewidth);
     expect(modelSpawnTile).not.toBeNull();
     expect(grid.isBlocked(modelSpawnTile!.x, modelSpawnTile!.y)).toBe(false);
 
-    for (const task of TASKS) {
+    for (const task of STATION_TASKS) {
       const taskTile = tileAtPixel({ x: task.x, y: task.y }, map.tilewidth);
       expect(taskTile, `invalid tile for task ${task.id}`).not.toBeNull();
       expect(
@@ -317,12 +341,12 @@ describe('station map traversability', () => {
     }
   });
 
-  it('defines valid layer outline specs for every mission task in TASKS', () => {
+  it('defines valid layer outline specs for every station task', () => {
     expect(Object.keys(TASK_OBJECT_OUTLINE_SPECS).sort()).toEqual(
-      TASKS.map((t) => t.id).sort(),
+      STATION_TASKS.map((t) => t.id).sort(),
     );
 
-    for (const task of TASKS) {
+    for (const task of STATION_TASKS) {
       const spec = TASK_OBJECT_OUTLINE_SPECS[task.id];
       expect(spec, `missing outline spec for task ${task.id}`).toBeDefined();
       expect(spec.w).toBeGreaterThan(0);
@@ -336,7 +360,53 @@ describe('station map traversability', () => {
       if (spec.source !== 'floor' && spec.source !== 'objects') {
         const layer = FIGMA_LAYER_TEXTURES[spec.source];
         expect(layer, `invalid layer source ${spec.source} for task ${task.id}`).toBeDefined();
-        expect(existsSync(`public${layer.path}`), `missing asset ${layer.path}`).toBe(true);
+        const assetPath = layer.path.split('?')[0];
+        expect(existsSync(`public${assetPath}`), `missing asset ${assetPath}`).toBe(true);
+      }
+    }
+  });
+
+  it('seals the Landing Pad bulkhead south of the Airlock Exit while keeping the Exit Door reachable from spawn', () => {
+    const modelSpawnTile = tileAtPixel({ x: PLAYER_SPAWN.x, y: PLAYER_SPAWN.y }, map.tilewidth);
+    expect(modelSpawnTile).not.toBeNull();
+
+    // Airlock Exit Door approach (x = 1696, y = 1696) sits inside the Landing Pad north of the y = 1760 bulkhead.
+    const exitDoorTile = tileAtPixel({ x: 1696, y: 1696 }, map.tilewidth);
+    expect(exitDoorTile).not.toBeNull();
+    expect(grid.isBlocked(exitDoorTile!.x, exitDoorTile!.y)).toBe(false);
+
+    const exitRoute = findPath(grid, modelSpawnTile!, exitDoorTile!);
+    expect(exitRoute, 'Airlock Exit Door must be reachable from spawn').not.toBeNull();
+    expect(exitRoute!.length).toBeGreaterThan(2);
+
+    // Exterior apron beyond the bulkhead (row 55+, y >= 1760) must remain impassable on foot.
+    const sealedExteriorTile = tileAtPixel({ x: 1696, y: 1872 }, map.tilewidth);
+    expect(sealedExteriorTile).not.toBeNull();
+    expect(grid.isBlocked(sealedExteriorTile!.x, sealedExteriorTile!.y)).toBe(true);
+    expect(findPath(grid, modelSpawnTile!, sealedExteriorTile!)).toBeNull();
+  });
+
+  it('bounds every crew NPC to walkable waypoints inside its designated room or exterior patrol zone', () => {
+    const taskCoords = TASKS.map((t) => ({ x: t.x, y: t.y }));
+    for (const crew of SURFACE_HABITAT.crew) {
+      expect(crew.patrolBounds, `crew ${crew.id} missing patrolBounds`).toBeDefined();
+      const bounds = crew.patrolBounds!;
+      const boundedGrid = createBoundedWalkGrid(grid, map.tilewidth, bounds, { width: 24, height: 14 });
+      const waypoints = collectWalkableWaypoints(boundedGrid, map.tilewidth, bounds, {
+        feetOffsetY: 22,
+        avoid: taskCoords,
+        avoidRadius: 56,
+      });
+      expect(waypoints.length, `crew ${crew.id} should have walkable waypoints`).toBeGreaterThan(1);
+      for (const wp of waypoints) {
+        const feetY = wp.y + 22;
+        expect(wp.x).toBeGreaterThanOrEqual(bounds.x);
+        expect(wp.x).toBeLessThanOrEqual(bounds.x + bounds.width);
+        expect(feetY).toBeGreaterThanOrEqual(bounds.y);
+        expect(feetY).toBeLessThanOrEqual(bounds.y + bounds.height);
+        for (const task of taskCoords) {
+          expect(Math.hypot(wp.x - task.x, feetY - task.y)).toBeGreaterThan(55);
+        }
       }
     }
   });

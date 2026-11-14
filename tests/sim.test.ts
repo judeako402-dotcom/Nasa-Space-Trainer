@@ -3,7 +3,10 @@ import { DAY, PASS_THRESHOLDS, VISION } from '../src/data/balance';
 import { TRAINING_DECK } from '../src/data/trainingDeck';
 import { SURFACE_HABITAT } from '../src/data/surfaceHabitat';
 import { EVENT_CARDS } from '../src/data/events';
-import { DEFAULT_OPTIONS, SAVE_KEY, SPECIALISTS, TASKS, loadSave, persistSave, taskById } from '../src/model';
+import {
+  DEFAULT_OPTIONS, SAVE_KEY, SPECIALISTS, TASKS,
+  loadSave, migrateMetrics, penaltyMaxDays, persistSave, taskById, trialMaxDays,
+} from '../src/model';
 import {
   applyDailyOperations, applyEvent, applyMissedDay, applyTaskCompletion, createMetrics, evaluateMission, eventForDay,
   offersForDay, systemHealth,
@@ -26,10 +29,10 @@ describe('application state factories', () => {
 
   it('creates independent mission and training sessions', () => {
     const first = createMissionState();
-    first.metrics.oxygen = 0;
+    first.metrics.life = 0;
     first.tasks.push('shields');
     const second = createMissionState();
-    expect(second.metrics.oxygen).toBeGreaterThan(0);
+    expect(second.metrics.life).toBeGreaterThan(0);
     expect(second.tasks).toEqual([]);
     expect(createTrainingState().completed).toEqual([]);
   });
@@ -148,19 +151,15 @@ describe('surface mission and destination science', () => {
   it('applies daily life-support use and maintenance without treating gauges as percentages', () => {
     const before = createMetrics();
     const next = applyDailyOperations(before);
-    expect(next).toMatchObject({ power: 73, oxygen: 81, water: 75, starch: 77, morale: 71, research: 8 });
-    expect(next.hull).toBe(79.5);
-    expect(before.power).toBe(74);
+    expect(next).toMatchObject({ life: 78.5, power: 74.5, research: 30, farm: 77 });
+    expect(before.power).toBe(76);
   });
 
-  it('keeps the lunar and Martian dust events on their matching destination', () => {
+  it('keeps lunar dust events active on The Moon with no Mars hazards', () => {
     const lunar = Array.from({ length: 100 }, (_, seed) => eventForDay(createRng(seed + 17), 'moon', 2).id);
-    const martian = Array.from({ length: 100 }, (_, seed) => eventForDay(createRng(seed + 17), 'mars', 2).id);
     expect(lunar).not.toContain('mars-dust-storm');
-    expect(martian).not.toContain('lunar-dust-intrusion');
     expect(lunar).toContain('lunar-dust-intrusion');
-    expect(martian).toContain('mars-dust-storm');
-    expect(eventForDay(createRng(2), 'mars', 1).id).toBe('oxygen-alarm');
+    expect(eventForDay(createRng(2), 'moon', 1).id).toBe('oxygen-alarm');
     expect(eventForDay(createRng(23), 'moon', 2, ['solar-flare']).id).not.toBe('solar-flare');
   });
 
@@ -168,7 +167,7 @@ describe('surface mission and destination science', () => {
     const flare = EVENT_CARDS.find(event => event.id === 'solar-flare')!;
     const protectedPlan = applyEvent(createMetrics(), { ...flare, deltas: flare.responses![0]!.deltas });
     const surveyPlan = applyEvent(createMetrics(), { ...flare, deltas: flare.responses![1]!.deltas });
-    expect(protectedPlan.hull).toBeGreaterThan(surveyPlan.hull);
+    expect(protectedPlan.life).toBeGreaterThan(surveyPlan.life);
     expect(surveyPlan.research).toBeGreaterThan(protectedPlan.research);
   });
 
@@ -206,34 +205,40 @@ describe('vision', () => {
 });
 
 describe('mission simulation', () => {
-  it('offers five unique assignments with role-preferred systems first', () => {
+  it('offers six unique assignments with role-preferred systems first', () => {
     const offers = offersForDay(TASKS, 'farmer', createRng(seedFor(1, 0)));
     expect(offers).toHaveLength(DAY.offerCount);
     expect(new Set(offers.map(offer => offer.taskId)).size).toBe(DAY.offerCount);
-    expect(offers[0]!.system).toBe('farming');
+    expect(offers[0]!.system).toBe('farm');
   });
 
-  it('offers work across all systems when the full station roster is available', () => {
+  it('offers three pairs of tasks in their dedicated rooms', () => {
     for (const specialist of SPECIALISTS) {
       const offers = offersForDay(TASKS, specialist.id, createRng(seedFor(1, 0)));
-      expect(new Set(offers.map(offer => offer.system)).size).toBe(5);
+      expect(new Set(offers.map(offer => offer.system)).size).toBe(3);
+      const rooms = { life: 'medbay', power: 'reactor', research: 'communications', farm: 'cafeteria' };
+      for (let index = 0; index < offers.length; index += 2) {
+        expect(offers[index]!.system).toBe(offers[index + 1]!.system);
+        expect(offers[index]!.roomId).toBe(rooms[offers[index]!.system]);
+        expect(offers[index + 1]!.roomId).toBe(rooms[offers[index]!.system]);
+      }
     }
   });
 
   it('clamps event effects to the metric limits', () => {
     const metrics = createMetrics();
-    metrics.oxygen = 4;
+    metrics.life = 4;
     const next = applyEvent(metrics, {
-      id: 'test', name: 'Test', kind: 'hazard', description: '', effect: '', deltas: { oxygen: -20 },
+      id: 'test', name: 'Test', kind: 'hazard', description: '', effect: '', deltas: { life: -20 },
     });
-    expect(next.oxygen).toBe(0);
+    expect(next.life).toBe(0);
   });
 
   it('applies specialist mitigation to missed days', () => {
     const metrics = createMetrics();
     const repairman = applyMissedDay(metrics, 'repairman');
     const traveller = applyMissedDay(metrics, 'traveller');
-    expect(repairman.oxygen).toBeGreaterThan(traveller.oxygen);
+    expect(applyMissedDay(metrics, 'farmer').life).toBeGreaterThan(traveller.life);
     expect(repairman.power).toBeGreaterThan(traveller.power);
   });
 
@@ -241,13 +246,13 @@ describe('mission simulation', () => {
     const metrics = createMetrics();
     const task = taskById('shields')!;
     const next = applyTaskCompletion(metrics, task, 'repairman');
-    expect(next.hull).toBeGreaterThan(metrics.hull);
-    expect(systemHealth(next, 'shielding')).toBeGreaterThan(systemHealth(metrics, 'shielding'));
+    expect(next.life).toBeGreaterThan(metrics.life);
+    expect(systemHealth(next, 'life')).toBeGreaterThan(systemHealth(metrics, 'life'));
   });
 
   it('passes only when completion and every metric meet their targets', () => {
     const strong = {
-      power: 100, oxygen: 100, water: 100, starch: 100, hull: 100, morale: 100, research: 100,
+      life: 100, power: 100, research: 100, farm: 100,
     };
     const verdict = evaluateMission(strong, 10, 10);
     expect(verdict.passed).toBe(true);
@@ -256,13 +261,10 @@ describe('mission simulation', () => {
 
   it('fails the verdict when research is below target', () => {
     const weak = {
+      life: PASS_THRESHOLDS.life,
       power: PASS_THRESHOLDS.power,
-      oxygen: PASS_THRESHOLDS.oxygen,
-      water: PASS_THRESHOLDS.water,
-      starch: PASS_THRESHOLDS.starch,
-      hull: PASS_THRESHOLDS.hull,
-      morale: PASS_THRESHOLDS.morale,
       research: PASS_THRESHOLDS.research - 1,
+      farm: PASS_THRESHOLDS.farm,
     };
     const verdict = evaluateMission(weak, 10, 10);
     expect(verdict.passed).toBe(false);
@@ -297,10 +299,42 @@ describe('save options & showFps persistence', () => {
     }
   };
 
-  it('defaults showFps to false', () => {
+  it('scales trial duration and extension days by difficulty and limits metrics to the four core pillars', () => {
+    expect(trialMaxDays('cadet')).toBe(3);
+    expect(trialMaxDays('crew')).toBe(5);
+    expect(trialMaxDays('veteran')).toBe(7);
+    expect(penaltyMaxDays('cadet')).toBe(3);
+    expect(penaltyMaxDays('crew')).toBe(5);
+    expect(penaltyMaxDays('veteran')).toBe(7);
+    expect(Object.keys(createMetrics()).sort()).toEqual(['farm', 'life', 'power', 'research']);
+  });
+
+  it('migrates legacy 6-metric saves cleanly into life, power, research, and farm', () => {
+    const migrated = migrateMetrics({
+      oxygen: 90,
+      water: 70,
+      hull: 80,
+      power: 65,
+      research: 42,
+      starch: 84,
+      morale: 72,
+    });
+    expect(Object.keys(migrated).sort()).toEqual(['farm', 'life', 'power', 'research']);
+    expect(migrated.life).toBe(80);
+    expect(migrated.power).toBe(65);
+    expect(migrated.research).toBe(42);
+    expect(migrated.farm).toBe(84);
+  });
+
+  it('defaults showFps and tutorialComplete to false and persists tutorialComplete when set', () => {
     expect(DEFAULT_OPTIONS.showFps).toBe(false);
     withMockStorage({}, () => {
-      expect(loadSave().options.showFps).toBe(false);
+      const fresh = loadSave();
+      expect(fresh.options.showFps).toBe(false);
+      expect(fresh.tutorialComplete).toBe(false);
+      fresh.tutorialComplete = true;
+      expect(persistSave(fresh)).toBe(true);
+      expect(loadSave().tutorialComplete).toBe(true);
     });
   });
 
@@ -322,13 +356,13 @@ describe('save options & showFps persistence', () => {
   it('preserves a shift draft and restores the saved clock and position after launch', () => {
     const eventBase = createMetrics();
     const activeTrial = {
-      phase: 'playing', day: 30, penaltyDay: 2, totalAssigned: 0, totalCompleted: 0, missedDays: 0,
+      phase: 'playing', day: 14, penaltyDay: 2, totalAssigned: 0, totalCompleted: 0, missedDays: 0,
       metrics: eventBase, tasks: [], completed: [], eventId: 'solar-flare', eventChoiceId: 'continue',
       reports: [], report: null, planning: { eventBase, selected: ['shields', 'garbage'] },
     };
-    withMockStorage({ [SAVE_KEY]: JSON.stringify({ trialDay: 32, activeTrial }) }, () => {
+    withMockStorage({ [SAVE_KEY]: JSON.stringify({ trialDay: 16, activeTrial }) }, () => {
       const save = loadSave();
-      expect(save.trialDay).toBe(32);
+      expect(save.trialDay).toBe(16);
       expect(save.activeTrial?.planning).toEqual(activeTrial.planning);
       expect(save.activeTrial?.eventChoiceId).toBe('continue');
       expect(save.activeTrial?.shiftDurationMs).toBeUndefined();

@@ -7,7 +7,7 @@ export const WORLD = {
 } as const;
 
 export const MOVEMENT = {
-  baseSpeed: 250,
+  baseSpeed: 175,
   bodyHalfWidth: 13,
   bodyHalfHeight: 17,
   fixedStep: 1 / 60,
@@ -41,7 +41,7 @@ export const DAY = {
   veteranMs: 135000,
   penaltyScale: 0.72,
   assignmentsPerDay: 3,
-  offerCount: 5,
+  offerCount: 6,
 } as const;
 
 export const TRAINING = {
@@ -53,34 +53,31 @@ export const TRAINING = {
 
 export const PASS_THRESHOLDS = {
   completion: 0.75,
+  life: 50,
   power: 50,
-  oxygen: 50,
-  water: 45,
-  starch: 50,
-  hull: 50,
-  morale: 45,
   research: 55,
+  farm: 50,
 } as const;
 
 export const METRIC_START = {
-  power: 74,
-  oxygen: 82,
-  water: 76,
-  starch: 78,
-  hull: 80,
-  morale: 72,
-  research: 8,
+  life: 80,
+  power: 76,
+  research: 30,
+  farm: 78,
+} as const;
+
+export const DIFFICULTY_EXCHANGE = {
+  cadet: { benefit: 14, cost: 2 },
+  crew: { benefit: 12, cost: 4 },
+  veteran: { benefit: 10, cost: 6 },
 } as const;
 
 /* Simplified per-day game wear and consumables, not engineering limits or NASA telemetry. */
 export const DAILY_OPERATIONS_DRIFT = {
-  power: -1,
-  oxygen: -1,
-  water: -1,
-  starch: -1,
-  hull: -0.5,
-  morale: -1,
+  life: -1.5,
+  power: -1.5,
   research: 0,
+  farm: -1,
 } as const;
 
 export const METRIC_LIMITS = {
@@ -88,7 +85,7 @@ export const METRIC_LIMITS = {
   max: 100,
 } as const;
 
-export type SystemId = 'power' | 'life' | 'farming' | 'shielding';
+export type SystemId = 'life' | 'power' | 'research' | 'farm';
 
 export interface SystemDefinition {
   id: SystemId;
@@ -96,11 +93,20 @@ export interface SystemDefinition {
   short: string;
   accent: string;
   icon: string;
-  metrics: ('power' | 'oxygen' | 'water' | 'starch' | 'hull')[];
+  metrics: ('life' | 'power' | 'research' | 'farm')[];
   brief: string;
 }
 
 export const SYSTEMS: SystemDefinition[] = [
+  {
+    id: 'life',
+    name: 'Life Support',
+    short: 'LIFE',
+    accent: '#6fd4e6',
+    icon: 'water',
+    metrics: ['life'],
+    brief: 'Air scrubbers, pressure seals, and water recycling keep the habitat breathable.',
+  },
   {
     id: 'power',
     name: 'Power Supply',
@@ -108,33 +114,24 @@ export const SYSTEMS: SystemDefinition[] = [
     accent: '#f2b544',
     icon: 'lightning',
     metrics: ['power'],
-    brief: 'Solar arrays and batteries keep every module alive.',
+    brief: 'Solar arrays and batteries keep every module online.',
   },
   {
-    id: 'life',
-    name: 'Life Support',
-    short: 'LIFE',
-    accent: '#6fd4e6',
-    icon: 'water',
-    metrics: ['oxygen', 'water'],
-    brief: 'Scrubbers, oxygen generators, and the water recycling loop.',
+    id: 'research',
+    name: 'Research Lab',
+    short: 'RESEARCH',
+    accent: '#ba9df0',
+    icon: 'notepad',
+    metrics: ['research'],
+    brief: 'Core spectroscopy, rover logs, and sensor surveys prove habitat viability.',
   },
   {
-    id: 'farming',
-    name: 'Hydroponics',
+    id: 'farm',
+    name: 'Hydroponics Farm',
     short: 'FARM',
     accent: '#9bd15a',
     icon: 'sickle',
-    metrics: ['starch'],
-    brief: 'Grow lights and nutrient pumps feed the whole crew.',
-  },
-  {
-    id: 'shielding',
-    name: 'Shielding & Hull',
-    short: 'HULL',
-    accent: '#ba9df0',
-    icon: 'shield',
-    metrics: ['hull'],
-    brief: 'Radiation barriers and structural patches hold the habitat together.',
+    metrics: ['farm'],
+    brief: 'Grow lights and nutrient trays sustain the starch harvest that feeds the crew.',
   },
 ];

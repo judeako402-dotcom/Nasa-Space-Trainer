@@ -2,9 +2,8 @@ import Phaser from 'phaser';
 import { AssetKeys } from '../assets/AssetKeys';
 import {
   applyResolvedSpriteVisual,
+  getSpriteDisplaySize,
   resolveCharacterVisual,
-  SPRITE_DISPLAY_HEIGHT,
-  SPRITE_DISPLAY_WIDTH,
   SPRITE_ORIGIN_X,
   SPRITE_ORIGIN_Y,
 } from '../assets/characterSprites';
@@ -192,8 +191,9 @@ export class Player {
   private applySpriteMetrics(animatedSheet: boolean): void {
     this.usesAnimatedSheet = animatedSheet;
     if (animatedSheet) {
+      const { width, height } = getSpriteDisplaySize(this.baseTextureKey, 'player');
       this.sprite.setOrigin(SPRITE_ORIGIN_X, SPRITE_ORIGIN_Y);
-      this.sprite.setDisplaySize(SPRITE_DISPLAY_WIDTH, SPRITE_DISPLAY_HEIGHT);
+      this.sprite.setDisplaySize(width, height);
     } else {
       this.sprite.setOrigin(0.5, 0.5);
       this.sprite.setDisplaySize(LEGACY_BODY_WIDTH, LEGACY_BODY_HEIGHT);

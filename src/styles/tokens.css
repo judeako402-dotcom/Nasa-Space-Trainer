@@ -1,0 +1,72 @@
+/* ========================================================================= */
+/* Spudnaut UI/UX Overhaul Token Architecture & Cascade Layer Contract        */
+/* Single-source semantic variables & z-index hierarchy for progressive      */
+/* migration away from ad-hoc hex colors, fixed z-indexes, and inline styles */
+/* ========================================================================= */
+
+@layer tokens, base, legacy, components, utilities, overrides;
+
+:root {
+  /* Layering Hierarchy (UI overlays sit strictly beneath native <dialog> top-layer) */
+  --z-bg-backdrop: 0;
+  --z-canvas-world: 1;
+  --z-hud: 20;
+  --z-hud-drawer: 35;
+  --z-overlay-stage: 45;
+  --z-modal-shade: 80;
+  --z-splash-intro: 100;
+  --z-toast: 120;
+
+  /* Core Surfaces & Scrims */
+  --surface-void: #03060c;
+  --surface-deep: #050a14;
+  --surface-elevated: rgba(10, 18, 34, 0.88);
+  --surface-glass: rgba(12, 22, 42, 0.72);
+  --surface-scrim: rgba(3, 8, 20, 0.78);
+
+  /* Ink & Semantic States */
+  --ink-primary: #eef8ff;
+  --ink-secondary: rgba(214, 234, 252, 0.8);
+  --ink-muted: rgba(175, 212, 245, 0.64);
+  --accent-ice: #9beeff;
+  --accent-gold: #f5c451;
+  --accent-gain: #8fe6a8;
+  --accent-warn: #f5c451;
+  --accent-danger: #ff9c9c;
+
+  /* Spacing & Radius Scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
+
+  /* Focus Ring */
+  --focus-ring: 2px solid var(--accent-ice);
+  --focus-offset: 2px;
+
+  /* Spudnaut Moon Arcade-Sci-Fi Visual System */
+  --spud-indigo-950: #090f2e;
+  --spud-indigo-900: #110f37;
+  --spud-indigo-panel: rgba(9, 15, 46, 0.9);
+  --spud-indigo-glass: rgba(11, 18, 52, 0.82);
+  --spud-indigo-rim: rgba(110, 146, 255, 0.28);
+  --spud-cobalt-wash: rgba(73, 87, 215, 0.88);
+  --spud-cobalt-fade: rgba(98, 119, 219, 0.22);
+
+  --spud-amber-highlight: #ffdb50;
+  --spud-amber-mid: #ffa923;
+  --spud-amber-deep: #f27405;
+  --spud-amber-lip: #892b01;
+  --spud-amber-ink: #3e1802;
+  --spud-orange-ribbon: #ff8811;
+  --spud-track-dark: #4b1d04;
+
+  --spud-comic-font: 'Arial Black', 'Segoe UI Black', 'Trebuchet MS', system-ui, sans-serif;
+  --spud-wide-font: 'Segoe UI', 'Trebuchet MS', system-ui, sans-serif;
+}

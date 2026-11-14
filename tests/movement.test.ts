@@ -9,10 +9,10 @@ import { effectiveSpeed, speedMod, trueSpeed } from '../src/game/utils/speed';
 import { moveVelocity, normalize } from '../src/game/utils/vectors';
 
 describe('movement constants', () => {
-  it('matches the decompiled speed values', () => {
-    expect(WALK_SPEED_UNITS).toBe(4.5);
+  it('uses the tuned walk speed and the original ghost speed', () => {
+    expect(WALK_SPEED_UNITS).toBe(3.15);
     expect(GHOST_SPEED_UNITS).toBe(3.0);
-    expect(WALK_SPEED).toBe(288);
+    expect(WALK_SPEED).toBeCloseTo(201.6);
     expect(GHOST_SPEED).toBe(192);
   });
 });
@@ -50,17 +50,17 @@ describe('moveVelocity', () => {
 
 describe('speed model', () => {
   it('trueSpeed applies the game speed multiplier', () => {
-    expect(trueSpeed(WALK_SPEED_UNITS, 1.0)).toBe(4.5);
-    expect(trueSpeed(WALK_SPEED_UNITS, 1.25)).toBeCloseTo(5.625, 6);
+    expect(trueSpeed(WALK_SPEED_UNITS, 1.0)).toBe(3.15);
+    expect(trueSpeed(WALK_SPEED_UNITS, 1.25)).toBeCloseTo(3.9375, 6);
   });
 
   it('speedMod is 1 when alive and ghost ratio when dead', () => {
     expect(speedMod(false)).toBe(1);
-    expect(speedMod(true)).toBeCloseTo(3.0 / 4.5, 6);
+    expect(speedMod(true)).toBeCloseTo(3.0 / 3.15, 6);
   });
 
   it('effectiveSpeed equals walk speed when alive', () => {
-    expect(effectiveSpeed(WALK_SPEED_UNITS, 1.0, false)).toBe(4.5);
+    expect(effectiveSpeed(WALK_SPEED_UNITS, 1.0, false)).toBe(3.15);
   });
 
   it('effectiveSpeed equals ghost speed when dead', () => {

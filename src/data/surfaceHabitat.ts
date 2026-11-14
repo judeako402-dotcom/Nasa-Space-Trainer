@@ -1,8 +1,8 @@
-import { CORRIDORS, PLAYER_SPAWN, ROOMS, TASKS, WORLD_HEIGHT, WORLD_WIDTH } from '../model';
+import { CORRIDORS, PLAYER_SPAWN, ROOMS, STATION_TASKS, WORLD_HEIGHT, WORLD_WIDTH } from '../model';
 import type { MapDefinition } from './mapTypes';
 import type { DestinationId } from '../model';
 
-/* The surface habitat is the 30-day mission map backed by spudnaut-station.tmj
+/* The surface habitat is the lunar mission map backed by spudnaut-station.tmj
    and the illustrated station floorplan. Keep room/corridor bounds and task
    coordinates synchronized with tools/generate-station-map.mjs. */
 export const SURFACE_HABITAT: MapDefinition = {
@@ -34,15 +34,16 @@ export const SURFACE_HABITAT: MapDefinition = {
   corridors: CORRIDORS.map(corridor => ({ ...corridor })),
   props: [
     { id: 'reactor-cylinder', kind: 'tank', x: 650, y: 40, w: 465, h: 335, solid: true, tint: 0xf2b544 },
-    { id: 'comms-geodesic-dome', kind: 'console', x: 1450, y: 150, w: 300, h: 202, solid: true, tint: 0x9582cb },
+    { id: 'research-workbench', kind: 'console', x: 1476, y: 218, w: 306, h: 64, solid: true, tint: 0x9582cb },
     { id: 'hydro-grow-beds', kind: 'planter', x: 402, y: 470, w: 260, h: 298, solid: true, tint: 0x78ba50 },
-    { id: 'cargo-command-terminal', kind: 'console', x: 1820, y: 720, w: 120, h: 215, solid: true, tint: 0xc89e63 },
-    { id: 'crew-beds', kind: 'table', x: 130, y: 1478, w: 391, h: 204, solid: true, tint: 0x5e8e91 },
+    { id: 'cargo-command-terminal', kind: 'console', x: 1832, y: 714, w: 106, h: 138, solid: true, tint: 0xc89e63 },
+    { id: 'crew-beds', kind: 'table', x: 130, y: 1518, w: 256, h: 164, solid: true, tint: 0x5e8e91 },
+    { id: 'crew-whiteboard', kind: 'console', x: 448, y: 1518, w: 146, h: 164, solid: true, tint: 0x5e8e91 },
     { id: 'med-exam-table', kind: 'table', x: 905, y: 1287, w: 286, h: 279, solid: true, tint: 0x6fd4e6 },
     { id: 'pad-seats', kind: 'console', x: 1375, y: 1315, w: 170, h: 200, solid: true, tint: 0x739ac2 },
     { id: 'pod-shelf', kind: 'crate', x: 1760, y: 1350, w: 200, h: 160, solid: true, tint: 0xb29875 },
   ],
-  interactions: TASKS.map(task => ({
+  interactions: STATION_TASKS.map(task => ({
     id: task.id,
     name: task.name,
     kind: 'task',
@@ -50,51 +51,75 @@ export const SURFACE_HABITAT: MapDefinition = {
     x: task.x,
     y: task.y,
     roomId: task.roomId,
-    icon: 'hammer',
-    accent: '#f5c451',
+    icon: task.isEmergency ? 'warning' : 'hammer',
+    accent: task.isEmergency ? '#ff5a5f' : '#f5c451',
   })),
   crew: [
     {
       id: 'russet', name: 'Cmdr. Russet', role: 'Mission Commander', art: '/assets/potato-repairman.png',
-      x: 992, y: 864, facing: 1, accent: '#f2b544',
-      lines: ['Thirty days, Spudnaut. Earth is watching the gauges, not the speeches.'],
+      x: 992, y: 864, facing: 1, accent: '#f2b544', roomId: 'admin',
+      patrolBounds: { x: 782, y: 740, width: 342, height: 392 },
+      lines: ['Welcome, Spudnaut! Every job helps keep our Moon home running.'],
     },
     {
       id: 'pip', name: 'Pip', role: 'Farmer', art: '/assets/potato-farmer.png',
-      x: 480, y: 864, facing: -1, accent: '#9bd15a',
+      x: 480, y: 864, facing: -1, accent: '#9bd15a', roomId: 'cafeteria',
+      patrolBounds: { x: 123, y: 532, width: 528, height: 416 },
       lines: ['The greenhouse is warm. The power budget is not.'],
     },
     {
       id: 'tater', name: 'Tater', role: 'Medic', art: '/assets/potato-researcher.png',
-      x: 800, y: 1312, facing: 1, accent: '#6fd4e6',
+      x: 800, y: 1312, facing: 1, accent: '#6fd4e6', roomId: 'medbay',
+      patrolBounds: { x: 762, y: 1244, width: 452, height: 500 },
       lines: ['Water first, then oxygen. Thirst makes people careless.'],
+    },
+    {
+      id: 'chip', name: 'Chip', role: 'Research Technician', art: '/assets/potato-researcher.png',
+      x: 1664, y: 400, facing: -1, accent: '#a9b6ff', roomId: 'communications',
+      patrolBounds: { x: 1380, y: 280, width: 448, height: 168 },
+      lines: ['The scanner is ready. Keep the workbench clear so we can log each sample.'],
+    },
+    {
+      id: 'rover', name: 'Rover', role: 'Surface Explorer', art: '/assets/potato-traveller.png',
+      x: 1568, y: 1540, facing: 1, accent: '#e9c27b', roomId: 'exterior',
+      patrolBounds: { x: 1476, y: 1380, width: 416, height: 296 },
+      helmeted: true,
+      exteriorOnly: false,
+      futureIntegration: {
+        roleTag: 'explorer',
+        status: 'staged',
+        missionKind: 'eva-sortie',
+        zoneId: 'landing-pad-apron',
+      },
+      lines: [
+        'Airlock gauges are green inside Landing Pad and Lunar beacon relays are holding steady.',
+        'Check your suit seal here before stepping up to the hazard Exit Door to deploy outside.',
+      ],
     },
   ],
 };
 
 /** Apply destination-specific art direction while keeping task/save IDs stable. */
-export function surfaceHabitatFor(destination: DestinationId): MapDefinition {
-  const mars = destination === 'mars';
+export function surfaceHabitatFor(_destination: DestinationId): MapDefinition {
   return {
     ...SURFACE_HABITAT,
-    subtitle: mars ? 'MARS OUTPOST · PRESSURIZED STATION · SOL WEATHER WATCH' : 'LUNAR OUTPOST · PRESSURIZED STATION · EVA AIRLOCK',
-    palette: mars
-      ? { ...SURFACE_HABITAT.palette, void: 0x17100f, floor: 0x352622, floorAlt: 0x3e2d27, wall: 0xb87958, line: 0x70473b, glow: 0xf09a66 }
-      : { ...SURFACE_HABITAT.palette, void: 0x080d18, floor: 0x1b2535, floorAlt: 0x263246, wall: 0x9aaabe, line: 0x45566d, glow: 0x8dc9ef },
+    subtitle: 'LUNAR OUTPOST · PRESSURIZED STATION · EVA AIRLOCK',
+    palette: {
+      ...SURFACE_HABITAT.palette,
+      void: 0x080d18,
+      floor: 0x1b2535,
+      floorAlt: 0x263246,
+      wall: 0x9aaabe,
+      line: 0x45566d,
+      glow: 0x8dc9ef,
+    },
     props: [
       ...SURFACE_HABITAT.props,
-      ...(mars
-        ? [
-            { id: 'mars-regolith-rock-a', kind: 'rock' as const, x: 1620, y: 1840, w: 80, h: 52, solid: false, tint: 0x984f3e },
-            { id: 'mars-comms-mast', kind: 'antenna' as const, x: 1840, y: 1820, w: 68, h: 96, solid: false, tint: 0xb8c2ca },
-          ]
-        : [
-            { id: 'lunar-regolith-rock-a', kind: 'rock' as const, x: 1620, y: 1840, w: 80, h: 52, solid: false, tint: 0x858890 },
-            { id: 'lunar-retroreflector', kind: 'antenna' as const, x: 1840, y: 1820, w: 68, h: 96, solid: false, tint: 0xd7dfea },
-          ]),
+      { id: 'lunar-regolith-rock-a', kind: 'rock' as const, x: 1620, y: 1840, w: 80, h: 52, solid: false, tint: 0x858890 },
+      { id: 'lunar-retroreflector', kind: 'antenna' as const, x: 1840, y: 1820, w: 68, h: 96, solid: false, tint: 0xd7dfea },
     ],
     rooms: SURFACE_HABITAT.rooms.map(room => room.id === 'exterior'
-      ? { ...room, name: 'Landing Pad', tint: mars ? 0x754638 : 0x55575d, accent: mars ? '#ee9866' : '#c9d6e8' }
+      ? { ...room, name: 'Landing Pad', tint: 0x55575d, accent: '#c9d6e8' }
       : room),
   };
 }

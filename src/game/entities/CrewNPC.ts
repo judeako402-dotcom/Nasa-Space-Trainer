@@ -1,17 +1,18 @@
 import Phaser from 'phaser';
 import {
   applyResolvedSpriteVisual,
+  getSpriteDisplaySize,
   resolveCharacterVisual,
-  SPRITE_CREW_DISPLAY_HEIGHT,
-  SPRITE_CREW_DISPLAY_WIDTH,
   SPRITE_ORIGIN_X,
   SPRITE_ORIGIN_Y,
 } from '../assets/characterSprites';
 import { INTERACTION_RADIUS } from '../constants';
+import { clampPointToBounds, type RoomBounds } from '../world/Room';
 import type { Interactable } from './Interactable';
 
 const LEGACY_BODY_WIDTH = 52;
 const LEGACY_BODY_HEIGHT = 64;
+export const CREW_FEET_OFFSET_Y = 22;
 
 export interface CrewNPCOptions {
   id: string;
@@ -20,9 +21,13 @@ export interface CrewNPCOptions {
   accent?: string;
   lines?: string[];
   helmeted?: boolean;
+  frozen?: boolean;
   reducedMotion?: boolean;
   home: { x: number; y: number };
   wanderRadius?: number;
+  patrolBounds?: RoomBounds;
+  waypoints?: { x: number; y: number }[];
+  feetOffsetY?: number;
   findPath?: (
     from: { x: number; y: number },
     to: { x: number; y: number },
@@ -52,12 +57,17 @@ export class CrewNPC implements Interactable {
   private readonly baseScaleX: number;
   private readonly baseScaleY: number;
   private readonly bobTween?: Phaser.Tweens.Tween;
+  private wanderTimer?: Phaser.Time.TimerEvent;
+  private walkTween?: Phaser.Tweens.Tween;
   private readonly pos = { x: 0, y: 0 };
+  private readonly feetOffsetY: number;
   private walking = false;
+  private frozen: boolean;
   private helmeted: boolean;
   private reducedMotion: boolean;
   private faceLeft = false;
   private highlighted = false;
+  private lastVisualKey = '';
 
   constructor(scene: Phaser.Scene, texture: string, x: number, y: number, options: CrewNPCOptions) {
     this.scene = scene;
@@ -66,8 +76,12 @@ export class CrewNPC implements Interactable {
     this.promptText = options.role ? `${options.label} · ${options.role}` : options.label;
     this.enabled = Boolean(options.lines?.length && options.onTalk);
     this.baseTextureKey = texture;
+    this.feetOffsetY = options.feetOffsetY ?? CREW_FEET_OFFSET_Y;
+    this.frozen = Boolean(options.frozen);
     this.helmeted = Boolean(options.helmeted);
     this.reducedMotion = Boolean(options.reducedMotion);
+
+    const startPos = this.clampSpriteToPatrol({ x, y });
 
     const initialVisual = resolveCharacterVisual({
       baseTextureKey: texture,
@@ -79,13 +93,14 @@ export class CrewNPC implements Interactable {
     this.usesAnimatedSheet = animated;
 
     this.sprite = scene.add.sprite(
-      x,
-      y,
+      startPos.x,
+      startPos.y,
       animated && initialVisual ? initialVisual.textureKey : texture,
     );
     if (animated) {
+      const { width, height } = getSpriteDisplaySize(texture, 'crew');
       this.sprite.setOrigin(SPRITE_ORIGIN_X, SPRITE_ORIGIN_Y);
-      this.sprite.setDisplaySize(SPRITE_CREW_DISPLAY_WIDTH, SPRITE_CREW_DISPLAY_HEIGHT);
+      this.sprite.setDisplaySize(width, height);
     } else {
       this.sprite.setOrigin(0.5, 0.5);
       this.sprite.setDisplaySize(LEGACY_BODY_WIDTH, LEGACY_BODY_HEIGHT);
@@ -93,11 +108,11 @@ export class CrewNPC implements Interactable {
     this.baseScaleX = this.sprite.scaleX;
     this.baseScaleY = this.sprite.scaleY;
 
-    this.shadow = scene.add.ellipse(x, y + 28, 42, 14, 0x000000, 0.3);
-    this.shadow.setDepth(y + 27);
+    this.shadow = scene.add.ellipse(startPos.x, startPos.y + 28, 42, 14, 0x000000, 0.3);
+    this.shadow.setDepth(startPos.y + 27);
 
     this.nameLabel = scene.add
-      .text(x, y - (animated ? 53 : 48), options.label.toUpperCase(), {
+      .text(startPos.x, startPos.y - (animated ? 53 : 48), options.label.toUpperCase(), {
         fontFamily: 'Consolas, monospace',
         fontSize: '10px',
         fontStyle: 'bold',
@@ -106,7 +121,7 @@ export class CrewNPC implements Interactable {
         padding: { x: 4, y: 2 },
       })
       .setOrigin(0.5, 1)
-      .setDepth(y + 30);
+      .setDepth(startPos.y + 30);
 
     if (!animated) {
       this.bobTween = scene.tweens.add({
@@ -118,34 +133,86 @@ export class CrewNPC implements Interactable {
         repeat: -1,
         ease: 'sine.inout',
       });
-      if (this.reducedMotion) this.bobTween.pause();
+      if (this.reducedMotion || this.frozen) this.bobTween.pause();
     }
 
-    this.updateVisualAnimation();
-    this.pos.x = x;
-    this.pos.y = y;
-    this.scheduleWander();
+    this.updateVisualAnimation(true);
+    this.pos.x = startPos.x;
+    this.pos.y = startPos.y;
+    if (!this.frozen) this.scheduleWander();
+  }
+
+  private clampSpriteToPatrol(pos: { x: number; y: number }): { x: number; y: number } {
+    const bounds = this.opts.patrolBounds;
+    if (!bounds) return pos;
+    const clampedFeet = clampPointToBounds({ x: pos.x, y: pos.y + this.feetOffsetY }, bounds);
+    return { x: clampedFeet.x, y: clampedFeet.y - this.feetOffsetY };
+  }
+
+  setFrozen(frozen: boolean): void {
+    if (this.frozen === frozen) return;
+    this.frozen = frozen;
+    if (frozen) {
+      this.wanderTimer?.remove(false);
+      this.wanderTimer = undefined;
+      this.walkTween?.pause();
+      if (this.walking) {
+        this.walking = false;
+        this.updateVisualAnimation(true);
+      }
+      this.bobTween?.pause();
+    } else if (this.walkTween) {
+      this.walking = true;
+      this.walkTween.resume();
+      this.updateVisualAnimation(true);
+    } else {
+      if (this.bobTween && !this.reducedMotion) this.bobTween.resume();
+      this.scheduleWander(900);
+    }
   }
 
   setReducedMotion(reduced: boolean): void {
     this.reducedMotion = reduced;
     if (this.bobTween) {
-      if (reduced || this.walking) this.bobTween.pause();
+      if (reduced || this.walking || this.frozen) this.bobTween.pause();
       else this.bobTween.resume();
     }
-    this.updateVisualAnimation();
+    this.updateVisualAnimation(true);
   }
 
   setHelmeted(helmeted: boolean): void {
     if (this.helmeted === helmeted) return;
     this.helmeted = helmeted;
-    this.updateVisualAnimation();
+    this.updateVisualAnimation(true);
   }
 
   get position(): { x: number; y: number } {
     this.pos.x = this.sprite.x;
     this.pos.y = this.sprite.y;
     return this.pos;
+  }
+
+  /** Read-only state snapshot for automated verification harnesses. */
+  getTelemetry(): {
+    id: string;
+    x: number;
+    y: number;
+    feetY: number;
+    walking: boolean;
+    frozen: boolean;
+    helmeted: boolean;
+    patrolBounds: RoomBounds | null;
+  } {
+    return {
+      id: this.id,
+      x: this.sprite.x,
+      y: this.sprite.y,
+      feetY: this.sprite.y + this.feetOffsetY,
+      walking: this.walking,
+      frozen: this.frozen,
+      helmeted: this.helmeted,
+      patrolBounds: this.opts.patrolBounds ?? null,
+    };
   }
 
   onInteract(): void {
@@ -167,6 +234,10 @@ export class CrewNPC implements Interactable {
   }
 
   preUpdate(): void {
+    const clamped = this.clampSpriteToPatrol(this.sprite);
+    if (clamped.x !== this.sprite.x || clamped.y !== this.sprite.y) {
+      this.sprite.setPosition(clamped.x, clamped.y);
+    }
     const { x, y } = this.sprite;
     const feetY = y + 28;
     this.pos.x = x;
@@ -185,8 +256,11 @@ export class CrewNPC implements Interactable {
     this.updateVisualAnimation();
   }
 
-  private updateVisualAnimation(): void {
+  private updateVisualAnimation(force = false): void {
     if (!this.usesAnimatedSheet) return;
+    const visualKey = `${this.baseTextureKey}:${this.walking ? 1 : 0}:${this.helmeted ? 1 : 0}:${this.reducedMotion ? 1 : 0}`;
+    if (!force && visualKey === this.lastVisualKey) return;
+    this.lastVisualKey = visualKey;
     const visual = resolveCharacterVisual({
       baseTextureKey: this.baseTextureKey,
       moving: this.walking,
@@ -200,59 +274,84 @@ export class CrewNPC implements Interactable {
     }
   }
 
-  private scheduleWander(): void {
-    const delay = 2500 + Math.random() * 3500;
-    this.scene.time.delayedCall(delay, () => {
-      if (!this.sprite.active) return;
+  private scheduleWander(baseDelayMs = 2200): void {
+    if (this.frozen || !this.sprite.active) return;
+    this.wanderTimer?.remove(false);
+    const delay = baseDelayMs + Math.random() * 2800;
+    this.wanderTimer = this.scene.time.delayedCall(delay, () => {
+      this.wanderTimer = undefined;
+      if (!this.sprite.active || this.frozen) return;
       this.wander();
     });
   }
 
+  private pickWanderTarget(): { x: number; y: number } {
+    const { home, wanderRadius, waypoints } = this.opts;
+    if (waypoints && waypoints.length > 0) {
+      const nearby = waypoints.filter((pt) => {
+        const d = Math.hypot(pt.x - this.sprite.x, pt.y - this.sprite.y);
+        return d >= 44 && d <= Math.max(wanderRadius, 120);
+      });
+      const pool = nearby.length > 0
+        ? nearby
+        : waypoints.filter((pt) => Math.hypot(pt.x - this.sprite.x, pt.y - this.sprite.y) >= 28);
+      const source = pool.length > 0 ? pool : waypoints;
+      return source[Math.floor(Math.random() * source.length)];
+    }
+
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 60 + Math.random() * Math.max(20, wanderRadius - 60);
+    return this.clampSpriteToPatrol({
+      x: home.x + Math.cos(angle) * dist,
+      y: home.y + Math.sin(angle) * dist,
+    });
+  }
+
   private wander(): void {
-    if (this.walking) return;
-    const { home, wanderRadius, findPath } = this.opts;
+    if (this.walking || this.frozen || !this.sprite.active) return;
+    const { findPath } = this.opts;
     if (!findPath) {
       this.scheduleWander();
       return;
     }
-    const angle = Math.random() * Math.PI * 2;
-    const dist = 60 + Math.random() * Math.max(20, wanderRadius - 60);
-    const target = {
-      x: home.x + Math.cos(angle) * dist,
-      y: home.y + Math.sin(angle) * dist,
-    };
-    const path = findPath(this.sprite, target);
-    if (!path || path.length < 2) {
-      this.scheduleWander();
-      return;
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const target = this.pickWanderTarget();
+      const path = findPath(this.sprite, target);
+      if (path && path.length >= 2) {
+        this.walkPath(path.slice(1));
+        return;
+      }
     }
-    this.walkPath(path.slice(1));
+    this.scheduleWander();
   }
 
   private walkPath(points: { x: number; y: number }[]): void {
     if (points.length === 0 || !this.sprite.active) {
+      this.walkTween = undefined;
       this.walking = false;
       this.sprite.setScale(this.baseScaleX, this.baseScaleY);
-      if (this.bobTween && !this.reducedMotion) this.bobTween.resume();
-      this.updateVisualAnimation();
+      if (this.bobTween && !this.reducedMotion && !this.frozen) this.bobTween.resume();
+      this.updateVisualAnimation(true);
       this.scheduleWander();
       return;
     }
     this.walking = true;
     this.bobTween?.pause();
-    this.updateVisualAnimation();
-    const next = points[0];
+    this.updateVisualAnimation(true);
+    const next = this.clampSpriteToPatrol(points[0]);
     const dx = next.x - this.sprite.x;
-    this.faceLeft = dx < 0;
+    if (Math.abs(dx) > 1) this.faceLeft = dx < 0;
     const dist = Math.hypot(dx, next.y - this.sprite.y);
-    const duration = Math.max(120, (dist / 110) * 1000);
-    this.scene.tweens.add({
+    const duration = Math.max(120, (dist / 100) * 1000);
+    this.walkTween = this.scene.tweens.add({
       targets: this.sprite,
       x: next.x,
       y: next.y,
       duration,
       ease: 'linear',
+      paused: this.frozen,
       onComplete: () => {
+        this.walkTween = undefined;
         if (!this.sprite.active) return;
         if (!this.usesAnimatedSheet && !this.reducedMotion) {
           this.sprite.setScale(this.baseScaleX * 1.06, this.baseScaleY * 0.94);
@@ -263,6 +362,10 @@ export class CrewNPC implements Interactable {
   }
 
   destroy(): void {
+    this.wanderTimer?.remove(false);
+    this.wanderTimer = undefined;
+    this.walkTween?.stop();
+    this.walkTween = undefined;
     this.bobTween?.stop();
     this.shadow.destroy();
     this.nameLabel.destroy();

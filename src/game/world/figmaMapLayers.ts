@@ -5,7 +5,7 @@
  * (64x64 tiles @ 32px), so all positions, sizes, and foot-Y depths scale by 1.024.
  */
 
-import { AssetKeys } from '../assets/AssetKeys';
+import { AssetKeys, StationMapUrls } from '../assets/AssetKeys';
 
 export const FIGMA_DESIGN_SIZE = 2000;
 export const WORLD_MAP_SIZE = 2048;
@@ -16,7 +16,7 @@ export type FigmaLayerSource =
   | 'objects'
   | 'walls'
   | 'core'
-  | 'shields'
+  | 'research'
   | 'liferoom'
   | 'liferoomTop'
   | 'hallway'
@@ -31,9 +31,9 @@ export const FIGMA_LAYER_TEXTURES: Record<
 > = {
   walls: { key: AssetKeys.figmaLayerWalls, path: '/assets/maps/figma/layers/walls.png' },
   core: { key: AssetKeys.figmaLayerCore, path: '/assets/maps/figma/layers/core.png' },
-  shields: { key: AssetKeys.figmaLayerShields, path: '/assets/maps/figma/layers/shields.png' },
+  research: { key: AssetKeys.figmaLayerResearch, path: '/assets/maps/figma/layers/research.png' },
   liferoom: { key: AssetKeys.figmaLayerLiferoom, path: '/assets/maps/figma/layers/liferoom.png' },
-  liferoomTop: { key: AssetKeys.figmaLayerLiferoomTop, path: '/assets/maps/figma/layers/liferoom-top.png' },
+  liferoomTop: { key: AssetKeys.figmaLayerLiferoomTop, path: StationMapUrls.hydroponicsCabinet },
   hallway: { key: AssetKeys.figmaLayerHallway, path: '/assets/maps/figma/layers/hallway.png' },
   storage: { key: AssetKeys.figmaLayerStorage, path: '/assets/maps/figma/layers/storage.png' },
   bedroom: { key: AssetKeys.figmaLayerBedroom, path: '/assets/maps/figma/layers/bedroom.png' },
@@ -71,23 +71,19 @@ export interface FigmaRectDetail {
 /** 01 · Floor contact shadows — rendered at DEPTH_FLOOR + 1 below all actors. */
 export const FIGMA_CONTACT_SHADOWS: readonly FigmaShadowSpec[] = [
   { key: 'shadow-reactor-vessel', path: '/assets/maps/figma/shadows/reactor-vessel.svg', x: 686.75, y: 358, w: 416.5, h: 14 },
-  { key: 'shadow-shield-generator', path: '/assets/maps/figma/shadows/shield-generator.svg', x: 1445.5, y: 443, w: 289, h: 14 },
   { key: 'shadow-co2-scrubber', path: '/assets/maps/figma/shadows/co2-scrubber.svg', x: 128.98, y: 735.6, w: 113.05, h: 13.4 },
   { key: 'shadow-hydroponic-rack', path: '/assets/maps/figma/shadows/hydroponic-rack.svg', x: 426, y: 745, w: 215, h: 12.4 },
   { key: 'shadow-twin-utility-pipes', path: '/assets/maps/figma/shadows/twin-utility-pipes.svg', x: 1021.72, y: 726.4, w: 53.55, h: 8.6 },
   { key: 'shadow-cargo-crate-stack', path: '/assets/maps/figma/shadows/cargo-crate-stack.svg', x: 1488.25, y: 775, w: 229.5, h: 14 },
-  { key: 'shadow-cargo-command-terminal', path: '/assets/maps/figma/shadows/cargo-command-terminal.svg', x: 1764.38, y: 900, w: 106.25, h: 14 },
-  { key: 'shadow-water-barrels', path: '/assets/maps/figma/shadows/water-barrels.svg', x: 131.2, y: 933.2, w: 149.6, h: 12.8 },
+  { key: 'shadow-cargo-command-terminal', path: '/assets/maps/figma/shadows/cargo-command-terminal.svg', x: 1804, y: 823, w: 80, h: 12 },
+  { key: 'shadow-water-barrels', path: '/assets/maps/figma/shadows/water-barrels.svg', x: 124, y: 933, w: 124, h: 12 },
   { key: 'shadow-air-quality-panel', path: '/assets/maps/figma/shadows/air-quality-panel.svg', x: 559.05, y: 938, w: 79.9, h: 6 },
   { key: 'shadow-workshop-bench', path: '/assets/maps/figma/shadows/workshop-bench.svg', x: 1812.75, y: 1144, w: 76.5, h: 11 },
   { key: 'shadow-crew-workstation', path: '/assets/maps/figma/shadows/crew-workstation.svg', x: 164.82, y: 1149.8, w: 111.35, h: 9.2 },
-  { key: 'shadow-life-support-desk', path: '/assets/maps/figma/shadows/life-support-desk.svg', x: 483.2, y: 1250.8, w: 115.6, h: 10.2 },
   { key: 'shadow-cargo-crate', path: '/assets/maps/figma/shadows/cargo-crate.svg', x: 1288.78, y: 1145, w: 133.45, h: 8 },
   { key: 'shadow-dining-table', path: '/assets/maps/figma/shadows/dining-table.svg', x: 909.17, y: 1515, w: 228.65, h: 14 },
   { key: 'shadow-eva-suit-rack', path: '/assets/maps/figma/shadows/eva-suit-rack.svg', x: 1378.4, y: 1665, w: 163.2, h: 14 },
   { key: 'shadow-cryogenic-pod-rack', path: '/assets/maps/figma/shadows/cryogenic-pod-rack.svg', x: 1732.82, y: 1509, w: 179.35, h: 14 },
-  { key: 'shadow-amber-bunk', path: '/assets/maps/figma/shadows/amber-bunk.svg', x: 139.75, y: 1630, w: 144.5, h: 14 },
-  { key: 'shadow-cyan-bunk', path: '/assets/maps/figma/shadows/cyan-bunk.svg', x: 347.83, y: 1630, w: 145.35, h: 14 },
   { key: 'shadow-galley-worktop', path: '/assets/maps/figma/shadows/galley-worktop.svg', x: 911.4, y: 1665, w: 265.2, h: 11 },
   { key: 'shadow-galley-front-counter', path: '/assets/maps/figma/shadows/galley-front-counter.svg', x: 830.7, y: 1767.2, w: 336.6, h: 11.8 },
 ];
@@ -121,10 +117,17 @@ export const FIGMA_HYDROPONICS_PLATFORM = {
   footY: 754,
 } as const;
 
+const WATER_TANK = { name: 'Water tank', source: 'liferoom', x: 115, y: 746, w: 150, h: 199, footY: 945 } as const;
+const RESEARCH_WORKBENCH = { name: 'Research workbench', source: 'research', x: 1442, y: 159, w: 299, h: 117, footY: 276 } as const;
+const HEALTH_CHECK = { name: 'Health check panel', source: 'research', x: 1750, y: 292, w: 130, h: 82, footY: 374 } as const;
+const CRYSTAL_SCANNER = { name: 'Crystal scanner', source: 'research', x: 1765, y: 375, w: 115, h: 81, footY: 456 } as const;
+const CARGO_TERMINAL = { name: 'Cargo command terminal', source: 'storage', x: 1756, y: 660, w: 137, h: 174, footY: 834 } as const;
+const CREW_WHITEBOARD = { name: 'Crew whiteboard', source: 'bedroom', x: 436, y: 1482, w: 146, h: 161, footY: 1643 } as const;
+
 /** 02 · Depth-sorted wall occluders (from walls layer) and 3D props (from per-room layers). */
 export const FIGMA_DEPTH_SLICES: readonly FigmaSliceSpec[] = [
   // Wall & edge occluders (doorways and corridors excluded)
-  { name: '0218 · Occluder · Shield-room rear wall', source: 'walls', x: 1288, y: 143, w: 598, h: 75, footY: 218 },
+  { name: '0218 · Occluder · Researcher Room rear wall', source: 'walls', x: 1288, y: 143, w: 598, h: 75, footY: 218 },
   { name: '0526 · Occluder · Hydroponics rear wall', source: 'walls', x: 112, y: 451, w: 543, h: 75, footY: 526 },
   { name: '0709 · Occluder · Cargo rear left panel', source: 'walls', x: 1271, y: 638, w: 48, h: 71, footY: 709 },
   { name: '0709 · Occluder · Cargo rear right panel', source: 'walls', x: 1444, y: 638, w: 465, h: 71, footY: 709 },
@@ -140,26 +143,26 @@ export const FIGMA_DEPTH_SLICES: readonly FigmaSliceSpec[] = [
   { name: '1788 · Occluder · Galley front edge', source: 'walls', x: 725, y: 1767, w: 480, h: 21, footY: 1788 },
   { name: '1958 · Occluder · External airlock front edge', source: 'walls', x: 1464, y: 1938, w: 380, h: 20, footY: 1958 },
 
-  // 3D Props sorted by feet Y
-  { name: '0325 · Shield left conduit arch', source: 'shields', x: 1114, y: 132, w: 256, h: 194, footY: 325 },
+  // Prop depth uses the bottom of each floor footprint.
   { name: '0328 · Reactor left catwalk railing', source: 'core', x: 597, y: 205, w: 91, h: 125, footY: 328 },
-  { name: '0346 · Shield geodesic dome', source: 'shields', x: 1370, y: 74, w: 401, h: 273, footY: 346 },
   { name: '0371 · Reactor vessel and cabinet', source: 'core', x: 688, y: 9, w: 493, h: 363, footY: 371 },
-  { name: '0458 · Shield right console', source: 'shields', x: 1771, y: 251, w: 110, h: 207, footY: 458 },
+  { name: 'Medical supply cabinet', source: 'research', x: 1291, y: 140, w: 127, h: 158, footY: 298 },
+  RESEARCH_WORKBENCH,
+  { name: 'Lab recycler', source: 'research', x: 1785, y: 183, w: 56, h: 73, footY: 256 },
+  HEALTH_CHECK,
+  CRYSTAL_SCANNER,
   { name: '0736 · Twin utility pipes', source: 'hallway', x: 1010, y: 417, w: 75, h: 320, footY: 736 },
   { name: '0752 · CO2 scrubber', source: 'liferoom', x: 111, y: 395, w: 164, h: 358, footY: 752 },
-  { name: '0756 · Hydroponic upper crop bed', source: 'liferoom', x: 425, y: 466, w: 218, h: 105, footY: 756 },
-  { name: '0756 · Hydroponic lower crop bed', source: 'liferoom', x: 424, y: 624, w: 219, h: 108, footY: 756 },
   { name: '0790 · Cargo crate stack', source: 'storage', x: 1463, y: 615, w: 277, h: 176, footY: 790 },
   { name: '0856 · Wall power switch', source: 'hallway', x: 1165, y: 826, w: 57, h: 31, footY: 856 },
-  { name: '0914 · Cargo command terminal', source: 'storage', x: 1749, y: 675, w: 155, h: 240, footY: 914 },
+  CARGO_TERMINAL,
   { name: '0944 · Air-quality control panel', source: 'liferoom', x: 548, y: 803, w: 99, h: 142, footY: 944 },
-  { name: '0946 · Water barrels', source: 'liferoom', x: 113, y: 752, w: 185, h: 195, footY: 946 },
+  WATER_TANK,
   { name: '1154 · Cargo crate', source: 'storage', x: 1271, y: 1049, w: 167, h: 106, footY: 1154 },
   { name: '1155 · Workshop bench', source: 'storage', x: 1802, y: 933, w: 99, h: 223, footY: 1155 },
   { name: '1160 · Crew workstation', source: 'bedroom', x: 152, y: 1038, w: 138, h: 123, footY: 1160 },
   { name: '1185 · First-aid station', source: 'kitchen', x: 773, y: 1129, w: 57, h: 57, footY: 1185 },
-  { name: '1261 · Life-support control desk', source: 'bedroom', x: 467, y: 1090, w: 146, h: 172, footY: 1261 },
+  CREW_WHITEBOARD,
   { name: '1390 · EVA suit rack top-right', source: 'airlock', x: 1531, y: 1224, w: 32, h: 168, footY: 1390 },
   { name: '1392 · Cryogenic pod rack top-left', source: 'airlock', x: 1713, y: 1265, w: 37, h: 129, footY: 1392 },
   { name: '1431 · Cryogenic pod rack upper-mid', source: 'airlock', x: 1750, y: 1265, w: 31, h: 168, footY: 1431 },
@@ -168,8 +171,8 @@ export const FIGMA_DEPTH_SLICES: readonly FigmaSliceSpec[] = [
   { name: '1523 · Cryogenic pod rack', source: 'airlock', x: 1812, y: 1294, w: 120, h: 230, footY: 1523 },
   { name: '1526 · EVA suit rack lower-mid', source: 'airlock', x: 1469, y: 1232, w: 31, h: 296, footY: 1526 },
   { name: '1530 · Dining table and benches', source: 'kitchen', x: 882, y: 1256, w: 282, h: 275, footY: 1530 },
-  { name: '1644 · Amber bunk', source: 'bedroom', x: 125, y: 1442, w: 174, h: 203, footY: 1644 },
-  { name: '1645 · Cyan bunk', source: 'bedroom', x: 331, y: 1444, w: 179, h: 202, footY: 1645 },
+  { name: 'Amber bunk', source: 'bedroom', x: 125, y: 1481, w: 125, h: 164, footY: 1645 },
+  { name: 'Cyan bunk', source: 'bedroom', x: 250, y: 1481, w: 128, h: 164, footY: 1645 },
   { name: '1676 · Galley worktop', source: 'kitchen', x: 883, y: 1589, w: 320, h: 88, footY: 1676 },
   { name: '1679 · EVA suit rack', source: 'airlock', x: 1356, y: 1255, w: 113, h: 425, footY: 1679 },
   { name: '1779 · Galley front counter', source: 'kitchen', x: 797, y: 1714, w: 403, h: 66, footY: 1779 },
@@ -197,34 +200,41 @@ export const TASK_OBJECT_OUTLINE_SPECS: Record<string, TaskObjectOutlineSpec> = 
 
   // Hydroponics / Life Room (liferoom.png)
   'wiring-cafeteria': { source: 'liferoom', x: 111, y: 395, w: 164, h: 358, footY: 752 },
-  'garbage': { source: 'liferoom', x: 113, y: 752, w: 185, h: 195, footY: 946 },
-  'grow-light-balance': { source: 'liferoom', x: 424, y: 466, w: 220, h: 266, footY: 756 },
+  'garbage': WATER_TANK,
+  'grow-light-balance': FIGMA_HYDROPONICS_PLATFORM,
   'nutrient-loop': { source: 'liferoom', x: 548, y: 803, w: 99, h: 142, footY: 944 },
 
   // Central Spine / Hallway (hallway.png)
   'asteroids': { source: 'hallway', x: 1010, y: 417, w: 75, h: 320, footY: 736 },
 
-  // Comms / Shields (shields.png)
-  'steering': { source: 'shields', x: 1114, y: 132, w: 256, h: 194, footY: 325 },
-  'upload-admin': { source: 'shields', x: 1370, y: 74, w: 401, h: 273, footY: 346 },
-  'reboot-comms': { source: 'shields', x: 1370, y: 74, w: 401, h: 273, footY: 346 },
-  'download-nav': { source: 'shields', x: 1771, y: 251, w: 110, h: 207, footY: 458 },
+  // Researcher Room
+  'steering': CRYSTAL_SCANNER,
+  'upload-admin': RESEARCH_WORKBENCH,
+  'reboot-comms': RESEARCH_WORKBENCH,
+  'download-nav': HEALTH_CHECK,
 
   // Galley / Medbay (kitchen.png)
+  'med-pipes': { source: 'kitchen', x: 882, y: 1256, w: 282, h: 275, footY: 1530 },
   'inspect': { source: 'kitchen', x: 882, y: 1256, w: 282, h: 275, footY: 1530 },
 
   // Cargo Bay / Storage (storage.png)
   'fuel-storage': { source: 'storage', x: 1463, y: 615, w: 165, h: 160, footY: 790 },
   'swipe': { source: 'storage', x: 1463, y: 615, w: 277, h: 176, footY: 790 },
-  'clean-o2': { source: 'storage', x: 1749, y: 675, w: 155, h: 240, footY: 914 },
+  'clean-o2': CARGO_TERMINAL,
 
   // Crew Quarters / Security (bedroom.png)
   'review-cams': { source: 'bedroom', x: 152, y: 1038, w: 138, h: 123, footY: 1160 },
-  'shields': { source: 'bedroom', x: 467, y: 1090, w: 146, h: 172, footY: 1261 },
+  'shields': CREW_WHITEBOARD,
 
   // Airlock / Exterior (airlock.png)
   'eva-sample': { source: 'airlock', x: 1356, y: 1224, w: 205, h: 456, footY: 1679 },
   'eva-array': { source: 'airlock', x: 1713, y: 1265, w: 219, h: 259, footY: 1523 },
   'eva-route': { source: 'airlock', x: 1554, y: 1694, w: 202, h: 37, footY: 1731, flat: true },
+
+  // Emergency Damaged Area Highlights
+  'emergency-flr': { source: 'core', x: 597, y: 9, w: 584, h: 363, footY: 371 },
+  'emergency-cme': { source: 'bedroom', x: 467, y: 1090, w: 146, h: 172, footY: 1261 },
+  'emergency-sep': { source: 'research', x: 1771, y: 251, w: 110, h: 207, footY: 458 },
+  'emergency-gst': { source: 'liferoom', x: 548, y: 803, w: 99, h: 142, footY: 944 },
 };
 

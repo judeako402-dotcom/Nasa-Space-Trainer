@@ -23,20 +23,20 @@ const ROWS = 2048 / TS;
 const WALK = [
   // rooms
   { t: 'ellipse', cx: 900, cy: 276, rx: 302, ry: 226 }, // Reactor Dome
-  { t: 'rect', x: 1328, y: 218, w: 596, h: 250 }, // Comms Dome
+  { t: 'rect', x: 1328, y: 218, w: 596, h: 250 }, // Researcher Room
   { t: 'rect', x: 123, y: 532, w: 536, h: 428 }, // Hydroponics Bay
   { t: 'rect', x: 746, y: 732, w: 400, h: 420 }, // Central Hub
   { t: 'rect', x: 1302, y: 722, w: 645, h: 459 }, // Cargo Bay
   { t: 'rect', x: 130, y: 1137, w: 493, h: 544 }, // Crew Quarters
   { t: 'rect', x: 748, y: 1224, w: 477, h: 590 }, // Med Lab
-  { t: 'ellipse', cx: 1692, cy: 1533, rx: 296, ry: 287 }, // Landing Pad
-  { t: 'rect', x: 1498, y: 1696, w: 391, h: 75 }, // South edge of the pad
+  { t: 'ellipse', cx: 1692, cy: 1524, rx: 296, ry: 224 }, // Landing Pad interior (stays above y=1750 bulkhead)
+  { t: 'rect', x: 1498, y: 1684, w: 391, h: 66 }, // South floor threshold inside airlock bulkhead (sealed at row 55 / y=1760)
   // corridors
-  { t: 'rect', x: 1100, y: 382, w: 262, h: 64 }, // reactor -> comms
+  { t: 'rect', x: 1100, y: 382, w: 262, h: 64 }, // reactor -> research
   { t: 'rect', x: 817, y: 474, w: 147, h: 276 }, // reactor -> hub
   { t: 'rect', x: 1125, y: 896, w: 192, h: 72 }, // hub -> cargo
   { t: 'rect', x: 320, y: 949, w: 145, h: 207 }, // hydro -> crew
-  { t: 'rect', x: 1358, y: 450, w: 114, h: 286 }, // comms -> cargo
+  { t: 'rect', x: 1358, y: 450, w: 114, h: 286 }, // research -> cargo
   { t: 'rect', x: 1610, y: 1165, w: 119, h: 200 }, // cargo -> landing
   { t: 'rect', x: 873, y: 1133, w: 106, h: 110 }, // hub -> med lab
   { t: 'rect', x: 607, y: 1361, w: 155, h: 92 }, // crew -> med lab
@@ -67,34 +67,29 @@ const PROPS = [
     [[612, 219], [616, 212], [724, 265], [725, 59], [738, 25], [778, 14], [999, 11], [1053, 23], [1080, 46], [1084, 153], [1100, 212], [1095, 268], [1157, 244], [1191, 222], [1181, 275], [1097, 342], [1032, 368], [856, 376], [752, 350], [672, 309], [615, 253]],
   ),
   prop('Reactor cabinet', rect(1111, 250, 97, 130), [[1105, 277], [1164, 252], [1208, 262], [1208, 380], [1107, 353]]),
-  prop(
-    'Comms left conduit',
-    poly([[1120, 140], [1448, 140], [1448, 326], [1394, 338], [1312, 338], [1312, 288], [1120, 288]]),
-  ),
-  prop(
-    'Comms dome',
-    poly([[1440, 208], [1488, 110], [1568, 76], [1696, 76], [1776, 150], [1816, 215], [1812, 295], [1748, 352], [1504, 352], [1440, 310]]),
-    [[1452, 239], [1480, 206], [1512, 132], [1559, 91], [1617, 76], [1676, 85], [1723, 113], [1757, 157], [1776, 207], [1803, 240], [1797, 291], [1735, 313], [1716, 354], [1539, 354], [1533, 326], [1475, 308], [1453, 285]],
-  ),
-  prop('Comms console', rect(1825, 215, 99, 254)),
+  prop('Medical supply cabinet', rect(1324, 218, 126, 86), rectangleOutline(rect(1324, 144, 126, 160))),
+  prop('Research workbench', rect(1476, 218, 306, 64), rectangleOutline(rect(1476, 164, 306, 118))),
+  prop('Lab recycler', rect(1828, 218, 56, 44), rectangleOutline(rect(1828, 188, 56, 74))),
+  prop('Health check panel', rect(1792, 320, 132, 62), rectangleOutline(rect(1792, 300, 132, 82))),
+  prop('Crystal scanner', rect(1808, 400, 116, 66), rectangleOutline(rect(1808, 386, 116, 80))),
   prop('Yellow pipes', rect(1032, 428, 82, 326), [[1032, 457], [1052, 440], [1068, 439], [1080, 428], [1098, 429], [1114, 443], [1105, 718], [1114, 735], [1100, 754], [1075, 754], [1042, 746], [1032, 732], [1040, 711]]),
   prop('CO2 tanks', rect(120, 415, 162, 355), [[115, 458], [137, 431], [168, 420], [180, 406], [199, 410], [206, 432], [229, 449], [248, 475], [248, 526], [267, 544], [282, 564], [255, 770], [119, 770], [115, 544]]),
-  prop('Grow beds', rect(402, 470, 260, 298), [[402, 462], [664, 462], [664, 772], [402, 772]]),
-  prop('Blue barrels', ellipse(204, 868, 106, 104), [[117, 819], [121, 795], [144, 775], [180, 771], [209, 782], [221, 822], [241, 810], [275, 816], [299, 839], [308, 919], [290, 945], [229, 950], [218, 968], [146, 968], [125, 952]]),
+  prop('Grow beds', rect(402, 470, 260, 298), rectangleOutline(rect(402, 462, 262, 310))),
+  prop('Water tank', rect(124, 800, 140, 165), rectangleOutline(rect(120, 765, 152, 202))),
   prop('Hydroponics monitor', rect(563, 812, 99, 155)),
   prop('Stacked crates', rect(1498, 631, 176, 168), [[1498, 631], [1677, 631], [1677, 799], [1498, 799]]),
-  prop('Cargo carton', rect(1674, 725, 108, 86)),
-  prop('Angled crate', rect(1825, 720, 121, 85), [[1825, 729], [1897, 692], [1948, 728], [1947, 782], [1877, 805], [1825, 784]]),
+  prop('Cargo carton', rect(1678, 716, 104, 93)),
   prop(
     'Cargo command terminal',
-    poly([[1824, 720], [1940, 692], [1940, 932], [1832, 932], [1796, 852], [1820, 816]]),
+    poly([[1832, 714], [1938, 714], [1938, 822], [1900, 852], [1830, 804], [1806, 775]]),
+    rectangleOutline(rect(1800, 678, 140, 176)),
   ),
   prop('Orange crate', rect(1303, 1068, 169, 113)),
   prop('Cargo tool bench', rect(1836, 957, 110, 225)),
   prop('Crew desk', rect(157, 1126, 139, 62), [[157, 1126], [172, 1126], [172, 1064], [278, 1064], [278, 1126], [296, 1126], [296, 1188], [157, 1188]]),
-  prop('Crew whiteboard', rect(478, 1115, 149, 183)),
-  prop('Amber bunk', rect(130, 1478, 175, 204)),
-  prop('Cyan bunk', rect(341, 1480, 180, 204)),
+  prop('Crew whiteboard', rect(448, 1518, 146, 164)),
+  prop('Amber bunk', rect(130, 1518, 128, 164)),
+  prop('Cyan bunk', rect(258, 1518, 128, 164)),
   prop('Exam table and benches', rect(905, 1287, 286, 279), [[905, 1311], [939, 1311], [939, 1287], [1135, 1287], [1135, 1311], [1191, 1311], [1191, 1566], [905, 1566]]),
   prop('Lab counter', rect(906, 1629, 325, 88)),
   prop('Rear lab cabinet', rect(812, 1757, 416, 65)),
@@ -150,7 +145,7 @@ const room = (name, x, y, w, h) => ({ name, x, y, width: w, height: h });
 
 const rooms = [
   room('Reactor Dome', 555, 10, 622, 460),
-  room('Comms Dome', 1278, 115, 685, 355),
+  room('Researcher Room', 1278, 115, 685, 355),
   room('Hydroponics Bay', 105, 445, 560, 520),
   room('Central Hub', 782, 700, 365, 455),
   room('Cargo Bay', 1290, 640, 670, 520),
@@ -175,7 +170,7 @@ const task = (id, name, cx, cy, promptText) => ({
 const tasks = [
   task(2, 'task_reactor', 784, 400, 'Patch Hull Breach'),
   task(3, 'task_hydro', 528, 880, 'Calibrate Grow Lamps'),
-  task(4, 'task_comms', 1616, 368, 'Reconnect Nav Relay'),
+  task(4, 'task_comms', 1616, 304, 'Reconnect Nav Relay'),
 ];
 
 const vent = (id, name, cx, cy) => ({
