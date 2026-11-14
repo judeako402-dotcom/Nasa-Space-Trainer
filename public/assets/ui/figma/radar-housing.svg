@@ -1,0 +1,9 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="432.064" height="418.304" viewBox="0 0 432.064 418.304" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Dark glass radar housing">
+<ellipse cx="216.032" cy="209.152" rx="216.032" ry="209.152" fill="#101D27" fill-opacity="0.95"/>
+<mask id="stroke0_0_271" fill="white">
+<path d="M432.064 209.152C432.064 324.663 335.343 418.304 216.032 418.304C96.7208 418.304 0 324.663 0 209.152C0 93.6405 96.7208 0 216.032 0C335.343 0 432.064 93.6405 432.064 209.152Z"/>
+</mask>
+<ellipse cx="216.032" cy="209.152" rx="216.032" ry="209.152" stroke-width="3" stroke="#527C8D" mask="url(#stroke0_0_271)"/>
+</g>
+</svg>

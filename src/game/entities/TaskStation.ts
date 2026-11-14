@@ -136,7 +136,7 @@ export class TaskStation implements Interactable {
   }
 
   private syncDepths(): void {
-    const y = this.position.y;
+    const y = this.position.y + 24;
     this.shadow.setDepth(y - 2);
     this.ring.setDepth(y - 1);
     this.sprite.setDepth(y);

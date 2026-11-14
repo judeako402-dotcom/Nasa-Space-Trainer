@@ -229,8 +229,8 @@ export const CORRIDORS: CorridorDef[] = [
 ];
 
 export const TASKS: TaskDef[] = [
-  { id: 'fuel-upper', name: 'Balance Solar-Battery Load', kind: 'fuel', roomId: 'reactor', x: 624, y: 272, system: 'power' },
-  { id: 'align-engine', name: 'Align Sun-Tracking Array', kind: 'calibrate', roomId: 'reactor', x: 672, y: 352, system: 'power' },
+  { id: 'fuel-upper', name: 'Balance Solar-Battery Load', kind: 'fuel', roomId: 'reactor', x: 688, y: 400, system: 'power' },
+  { id: 'align-engine', name: 'Align Sun-Tracking Array', kind: 'calibrate', roomId: 'reactor', x: 784, y: 400, system: 'power' },
   { id: 'wiring-cafeteria', name: 'Route Greenhouse Power', kind: 'wiring', roomId: 'cafeteria', x: 352, y: 800, system: 'power' },
   { id: 'garbage', name: 'Sort Galley Water Filters', kind: 'garbage', roomId: 'cafeteria', x: 480, y: 800, system: 'life' },
   { id: 'grow-light-balance', name: 'Balance Grow-Light Spectrum', kind: 'calibrate', roomId: 'cafeteria', x: 608, y: 800, system: 'farming' },

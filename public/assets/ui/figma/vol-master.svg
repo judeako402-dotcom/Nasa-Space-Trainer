@@ -1,0 +1,16 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="51.7" height="51.7" viewBox="0 0 51.7 51.7" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Luminous volume icon" filter="url(#filter0_d_0_8)">
+<path d="M30.2711 19.85C34.4816 23.85 34.4816 27.85 30.2711 31.85M32.7974 13.85C39.5342 21.85 39.5342 29.85 32.7974 37.85M13.85 21.35H18.9026L25.2184 15.35V36.35L18.9026 30.35H13.85V21.35Z" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" stroke="#E4F5FF"/>
+</g>
+<defs>
+<filter id="filter0_d_0_8" x="3.57628e-07" y="4.17233e-07" width="51.7" height="51.7" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+<feFlood flood-opacity="0" result="BackgroundImageFix"/>
+<feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+<feOffset/>
+<feGaussianBlur stdDeviation="6.5"/>
+<feColorMatrix type="matrix" values="0 0 0 0 0.8 0 0 0 0 0.937255 0 0 0 0 1 0 0 0 0.6 0"/>
+<feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_0_8"/>
+<feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_0_8" result="shape"/>
+</filter>
+</defs>
+</svg>

@@ -1,0 +1,16 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="45.7002" height="45.7" viewBox="0 0 45.7002 45.7" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Luminous color icon" filter="url(#filter0_d_0_10)">
+<path d="M18.2471 19.25H19.1265M23.5236 17.45H24.403M27.9206 21.05H28.8M22.6441 13.85C16.4882 13.85 13.85 18.35 13.85 22.85C13.85 28.25 19.1265 31.85 23.5236 31.85C27.0412 31.85 24.403 27.35 27.9206 26.45C32.3177 25.55 33.1971 20.15 29.6794 16.55C27.9206 14.75 25.2824 13.85 22.6441 13.85Z" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" stroke="#E2F4FF"/>
+</g>
+<defs>
+<filter id="filter0_d_0_10" x="3.57628e-07" y="3.57628e-07" width="45.7002" height="45.7" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+<feFlood flood-opacity="0" result="BackgroundImageFix"/>
+<feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+<feOffset/>
+<feGaussianBlur stdDeviation="6.5"/>
+<feColorMatrix type="matrix" values="0 0 0 0 0.831373 0 0 0 0 0.94902 0 0 0 0 1 0 0 0 0.5 0"/>
+<feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_0_10"/>
+<feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_0_10" result="shape"/>
+</filter>
+</defs>
+</svg>

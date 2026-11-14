@@ -36,7 +36,7 @@ export class Player {
   ) {
     this.sprite = scene.physics.add.sprite(x, y, textureKey);
     this.sprite.setCollideWorldBounds(true);
-    this.sprite.setDepth(y);
+    this.sprite.setDepth(y + 28);
     this.sprite.setDisplaySize(BODY_WIDTH, BODY_HEIGHT);
     this.baseScaleX = this.sprite.scaleX;
     this.baseScaleY = this.sprite.scaleY;
@@ -44,7 +44,7 @@ export class Player {
     this.syncBodyHitbox();
 
     this.shadow = scene.add.ellipse(x, y + 30, 46, 15, 0x000000, 0.35);
-    this.shadow.setDepth(y - 1);
+    this.shadow.setDepth(y + 27);
 
     this.nameLabel = scene.add
       .text(x, y - 52, name.toUpperCase(), {
@@ -56,7 +56,7 @@ export class Player {
         padding: { x: 5, y: 2 },
       })
       .setOrigin(0.5, 1)
-      .setDepth(y + 2);
+      .setDepth(y + 30);
   }
 
   get position(): { x: number; y: number } {
@@ -118,7 +118,7 @@ export class Player {
     this.pos.y = this.sprite.y;
 
     const y = this.sprite.y;
-    const depth = y + PLAYER_FEET.offsetY;
+    const depth = y + 28;
     const baseAlpha = !this.canMove ? 0.78 : 1;
     const ghostAlpha = (this.isGhost ? 0.55 : 1) * baseAlpha;
 

@@ -58,7 +58,7 @@ export class CrewNPC implements Interactable {
     this.baseScaleY = this.sprite.scaleY;
 
     this.shadow = scene.add.ellipse(x, y + 28, 42, 14, 0x000000, 0.3);
-    this.shadow.setDepth(y - 1);
+    this.shadow.setDepth(y + 27);
 
     this.nameLabel = scene.add
       .text(x, y - 48, options.label.toUpperCase(), {
@@ -70,7 +70,7 @@ export class CrewNPC implements Interactable {
         padding: { x: 4, y: 2 },
       })
       .setOrigin(0.5, 1)
-      .setDepth(y + 2);
+      .setDepth(y + 30);
 
     this.bobTween = scene.tweens.add({
       targets: this.sprite,
@@ -113,16 +113,17 @@ export class CrewNPC implements Interactable {
 
   preUpdate(): void {
     const { x, y } = this.sprite;
+    const feetY = y + 28;
     this.pos.x = x;
     this.pos.y = y;
-    this.sprite.setDepth(y);
+    this.sprite.setDepth(feetY);
     this.sprite.setFlipX(this.faceLeft);
     this.shadow.x = x;
-    this.shadow.y = y + 28;
-    this.shadow.setDepth(y - 1);
+    this.shadow.y = feetY;
+    this.shadow.setDepth(feetY - 1);
     this.nameLabel.x = x;
     this.nameLabel.y = y - 48;
-    this.nameLabel.setDepth(y + 2);
+    this.nameLabel.setDepth(feetY + 2);
     if (this.highlighted && this.enabled) {
       this.sprite.setTint(0xfff3a0);
     }

@@ -18,6 +18,7 @@ import { InputSystem } from './systems/InputSystem';
 import { InteractionSystem } from './systems/InteractionSystem';
 import { compressPath, findPath, gridFromTiles, hasTileClearance, tileAtPixel, type Tile, type WalkableGrid } from './utils/pathing';
 import { MapLoader, type LoadedMap } from './world/MapLoader';
+import { FIGMA_CONTACT_SHADOWS } from './world/figmaMapLayers';
 import { roomAt } from './world/Room';
 
 export type MapId = 'training' | 'surface';
@@ -150,7 +151,6 @@ export class StationScene extends Phaser.Scene {
   private readonly tiledInteraction = new InteractionSystem();
   private readonly tiledStations: TaskStation[] = [];
   private readonly tiledCrew: CrewNPC[] = [];
-  private readonly tiledDecor: Phaser.GameObjects.Image[] = [];
   private tiledRoute: { x: number; y: number }[] = [];
   private routeProgress?: { x: number; y: number; stalledMs: number };
 
@@ -175,8 +175,16 @@ export class StationScene extends Phaser.Scene {
     this.load.image('planet-moon', '/assets/placeholders/kenney/planets/planet05.png');
     this.load.image('planet-mars', '/assets/placeholders/kenney/planets/planet08.png');
 
-    // Merged station artwork + Tiled collision JSON
+    // Station artwork (Figma layered master + Tiled collision JSON)
     this.load.image(AssetKeys.mapImage, '/assets/maps/spudnaut-station.png');
+    this.load.image(AssetKeys.mapFloorImage, '/assets/maps/spudnaut-station-floor.png');
+    this.load.image(AssetKeys.mapObjectsImage, '/assets/maps/spudnaut-station-objects.png');
+    this.load.image(AssetKeys.figmaFloorPlan, '/assets/maps/figma/floor-plan.png');
+    this.load.image(AssetKeys.figmaObjectsSheet, '/assets/maps/figma/objects-sheet.png');
+    this.load.image(AssetKeys.figmaHydroponicsPlatform, '/assets/maps/figma/hydroponics-platform.png');
+    for (const shadow of FIGMA_CONTACT_SHADOWS) {
+      this.load.svg(shadow.key, shadow.path);
+    }
     this.load.tilemapTiledJSON(MapKeys.station, '/assets/maps/spudnaut-station.tmj');
   }
 
@@ -403,7 +411,6 @@ export class StationScene extends Phaser.Scene {
 
     this.spawnSurfaceStations();
     this.spawnSurfaceCrew();
-    this.spawnSurfaceDecor();
 
     this.lastEmittedRoom = '';
     this.promptKey = '';
@@ -419,8 +426,6 @@ export class StationScene extends Phaser.Scene {
     this.tiledStations.length = 0;
     for (const npc of this.tiledCrew) npc.destroy();
     this.tiledCrew.length = 0;
-    for (const prop of this.tiledDecor) prop.destroy();
-    this.tiledDecor.length = 0;
     if (this.tiledMap) {
       this.tiledMap.spawn.destroy();
       for (const vent of this.tiledMap.vents) vent.destroy();
@@ -520,29 +525,6 @@ export class StationScene extends Phaser.Scene {
       });
       this.tiledCrew.push(chip);
       this.tiledInteraction.register(chip);
-    }
-  }
-
-  private spawnSurfaceDecor(): void {
-    const props: { key: string; x: number; y: number }[] = [
-      { key: AssetKeys.propBarrel, x: 1060, y: 560 },
-      { key: AssetKeys.propCrate, x: 1100, y: 700 },
-      { key: AssetKeys.propPlant, x: 810, y: 760 },
-      { key: AssetKeys.propPlant, x: 1120, y: 930 },
-      { key: AssetKeys.propCrate, x: 1930, y: 1140 },
-      { key: AssetKeys.propBarrel, x: 1330, y: 700 },
-      { key: AssetKeys.propPlant, x: 620, y: 1080 },
-      { key: AssetKeys.propCrate, x: 700, y: 1180 },
-      { key: AssetKeys.propPlant, x: 1200, y: 1700 },
-      { key: AssetKeys.propBarrel, x: 1560, y: 1240 },
-      { key: AssetKeys.propCrate, x: 1540, y: 1860 },
-      { key: AssetKeys.propCrate, x: 1900, y: 440 },
-      { key: AssetKeys.propPlant, x: 620, y: 120 },
-    ];
-    for (const prop of props) {
-      const img = this.add.image(prop.x, prop.y, prop.key);
-      img.setDepth(prop.y);
-      this.tiledDecor.push(img);
     }
   }
 

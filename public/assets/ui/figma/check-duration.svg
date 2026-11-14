@@ -1,0 +1,16 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="47.7" height="47.7" viewBox="0 0 47.7 47.7" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Luminous duration icon" filter="url(#filter0_d_0_6)">
+<path d="M23.85 16.85V23.85L28.85 26.85M23.85 13.85C26.5022 13.85 29.0457 14.9036 30.9211 16.7789C32.7964 18.6543 33.85 21.1978 33.85 23.85C33.85 26.5022 32.7964 29.0457 30.9211 30.9211C29.0457 32.7964 26.5022 33.85 23.85 33.85C21.1978 33.85 18.6543 32.7964 16.7789 30.9211C14.9036 29.0457 13.85 26.5022 13.85 23.85C13.85 21.1978 14.9036 18.6543 16.7789 16.7789C18.6543 14.9036 21.1978 13.85 23.85 13.85Z" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" stroke="#E2F4FF"/>
+</g>
+<defs>
+<filter id="filter0_d_0_6" x="3.57628e-07" y="3.57628e-07" width="47.7" height="47.7" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+<feFlood flood-opacity="0" result="BackgroundImageFix"/>
+<feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+<feOffset/>
+<feGaussianBlur stdDeviation="6.5"/>
+<feColorMatrix type="matrix" values="0 0 0 0 0.831373 0 0 0 0 0.94902 0 0 0 0 1 0 0 0 0.5 0"/>
+<feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_0_6"/>
+<feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_0_6" result="shape"/>
+</filter>
+</defs>
+</svg>

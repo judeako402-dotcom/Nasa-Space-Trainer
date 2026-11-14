@@ -1,0 +1,16 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="49.7" height="49.7" viewBox="0 0 49.7 49.7" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Luminous science icon" filter="url(#filter0_d_0_4)">
+<path d="M22.1833 13.85H27.5167M23.5167 13.85V21.55L14.1833 33.65C13.2944 35.1167 14.1833 35.85 16.85 35.85H32.85C35.5167 35.85 36.4056 35.1167 35.5167 33.65L26.1833 21.55V13.85M18.1833 28.15H31.5167" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" stroke="#E2F4FF"/>
+</g>
+<defs>
+<filter id="filter0_d_0_4" x="3.57628e-07" y="3.57628e-07" width="49.7" height="49.7" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+<feFlood flood-opacity="0" result="BackgroundImageFix"/>
+<feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+<feOffset/>
+<feGaussianBlur stdDeviation="6.5"/>
+<feColorMatrix type="matrix" values="0 0 0 0 0.831373 0 0 0 0 0.94902 0 0 0 0 1 0 0 0 0.5 0"/>
+<feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_0_4"/>
+<feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_0_4" result="shape"/>
+</filter>
+</defs>
+</svg>

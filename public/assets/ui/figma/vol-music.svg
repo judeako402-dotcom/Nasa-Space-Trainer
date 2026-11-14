@@ -1,0 +1,16 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="51.7001" height="51.7" viewBox="0 0 51.7001 51.7" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Luminous music icon" filter="url(#filter0_d_0_6)">
+<path d="M21.85 35.0265V16.6735L37.85 13.85V32.2029M21.85 35.0265C21.85 35.7753 21.4286 36.4935 20.6784 37.023C19.9283 37.5525 18.9109 37.85 17.85 37.85C16.7891 37.85 15.7717 37.5525 15.0216 37.023C14.2714 36.4935 13.85 35.7753 13.85 35.0265C13.85 34.2776 14.2714 33.5595 15.0216 33.0299C15.7717 32.5004 16.7891 32.2029 17.85 32.2029C18.9109 32.2029 19.9283 32.5004 20.6784 33.0299C21.4286 33.5595 21.85 34.2776 21.85 35.0265ZM37.85 32.2029C37.85 32.9518 37.4286 33.67 36.6784 34.1995C35.9283 34.729 34.9109 35.0265 33.85 35.0265C32.7891 35.0265 31.7717 34.729 31.0216 34.1995C30.2714 33.67 29.85 32.9518 29.85 32.2029C29.85 31.4541 30.2714 30.7359 31.0216 30.2064C31.7717 29.6769 32.7891 29.3794 33.85 29.3794C34.9109 29.3794 35.9283 29.6769 36.6784 30.2064C37.4286 30.7359 37.85 31.4541 37.85 32.2029ZM21.85 20.9088L37.85 18.0853" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" stroke="#E4F5FF"/>
+</g>
+<defs>
+<filter id="filter0_d_0_6" x="3.57628e-07" y="2.98023e-07" width="51.7001" height="51.7" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+<feFlood flood-opacity="0" result="BackgroundImageFix"/>
+<feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+<feOffset/>
+<feGaussianBlur stdDeviation="6.5"/>
+<feColorMatrix type="matrix" values="0 0 0 0 0.8 0 0 0 0 0.937255 0 0 0 0 1 0 0 0 0.6 0"/>
+<feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_0_6"/>
+<feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_0_6" result="shape"/>
+</filter>
+</defs>
+</svg>

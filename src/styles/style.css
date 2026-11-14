@@ -8996,6 +8996,7 @@ body.reduce-motion *::after {
   .science-sources { padding: 12px; }
 }
 .opening-art { position: absolute; inset: 0; overflow: hidden; background: #030511; }
+.opening-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 .opening-art > img { width: 100%; height: 100%; object-fit: cover; opacity: .74; animation: opening-drift 11s ease-out both; }
 .opening-stars { position: absolute; inset: 0; pointer-events: none; background-image: radial-gradient(1px 1px at 12% 22%, #fff 60%, transparent), radial-gradient(1.5px 1.5px at 74% 18%, #cfe8ff 60%, transparent), radial-gradient(1px 1px at 40% 68%, #fff 60%, transparent), radial-gradient(1px 1px at 89% 74%, #d7e7ff 60%, transparent), radial-gradient(1px 1px at 62% 48%, #fff 60%, transparent); background-size: 190px 170px; animation: star-drift 40s linear infinite; }
 .opening-horizon { position: absolute; inset: 35% 0 0; background: linear-gradient(180deg, transparent 20%, rgba(3, 7, 17, .35) 70%, #030711 100%); }

@@ -1,0 +1,9 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="382.528" height="374.272" viewBox="0 0 382.528 374.272" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Luminous ring">
+<ellipse cx="191.264" cy="187.136" rx="191.264" ry="187.136" fill="#11232D" fill-opacity="0.9"/>
+<mask id="stroke0_0_209" fill="white">
+<path d="M382.528 187.136C382.528 290.488 296.896 374.272 191.264 374.272C85.6318 374.272 0 290.488 0 187.136C0 83.7836 85.6318 0 191.264 0C296.896 0 382.528 83.7836 382.528 187.136Z"/>
+</mask>
+<ellipse cx="191.264" cy="187.136" rx="191.264" ry="187.136" stroke-width="4" stroke="#A2E6EE" stroke-opacity="0.75" mask="url(#stroke0_0_209)"/>
+</g>
+</svg>

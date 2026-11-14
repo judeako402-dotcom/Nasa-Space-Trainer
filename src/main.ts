@@ -149,13 +149,55 @@ function renderConstellationIcon(id: ConstellationIconId, extraClass = ''): stri
   return `<svg class="${cls}" viewBox="0 0 36 36" aria-hidden="true">${CONSTELLATION_ICON_MARKUP[id]}</svg>`;
 }
 
-const GAME_MENU_BUTTONS: ReadonlyArray<{ action: string; label: string; key: string; icon: ConstellationIconId }> = [
-  { action: 'map', label: 'Map', key: 'M', icon: 'map' },
-  { action: 'tasks', label: 'Tasks', key: 'T', icon: 'tasks' },
-  { action: 'log', label: 'Log', key: '', icon: 'log' },
-  { action: 'help', label: 'Help', key: 'H', icon: 'help' },
-  { action: 'options', label: 'Settings', key: 'O', icon: 'options' },
-];
+type FigmaHudIconId =
+  | 'tasks' | 'status' | 'settings' | 'map' | 'use'
+  | 'menu-resume' | 'menu-play' | 'menu-settings'
+  | 'confirm-keep' | 'confirm-launch'
+  | 'back' | 'vol-master' | 'vol-music' | 'vol-sfx' | 'fps' | 'reset'
+  | 'loadout-class' | 'loadout-color' | 'loadout-difficulty' | 'loadout-next'
+  | 'habitat-science' | 'check-target' | 'check-gravity' | 'check-hazard'
+  | 'check-duration' | 'check-systems' | 'check-mode'
+  | 'location-pin' | 'telemetry-live';
+
+const FIGMA_ICON_PATHS: Record<FigmaHudIconId, string> = {
+  'tasks': '/assets/ui/figma/tasks-icon.svg',
+  'status': '/assets/ui/figma/status-icon.svg',
+  'settings': '/assets/ui/figma/settings-icon.svg',
+  'map': '/assets/ui/figma/map-icon.svg',
+  'use': '/assets/ui/figma/use-icon.svg',
+  'menu-resume': '/assets/ui/figma/menu-resume.svg',
+  'menu-play': '/assets/ui/figma/menu-play.svg',
+  'menu-settings': '/assets/ui/figma/menu-settings.svg',
+  'confirm-keep': '/assets/ui/figma/confirm-keep.svg',
+  'confirm-launch': '/assets/ui/figma/confirm-launch.svg',
+  'back': '/assets/ui/figma/back-icon.svg',
+  'vol-master': '/assets/ui/figma/vol-master.svg',
+  'vol-music': '/assets/ui/figma/vol-music.svg',
+  'vol-sfx': '/assets/ui/figma/vol-sfx.svg',
+  'fps': '/assets/ui/figma/fps-icon.svg',
+  'reset': '/assets/ui/figma/reset-icon.svg',
+  'loadout-class': '/assets/ui/figma/loadout-class.svg',
+  'loadout-color': '/assets/ui/figma/loadout-color.svg',
+  'loadout-difficulty': '/assets/ui/figma/loadout-difficulty.svg',
+  'loadout-next': '/assets/ui/figma/loadout-next.svg',
+  'habitat-science': '/assets/ui/figma/habitat-science.svg',
+  'check-target': '/assets/ui/figma/check-target.svg',
+  'check-gravity': '/assets/ui/figma/check-gravity.svg',
+  'check-hazard': '/assets/ui/figma/check-hazard.svg',
+  'check-duration': '/assets/ui/figma/check-duration.svg',
+  'check-systems': '/assets/ui/figma/check-systems.svg',
+  'check-mode': '/assets/ui/figma/check-mode.svg',
+  'location-pin': '/assets/ui/figma/location-pin.svg',
+  'telemetry-live': '/assets/ui/figma/telemetry-live-light.svg',
+};
+
+function renderFigmaIcon(id: FigmaHudIconId, extraClass = ''): string {
+  const cls = extraClass ? `figma-ui-icon ${extraClass}` : 'figma-ui-icon';
+  return `<img class="${cls}" src="${FIGMA_ICON_PATHS[id]}" alt="" aria-hidden="true" draggable="false" />`;
+}
+
+type HudDrawerMode = 'tasks' | 'status' | null;
+let activeHudDrawer: HudDrawerMode = null;
 
 app.innerHTML = `
   <div class="game-frame">
@@ -164,43 +206,131 @@ app.innerHTML = `
       <div id="game-canvas" class="game-canvas"></div>
       <div class="scene-vignette" aria-hidden="true"></div>
       <div class="hud mission-hud" id="hud" hidden>
-        <div class="mission-hud-head">
-          <div class="mission-shift-status">
-            <div class="trial-day-pill" id="trial-day">DAY 01 / 30</div>
-            <div class="day-clock" id="day-clock"></div>
-            <div class="task-meter" aria-live="polite">
-              <span class="task-meter-label" id="task-label">TASKS 0 / 3</span>
-              <span class="task-meter-track" aria-hidden="true"><span id="task-fill"></span></span>
+        <div class="hud-top-left">
+          <div class="hud-task-card" aria-live="polite">
+            <div class="hud-task-card-row">
+              <span class="hud-task-eyebrow">TOTAL TASKS COMPLETED</span>
+              <span class="hud-task-count" id="task-label">0 / 3</span>
             </div>
-            <span class="alive-pill" id="crew-progress">COOPERATIVE TRIAL</span>
-            <span class="spud-fps-badge" id="hud-fps" hidden>-- FPS</span>
+            <div class="hud-task-track" aria-hidden="true"><span id="task-fill"></span></div>
           </div>
-          <nav class="mission-toolbar" aria-label="In-game menus">
-            ${GAME_MENU_BUTTONS.map(({ action, label, key, icon }) => `
-              <button type="button" class="mission-menu-button" data-action="${action}" title="${label}${key ? ` (${key})` : ''}"
-                ${key ? `aria-keyshortcuts="${key}"` : ''} ${action === 'options' ? '' : 'aria-haspopup="dialog"'}>
-                ${renderConstellationIcon(icon, 'spud-hud-icon')}
-                <span>${label}</span>
-                ${key ? `<kbd aria-hidden="true">${key}</kbd>` : ''}
-              </button>
-            `).join('')}
-          </nav>
+          <div class="hud-shift-meta">
+            <span class="trial-day-pill" id="trial-day">DAY 01 / 30</span>
+            <span class="day-clock" id="day-clock"></span>
+            <span class="alive-pill" id="crew-progress">MISSED SHIFTS 0</span>
+          </div>
         </div>
-        <div class="hud-systems" id="hud-systems"></div>
+        <span class="spud-fps-badge hud-fps-pill" id="hud-fps" hidden>-- FPS</span>
+        <div class="hud-top-right">
+          <button type="button" class="hud-settings-btn" data-action="options" title="Settings (O)" aria-keyshortcuts="O">
+            ${renderFigmaIcon('settings', 'hud-glyph hud-glyph--settings')}
+            <span>SETTINGS</span>
+            <kbd aria-hidden="true">O</kbd>
+          </button>
+          <div class="hud-radar-column">
+            <div class="hud-radar" aria-label="Station Radar Minimap">
+              <img class="hud-radar-layer is-housing" src="/assets/ui/figma/radar-housing.svg" alt="" aria-hidden="true" draggable="false" />
+              <img class="hud-radar-layer is-luminous" src="/assets/ui/figma/radar-luminous-ring.svg" alt="" aria-hidden="true" draggable="false" />
+              <img class="hud-radar-layer is-bezel" src="/assets/ui/figma/radar-inner-bezel.svg" alt="" aria-hidden="true" draggable="false" />
+              <img class="hud-radar-layer is-ring-lg" src="/assets/ui/figma/radar-ring-lg.svg" alt="" aria-hidden="true" draggable="false" />
+              <img class="hud-radar-layer is-ring-md" src="/assets/ui/figma/radar-ring-md.svg" alt="" aria-hidden="true" draggable="false" />
+              <img class="hud-radar-layer is-ring-sm" src="/assets/ui/figma/radar-ring-sm.svg" alt="" aria-hidden="true" draggable="false" />
+              <img class="hud-radar-layer is-axes" src="/assets/ui/figma/radar-axes.svg" alt="" aria-hidden="true" draggable="false" />
+              <div class="hud-radar-viewport">
+                <img class="hud-radar-topology" src="/assets/ui/figma/radar-topology.svg" alt="" aria-hidden="true" draggable="false" />
+                <div class="hud-radar-pings" id="hud-radar-pings" aria-hidden="true"></div>
+                <span class="hud-radar-player" id="hud-radar-player" aria-hidden="true"></span>
+              </div>
+            </div>
+            <button type="button" class="hud-map-btn" data-action="map" title="Map (M)" aria-keyshortcuts="M" aria-haspopup="dialog">
+              ${renderFigmaIcon('map', 'hud-glyph hud-glyph--map')}
+              <span>MAP</span>
+              <kbd aria-hidden="true">M</kbd>
+            </button>
+          </div>
+        </div>
+        <nav class="hud-left-rail" aria-label="HUD Drawers">
+          <button type="button" class="hud-drawer-tab" data-action="tasks" aria-expanded="false" aria-controls="hud-drawer-panel" aria-keyshortcuts="T" title="Tasks (T)">
+            ${renderFigmaIcon('tasks', 'hud-glyph hud-glyph--rail')}
+            <span class="hud-tab-label">TASKS</span>
+            <kbd aria-hidden="true">T</kbd>
+          </button>
+          <button type="button" class="hud-drawer-tab" data-action="status" aria-expanded="false" aria-controls="hud-drawer-panel" aria-keyshortcuts="V Tab" title="Status (V / Tab)">
+            ${renderFigmaIcon('status', 'hud-glyph hud-glyph--rail')}
+            <span class="hud-tab-label">STATUS</span>
+            <kbd aria-hidden="true">V</kbd>
+          </button>
+        </nav>
+        <div class="hud-drawer-backdrop" id="hud-drawer-backdrop" hidden></div>
+        <aside class="hud-drawer-panel" id="hud-drawer-panel" hidden aria-label="Mission Drawer">
+          <div class="hud-drawer-view" data-drawer-view="tasks" hidden>
+            <header class="hud-drawer-head">
+              <div class="hud-drawer-title">
+                <span class="hud-drawer-bar" aria-hidden="true"></span>
+                <strong>TASKS</strong>
+                <span>CREW ASSIGNMENTS</span>
+              </div>
+              <div class="hud-drawer-head-right">
+                <span class="hud-drawer-status-summary" id="hud-tasks-summary"><i aria-hidden="true"></i>0 / 3 COMPLETE</span>
+                <button type="button" class="hud-drawer-close" data-drawer-close aria-label="Close Tasks drawer">×</button>
+              </div>
+            </header>
+            <div class="hud-drawer-divider" aria-hidden="true"></div>
+            <div class="hud-tasks-grid" id="hud-tasks-list"></div>
+            <footer class="hud-drawer-foot">
+              <span class="hud-drawer-crumb" id="hud-tasks-breadcrumb"><i aria-hidden="true"></i>CENTRAL HUB &nbsp;/&nbsp; CREW TASK LOG</span>
+              <span class="hud-drawer-foot-actions">
+                <button type="button" class="hud-drawer-link" data-action="log" title="Mission Log (L)">LOG <kbd aria-hidden="true">L</kbd></button>
+                <button type="button" class="hud-drawer-link" data-action="help" title="Controls & Help (H)">HELP <kbd aria-hidden="true">H</kbd></button>
+                <span class="hud-drawer-hint">SELECT TASKS TO COLLAPSE</span>
+              </span>
+            </footer>
+          </div>
+          <div class="hud-drawer-view" data-drawer-view="status" hidden>
+            <header class="hud-drawer-head">
+              <div class="hud-drawer-title">
+                <span class="hud-drawer-bar" aria-hidden="true"></span>
+                <strong>STATUS</strong>
+                <span>SHIP SYSTEMS</span>
+              </div>
+              <div class="hud-drawer-head-right">
+                <span class="hud-live-badge">${renderFigmaIcon('telemetry-live', 'hud-live-icon')}LIVE</span>
+                <button type="button" class="hud-drawer-close" data-drawer-close aria-label="Close Status drawer">×</button>
+              </div>
+            </header>
+            <div class="hud-drawer-divider" aria-hidden="true"></div>
+            <div class="hud-systems hud-status-grid" id="hud-systems"></div>
+            <footer class="hud-drawer-foot">
+              <span class="hud-drawer-crumb" id="hud-status-breadcrumb"><i aria-hidden="true"></i>CENTRAL HUB &nbsp;/&nbsp; SYSTEM TELEMETRY</span>
+              <span class="hud-drawer-hint">SELECT STATUS TO COLLAPSE</span>
+            </footer>
+          </div>
+        </aside>
         <div class="hud-bottom-left">
-          <span class="id-swatch" id="hud-color-dot"></span>
-          <div class="id-copy">
-            <strong id="hud-player-name">SPUDNAUT</strong>
-            <small id="hud-player-meta">SPECIALIST · DESTINATION</small>
-            <div class="spud-room-badge">
-              <span class="spud-room-dot" aria-hidden="true"></span>
-              <span id="hud-room">CENTRAL HUB</span>
+          <img class="hud-profile-plate" src="/assets/ui/figma/profile-plate.svg" alt="" aria-hidden="true" draggable="false" />
+          <div class="hud-profile-content">
+            <div class="hud-portrait-wrap">
+              <img class="hud-portrait-img" id="hud-portrait" src="/assets/ui/figma/player-portrait-default.png" alt="" draggable="false" />
+              <img class="hud-portrait-rim" src="/assets/ui/figma/portrait-rim.svg" alt="" aria-hidden="true" draggable="false" />
+              <span class="id-swatch hud-color-dot" id="hud-color-dot" aria-hidden="true"></span>
+            </div>
+            <div class="id-copy">
+              <strong id="hud-player-name">NOVA SPUD</strong>
+              <small class="hud-player-meta" id="hud-player-meta">SPECIALIST · DESTINATION</small>
+              <div class="spud-room-badge hud-room-row">
+                ${renderFigmaIcon('location-pin', 'hud-pin-icon')}
+                <span id="hud-room">CENTRAL HUB</span>
+              </div>
             </div>
           </div>
         </div>
-        <div class="action-cluster">
-          <span class="interaction-prompt" id="interaction-prompt" aria-live="polite"></span>
-          <button type="button" class="action-button use" data-action="use" aria-keyshortcuts="E" hidden>Interact <kbd aria-hidden="true">E</kbd></button>
+        <div class="action-cluster hud-bottom-right">
+          <span class="interaction-prompt" id="interaction-prompt" aria-live="polite" hidden></span>
+          <button type="button" class="action-button use is-inactive" data-action="use" aria-keyshortcuts="E" disabled>
+            ${renderFigmaIcon('use', 'hud-glyph hud-glyph--use')}
+            <span>USE</span>
+            <kbd aria-hidden="true">E</kbd>
+          </button>
         </div>
         <div class="toast" id="toast" role="status"></div>
       </div>
@@ -263,7 +393,7 @@ function renderConstellationBack(label = 'BACK', attrs = 'data-back', ariaLabel 
       ${attrs}
       aria-label="${escapeHtml(ariaLabel)}"
     >
-      ${renderConstellationIcon('back', 'spud-back-constellation')}
+      ${renderFigmaIcon('back', 'spud-back-constellation')}
       <span class="spud-menu-label">${escapeHtml(label)}</span>
     </button>
   `;
@@ -290,6 +420,13 @@ function renderConstellationAction(opts: {
   disabled?: boolean;
 }): string {
   const variantCls = opts.variant === 'primary' ? ' is-primary' : opts.variant === 'danger' ? ' is-danger' : '';
+  const iconHtml = opts.icon === 'forward'
+    ? renderFigmaIcon('loadout-next', 'spud-action-figma-icon')
+    : opts.icon === 'launch'
+      ? renderFigmaIcon('confirm-launch', 'spud-action-figma-icon is-tight')
+      : opts.icon === 'back'
+        ? renderFigmaIcon('back', 'spud-action-figma-icon')
+        : renderConstellationIcon(opts.icon);
   return `
     <button
       class="spud-constellation-action${variantCls}"
@@ -297,7 +434,7 @@ function renderConstellationAction(opts: {
       ${opts.attrs ?? ''}
       ${opts.disabled ? 'disabled' : ''}
     >
-      ${renderConstellationIcon(opts.icon)}
+      ${iconHtml}
       <span class="spud-menu-label">${escapeHtml(opts.label)}</span>
     </button>
   `;
@@ -333,7 +470,7 @@ function renderConstellationVideoScreen(opts: {
         ></video>
         <img class="menu-video-poster" src="/assets/main-menu-poster.jpg" alt="" aria-hidden="true" />
         <div class="menu-video-vignette" aria-hidden="true"></div>
-        ${opts.backAttrs === '' ? '' : renderConstellationBack(opts.backLabel ?? 'BACK', opts.backAttrs ?? 'data-back', opts.backAriaLabel ?? 'Back')}
+        ${opts.backAttrs === '' ? '' : renderConstellationBack(opts.backAttrs === 'data-habitat-back' ? 'LOADOUT' : opts.backAttrs === 'data-launch-back' ? 'HABITAT' : (opts.backLabel ?? 'BACK'), opts.backAttrs ?? 'data-back', opts.backAriaLabel ?? 'Back')}
         ${opts.utilityMarkup ? `<div class="spud-utility-bar">${opts.utilityMarkup}</div>` : ''}
         <div class="spud-constellation-stage">
           <div class="spud-constellation-body${narrowCls}">
@@ -374,6 +511,7 @@ function setScreen(screen: ScreenId, markup: string): void {
     }
   }
   currentScreen = screen;
+  setHudDrawer(null);
   stopLoop();
   window.clearTimeout(splashTimer);
   overlayRoot.replaceChildren();
@@ -396,10 +534,8 @@ function wakeStationGame(): void {
 function showSplash(): void {
   setScreen('splash', `
     <section class="screen-splash ${save.options.reducedMotion ? 'reduce-motion' : ''}" aria-label="Spudnaut opening cinematic">
-      <div class="opening-art" aria-hidden="true"><img class="opening-poster" src="/assets/loading.jpg" alt="" /><video class="opening-video" src="/assets/opening-cinematic.mp4" poster="/assets/loading.jpg" preload="auto" autoplay muted playsinline></video><div class="opening-stars"></div><div class="opening-horizon"></div></div>
-      <div class="opening-copy"><span>HEXABYTE INTERACTIVE · YEAR 3042</span><strong>THE GREAT STARCH MIGRATION</strong><small>Earth's future is out there.</small></div>
+      <div class="opening-art" aria-hidden="true"><video class="opening-video" src="/assets/opening-cinematic.mp4" preload="auto" autoplay muted playsinline></video></div>
       <div class="intro-accessibility">
-        <span>HEXABYTE INTERACTIVE · YEAR 3042</span>
         <button class="intro-skip" type="button">${renderConstellationIcon('skip')} <span>SKIP INTRO</span> <kbd>ENTER</kbd></button>
       </div>
     </section>
@@ -442,19 +578,19 @@ function showMenu(): void {
   const playActionMarkup = savedTrial
     ? `
             <button class="spud-menu-item" type="button" data-menu="resume" aria-label="Resume Mission ${badgeMain}">
-              ${renderConstellationIcon('forward')}
+              ${renderFigmaIcon('menu-resume', 'spud-figma-menu-icon')}
               <span class="spud-menu-label">RESUME</span><small class="spud-menu-tag">${badgeMain}</small>
             </button>
             <button class="spud-menu-item" type="button" data-menu="play" aria-label="New Mission Loadout and Setup">
-              ${renderConstellationIcon('play')}
+              ${renderFigmaIcon('menu-play', 'spud-figma-menu-icon')}
               <span class="spud-menu-label">PLAY</span><small class="spud-menu-tag">NEW TRIAL</small>
             </button>`
     : `
             <button class="spud-menu-item" type="button" data-menu="play" aria-label="Play Mission">
-              ${renderConstellationIcon('play')}
+              ${renderFigmaIcon('menu-play', 'spud-figma-menu-icon')}
               <span class="spud-menu-label">PLAY</span>
             </button>`;
-setScreen('menu', `
+  setScreen('menu', `
     <section class="screen-menu spud-video-menu ${save.options.reducedMotion ? 'reduce-motion' : ''}">
       <img class="menu-ambient-backdrop" src="/assets/main-menu-poster.jpg" alt="" aria-hidden="true" />
 
@@ -477,19 +613,14 @@ setScreen('menu', `
         <div class="spud-center-menu">
           <h1 class="spud-center-brand">
             <span class="spud-center-logo">SPUD<span class="spud-center-blade" aria-hidden="true"></span>NAUT</span>
-            <span class="spud-center-rule" aria-hidden="true"></span>
             <span class="spud-center-sub">THE GREAT STARCH MIGRATION</span>
           </h1>
 
           <nav class="spud-center-nav" aria-label="Spudnaut Main Menu">
             <span class="spud-menu-light" aria-hidden="true"></span>${playActionMarkup}
-            <button class="spud-menu-item" type="button" data-menu="training" aria-label="Cadet Training">
-              ${renderConstellationIcon('training')}
-              <span class="spud-menu-label">TRAINING</span>
-            </button>
             <button class="spud-menu-item" type="button" data-menu="options" aria-label="Game Settings">
-              ${renderConstellationIcon('options')}
-              <span class="spud-menu-label">OPTIONS</span>
+              ${renderFigmaIcon('menu-settings', 'spud-figma-menu-icon')}
+              <span class="spud-menu-label">SETTINGS</span>
             </button>
           </nav>
         </div>
@@ -615,8 +746,8 @@ function showStory(index: number): void {
     </div>
     <footer class="spud-constellation-actions">
       ${index > 0
-        ? renderConstellationAction({ icon: 'back', label: 'PREVIOUS LOG', attrs: `data-story-jump="${index - 1}"` })
-        : renderConstellationAction({ icon: 'back', label: 'MAIN MENU', attrs: 'data-story-back' })}
+      ? renderConstellationAction({ icon: 'back', label: 'PREVIOUS LOG', attrs: `data-story-jump="${index - 1}"` })
+      : renderConstellationAction({ icon: 'back', label: 'MAIN MENU', attrs: 'data-story-back' })}
       ${renderConstellationAction({
         icon: index === STORY_BEATS.length - 1 ? 'training' : 'forward',
         label: index === STORY_BEATS.length - 1 ? 'BOARD TRAINING DECK' : 'CONTINUE',
@@ -813,10 +944,12 @@ function onGameEvent(event: GameEvent): void {
     } else {
       mission.playerX = event.x;
       mission.playerY = event.y;
+      updateRadarMarker(event.x, event.y);
       if (mission.room !== event.room) {
         mission.room = event.room;
         const roomEl = document.querySelector<HTMLElement>('#hud-room');
         if (roomEl) roomEl.textContent = event.room.toUpperCase();
+        syncHudRoomText(event.room);
       }
     }
     return;
@@ -966,9 +1099,8 @@ function finishTraining(): void {
         ${renderConstellationTitle('TRAINING COMPLETE', 'training-complete-title', 'S.P.U.D.I.E. · TRAINING EVALUATION')}
         <div class="spud-orbital-seal">${escapeHtml(rank)}<small>RANK</small></div>
         <div class="spud-copy-block" style="text-align:center;">
-          <p>Four survival systems inspected. ${training.crew.length} crew conversation${training.crew.length === 1 ? '' : 's'} logged. ${
-            systemsDone ? 'Commander Russet has cleared you for the certification exam.' : 'Some checkpoints remain, but the exam console is unlocked for review.'
-          }</p>
+          <p>Four survival systems inspected. ${training.crew.length} crew conversation${training.crew.length === 1 ? '' : 's'} logged. ${systemsDone ? 'Commander Russet has cleared you for the certification exam.' : 'Some checkpoints remain, but the exam console is unlocked for review.'
+    }</p>
         </div>
         <div class="spud-telemetry-grid">
           <div class="spud-telemetry-cell">
@@ -1075,11 +1207,11 @@ function showDialogue(options: {
           <footer class="dialogue-footer">
             <span>${index + 1} / ${options.lines.length}</span>
             ${renderConstellationAction({
-              icon: index >= options.lines.length - 1 ? 'close' : 'forward',
-              label: index >= options.lines.length - 1 ? 'CLOSE' : 'NEXT',
-              attrs: 'data-dialogue-next',
-              variant: 'primary',
-            })}
+      icon: index >= options.lines.length - 1 ? 'close' : 'forward',
+      label: index >= options.lines.length - 1 ? 'CLOSE' : 'NEXT',
+      attrs: 'data-dialogue-next',
+      variant: 'primary',
+    })}
           </footer>
         </section>
       </div>
@@ -1158,6 +1290,7 @@ function openMissionTask(taskId: string): void {
   const task = taskById(taskId);
   if (!task || !mission.tasks.includes(task.id) || mission.completed.includes(task.id)) return;
   if (!isMissionActive() || mission.modalOpen) return;
+  setHudDrawer(null);
   pauseMissionForModal();
   openMinigameModal({
     eyebrow: `DAY ${missionDayNumber()} · ${getRoomName(task.roomId).toUpperCase()}`,
@@ -1195,11 +1328,11 @@ function showTaskResult(taskName: string, before: MissionMetrics): void {
         <div class="spud-telemetry-grid" style="display:flex;flex-wrap:wrap;gap:10px 18px;">${metricChips(changes)}</div>
         <footer class="spud-constellation-actions is-centered">
           ${renderConstellationAction({
-            icon: lastTask ? 'cert' : 'forward',
-            label: lastTask ? 'SEND EARTH REPORT' : 'CONTINUE SHIFT',
-            attrs: 'data-result-continue',
-            variant: 'primary',
-          })}
+    icon: lastTask ? 'cert' : 'forward',
+    label: lastTask ? 'SEND EARTH REPORT' : 'CONTINUE SHIFT',
+    attrs: 'data-result-continue',
+    variant: 'primary',
+  })}
         </footer>
       </section>
     </div>`;
@@ -1284,10 +1417,10 @@ function renderExamQuestion(): void {
   `;
   const bodyMarkup = `
     ${renderConstellationTitle(
-      `QUESTION ${String(exam.index + 1).padStart(2, '0')} OF ${String(exam.questions.length).padStart(2, '0')}`,
-      'exam-question-title',
-      `${question.topic} · SPUD CERTIFICATION`,
-    )}
+    `QUESTION ${String(exam.index + 1).padStart(2, '0')} OF ${String(exam.questions.length).padStart(2, '0')}`,
+    'exam-question-title',
+    `${question.topic} · SPUD CERTIFICATION`,
+  )}
     <div class="spud-copy-block">
       <p style="font-size:clamp(15px,1.5vw,18px);color:#ffffff;">${escapeHtml(question.prompt)}</p>
     </div>
@@ -1334,11 +1467,11 @@ function renderExamQuestion(): void {
     <footer class="spud-constellation-actions">
       ${renderConstellationAction({ icon: 'back', label: 'EXIT EXAM', attrs: 'data-exam-exit' })}
       ${renderConstellationAction({
-        icon: exam.submitted ? 'forward' : 'cert',
-        label: exam.submitted ? (exam.index + 1 === exam.questions.length ? 'SEE RESULT' : 'NEXT QUESTION') : 'SUBMIT ANSWER',
-        attrs: 'data-exam-submit',
-        variant: 'primary',
-      })}
+    icon: exam.submitted ? 'forward' : 'cert',
+    label: exam.submitted ? (exam.index + 1 === exam.questions.length ? 'SEE RESULT' : 'NEXT QUESTION') : 'SUBMIT ANSWER',
+    attrs: 'data-exam-submit',
+    variant: 'primary',
+  })}
     </footer>
   `;
 
@@ -1449,10 +1582,10 @@ function showRemedial(): void {
   if (!question) return showExamIntro();
   const bodyMarkup = `
     ${renderConstellationTitle(
-      `REVIEW: ${question.topic.toUpperCase()}`,
-      'remedial-title',
-      `REMEDIAL SPUD ACADEMY · ${remediationIndex + 1} / ${lessons.length}`,
-    )}
+    `REVIEW: ${question.topic.toUpperCase()}`,
+    'remedial-title',
+    `REMEDIAL SPUD ACADEMY · ${remediationIndex + 1} / ${lessons.length}`,
+  )}
     <div class="spud-copy-stack">
       <div class="spud-copy-block">
         <h2>FIELD PRINCIPLE</h2>
@@ -1562,6 +1695,11 @@ const VOLUME_CONTROLS: readonly VolumeControlSpec[] = [
 ];
 
 function renderOptionsContentMarkup(returnScreen: 'menu' | 'training' | 'mission', options: PlayerSave['options']): string {
+  const volumeIcons: Record<string, FigmaHudIconId> = {
+    master: 'vol-master',
+    music: 'vol-music',
+    sfx: 'vol-sfx',
+  };
   return `
     <button
       class="spud-menu-item spud-constellation-back"
@@ -1570,7 +1708,7 @@ function renderOptionsContentMarkup(returnScreen: 'menu' | 'training' | 'mission
       ${returnScreen === 'menu' ? '' : 'data-game-return'}
       aria-label="${returnScreen === 'menu' ? 'Back to Main Menu' : 'Return to Game'}"
     >
-      ${renderConstellationIcon('back', 'spud-back-constellation')}
+      ${renderFigmaIcon('back', 'spud-back-constellation')}
       <span class="spud-menu-label">BACK</span>
     </button>
 
@@ -1578,7 +1716,7 @@ function renderOptionsContentMarkup(returnScreen: 'menu' | 'training' | 'mission
       <header class="spud-options-header">
         <div class="spud-options-title-row">
           <span class="spud-constellation-rule" aria-hidden="true"></span>
-          <h1 id="options-window-title" tabindex="-1">OPTIONS</h1>
+          <h1 id="options-window-title" tabindex="-1">SETTINGS</h1>
           <span class="spud-constellation-rule is-right" aria-hidden="true"></span>
         </div>
       </header>
@@ -1588,12 +1726,12 @@ function renderOptionsContentMarkup(returnScreen: 'menu' | 'training' | 'mission
           <div class="spud-section-heading">VOLUME</div>
           <div class="spud-volume-list">
             ${VOLUME_CONTROLS.map(ctrl => {
-              const shown = ctrl.displayVal(options);
-              const val = ctrl.sliderVal(options);
-              const muted = ctrl.isMuted(options);
-              return `
+    const shown = ctrl.displayVal(options);
+    const val = ctrl.sliderVal(options);
+    const muted = ctrl.isMuted(options);
+    return `
                 <div class="spud-vol-row">
-                  <div class="spud-vol-icon-wrap">${renderConstellationIcon(ctrl.icon, 'spud-vol-icon')}</div>
+                  <div class="spud-vol-icon-wrap">${renderFigmaIcon(volumeIcons[ctrl.muteKey] ?? 'vol-sfx', 'spud-vol-icon')}</div>
                   <div class="spud-vol-main">
                     <div class="spud-vol-top">
                       <div class="spud-vol-copy">
@@ -1623,14 +1761,14 @@ function renderOptionsContentMarkup(returnScreen: 'menu' | 'training' | 'mission
                   </div>
                 </div>
               `;
-            }).join('')}
+  }).join('')}
           </div>
         </section>
 
         <section class="spud-display-section" aria-label="Telemetry Settings">
           <div class="spud-section-heading">DISPLAY</div>
           <div class="spud-toggle-row">
-            <div class="spud-vol-icon-wrap">${renderConstellationIcon('fps', 'spud-vol-icon')}</div>
+            <div class="spud-vol-icon-wrap">${renderFigmaIcon('fps', 'spud-vol-icon')}</div>
             <div class="spud-vol-copy">
               <label class="spud-vol-label" for="opt-show-fps">Show FPS</label>
               <small class="spud-vol-sub">Displays live frame rate during gameplay</small>
@@ -1659,7 +1797,7 @@ function renderOptionsContentMarkup(returnScreen: 'menu' | 'training' | 'mission
           </button>
         ` : ''}
         <button class="spud-menu-item spud-options-action is-reset" type="button" data-options-reset aria-label="Reset progress and settings">
-          ${renderConstellationIcon('reset', 'spud-reset-constellation')}
+          ${renderFigmaIcon('reset', 'spud-reset-constellation')}
           <span class="spud-menu-label">RESET</span>
         </button>
       </footer>
@@ -1668,6 +1806,7 @@ function renderOptionsContentMarkup(returnScreen: 'menu' | 'training' | 'mission
 }
 
 function showOptions(): void {
+  setHudDrawer(null);
   window.clearTimeout(optionsHideTimer);
   const options = save.options;
   if (typeof options.masterVolume !== 'number') options.masterVolume = 80;
@@ -1873,9 +2012,17 @@ function openConstellationConfirmDialog(opts: {
           <p id="confirm-modal-description">${escapeHtml(opts.description)}</p>
           ${opts.errorText ? `<p class="mission-abort-error" style="color:var(--spud-danger);" role="alert" hidden>${escapeHtml(opts.errorText)}</p>` : ''}
         </div>
-        <footer class="spud-constellation-actions">
-          ${renderConstellationAction({ icon: 'back', label: opts.cancelLabel, attrs: 'data-confirm-cancel autofocus' })}
-          ${renderConstellationAction({ icon: opts.confirmIcon, label: opts.confirmLabel, attrs: 'data-confirm-accept', variant: opts.confirmVariant ?? 'primary' })}
+        <footer class="spud-constellation-actions spud-confirm-stack">
+          <button class="spud-confirm-row is-keep" type="button" data-confirm-cancel autofocus>
+            ${renderFigmaIcon('confirm-keep', 'spud-confirm-icon')}
+            <span>${escapeHtml(opts.cancelLabel)}</span>
+          </button>
+          <button class="spud-confirm-row is-proceed${opts.confirmVariant === 'danger' ? ' is-danger' : ''}" type="button" data-confirm-accept>
+            ${opts.confirmIcon === 'launch'
+      ? renderFigmaIcon('confirm-launch', 'spud-confirm-icon is-tight')
+      : renderConstellationIcon(opts.confirmIcon, 'spud-confirm-icon')}
+            <span>${escapeHtml(opts.confirmLabel)}</span>
+          </button>
         </footer>
       </section>
     </dialog>
@@ -2238,25 +2385,25 @@ function showLobby(): void {
   const utilityMarkup = renderLoadoutUtilityToggles('data-lobby-randomize', 'lobby');
 
   const bodyMarkup = `
-    ${renderConstellationTitle('BUILD YOUR SPUDNAUT', 'lobby-title', 'MISSION SELECT · STEP 1 OF 2')}
-    <div class="spud-split-columns">
+    ${renderConstellationTitle('BUILD YOUR SPUDNAUT', 'lobby-title', 'MISSION SELECT / STEP 1 OF 2')}
+    <div class="spud-split-columns is-loadout">
       <div class="spud-copy-stack">
-        <div class="spud-constellation-heading" id="specialist-heading">SPECIALIST CLASS</div>
+        <div class="spud-constellation-heading" id="specialist-heading">${renderFigmaIcon('loadout-class', 'spud-heading-icon')}<span>SPECIALIST CLASS</span></div>
         ${renderSpecialistGrid(lobby.specialist)}
 
-        <div class="spud-constellation-heading" id="suit-color-heading">SUIT COLOR</div>
+        <div class="spud-constellation-heading" id="suit-color-heading">${renderFigmaIcon('loadout-color', 'spud-heading-icon')}<span>SUIT COLOR</span></div>
         ${renderSuitColorNodes(lobby.colorId)}
 
-        <div class="spud-constellation-heading" id="difficulty-heading">TRIAL DIFFICULTY</div>
+        <div class="spud-constellation-heading" id="difficulty-heading">${renderFigmaIcon('loadout-difficulty', 'spud-heading-icon')}<span>TRIAL DIFFICULTY</span></div>
         ${renderDifficultyStrip(save.options.difficulty)}
       </div>
 
       <div class="spud-vertical-rule" aria-hidden="true"></div>
 
-      <aside class="spud-copy-stack loadout-inspector" aria-label="Crew loadout preview">
+      <aside class="spud-copy-stack loadout-inspector spud-inspector-card" aria-label="Crew loadout preview">
         <div class="spud-copy-block">
           <label class="spud-constellation-heading" for="lobby-name">SPUDNAUT CALLSIGN</label>
-          <input class="spud-line-input" id="lobby-name" maxlength="18" value="${escapeHtml(lobby.playerName)}" />
+          <input class="spud-line-input is-boxed" id="lobby-name" maxlength="18" value="${escapeHtml(lobby.playerName)}" />
         </div>
         <div class="loadout-details spud-copy-stack">
           ${renderLobbyInspectorDetails()}
@@ -2264,8 +2411,7 @@ function showLobby(): void {
       </aside>
     </div>
 
-    <footer class="spud-constellation-actions">
-      ${renderConstellationAction({ icon: 'back', label: 'MAIN MENU', attrs: 'data-lobby-back' })}
+    <footer class="spud-constellation-actions is-end-only">
       ${renderConstellationAction({ icon: 'forward', label: 'CHOOSE HABITAT', attrs: 'data-lobby-next', variant: 'primary' })}
     </footer>
   `;
@@ -2273,7 +2419,7 @@ function showLobby(): void {
   setScreen('lobby', renderConstellationVideoScreen({
     ariaLabel: 'Build Your Spudnaut',
     bodyMarkup,
-    backLabel: 'BACK',
+    backLabel: 'MAIN MENU',
     backAttrs: 'data-lobby-back',
     backAriaLabel: 'Back to Main Menu',
     utilityMarkup,
@@ -2409,15 +2555,15 @@ function showResumeStaging(): void {
         </div>
         <div class="spud-stat-bars">
           ${metricOrder.map(metric => {
-            const val = Math.round(saved.metrics[metric]);
-            return `
+    const val = Math.round(saved.metrics[metric]);
+    return `
               <div class="spud-stat-row">
                 <span>${METRIC_LABELS[metric].split(' ')[0]!.toUpperCase()}</span>
                 <div class="spud-stat-track"><div class="spud-stat-fill" style="width:${Math.min(100, Math.max(0, val))}%"></div></div>
                 <b>${val}%</b>
               </div>
             `;
-          }).join('')}
+  }).join('')}
         </div>
       </aside>
     </div>
@@ -2552,17 +2698,20 @@ function renderHabitatBrief(): string {
   const destination = destinationById(lobby.destination);
   const brief = scienceBrief(destination.id);
   return `
-    <div class="spud-copy-block">
-      <h2>FIELD SCIENCE · ${escapeHtml(destination.name.toUpperCase())}</h2>
+    <div class="spud-copy-block spud-habitat-brief-card">
+      <div class="spud-constellation-heading">${renderFigmaIcon('habitat-science', 'spud-heading-icon')}<span>FIELD SCIENCE</span></div>
+      <h2>${escapeHtml(destination.name)}</h2>
       <p>${escapeHtml(brief.fact)}</p>
-      <small>${escapeHtml(brief.operationsNote)}</small>
+      <small class="spud-brief-ops">${escapeHtml(brief.operationsNote)}</small>
+      <div class="spud-brief-rule" aria-hidden="true"></div>
+      <div class="spud-brief-meta">${escapeHtml(destination.gravity.toUpperCase())} &nbsp;/&nbsp; ${escapeHtml(destination.hazard.toUpperCase())}</div>
     </div>
   `;
 }
 
 function showHabitat(): void {
   const bodyMarkup = `
-    ${renderConstellationTitle('CHOOSE YOUR TARGET HABITAT', 'habitat-title', 'MISSION SELECT · STEP 2 OF 2')}
+    ${renderConstellationTitle('CHOOSE YOUR TARGET HABITAT', 'habitat-title', 'MISSION SELECT / STEP 2 OF 2')}
     <div class="spud-split-columns">
       <div class="spud-habitat-grid" role="group" aria-label="Target habitat">
         ${DESTINATIONS.map(destination => `
@@ -2573,11 +2722,14 @@ function showHabitat(): void {
             aria-pressed="${lobby.destination === destination.id}"
             style="--habitat-accent:${destination.accent}"
           >
+            <span class="spud-habitat-selected-badge">SELECTED</span>
             <span class="spud-habitat-orb">
               <img src="/assets/habitats/${destination.id}.png" alt="" width="1254" height="1254" />
+              <img class="spud-orbit-ring" src="/assets/ui/figma/orbit-${destination.id}.svg" alt="" aria-hidden="true" />
             </span>
-            <strong>${escapeHtml(destination.name)}</strong>
-            <small>${escapeHtml(destination.gravity)} · ${escapeHtml(destination.hazard)}</small>
+            <strong>${escapeHtml(destination.name.toUpperCase())}</strong>
+            <span class="spud-habitat-g">${escapeHtml(destination.gravity)}</span>
+            <small>${escapeHtml(destination.hazard)}</small>
           </button>
         `).join('')}
       </div>
@@ -2587,7 +2739,6 @@ function showHabitat(): void {
       </aside>
     </div>
     <footer class="spud-constellation-actions">
-      ${renderConstellationAction({ icon: 'back', label: 'BACK TO CLASS', attrs: 'data-habitat-back' })}
       ${renderConstellationAction({ icon: 'forward', label: 'CONTINUE TO LAUNCH', attrs: 'data-habitat-next', variant: 'primary' })}
     </footer>
   `;
@@ -2628,49 +2779,49 @@ function showLaunch(): void {
   const name = lobby.playerName.trim() || 'Spudnaut';
   const color = getColor(lobby.colorId);
   const bodyMarkup = `
-    ${renderConstellationTitle('FINAL FLIGHT CHECK', 'launch-title', 'SPUDNAUT SPACE AGENCY · LAUNCH CLEARANCE')}
-    <div class="spud-loadout-portrait" style="--choice-accent:${color.css};justify-content:center;">
+    ${renderConstellationTitle('FINAL FLIGHT CHECK', 'launch-title', 'SPUDNAUT SPACE AGENCY / LAUNCH CLEARANCE')}
+    <div class="spud-loadout-portrait spud-launch-manifest" style="--choice-accent:${color.css};">
       <div class="spud-portrait-ring"><img src="${specialist.art}" alt="" /></div>
       <div class="spud-loadout-meta">
         <span>CREW MANIFEST LOCKED</span>
         <h3>${escapeHtml(name)} · ${escapeHtml(specialist.name)}</h3>
         <small><i aria-hidden="true"></i>${escapeHtml(specialist.perk)}</small>
       </div>
+      <div class="spud-manifest-right">BEGIN TRIAL &nbsp;/&nbsp; DAY 01</div>
     </div>
     <div class="spud-telemetry-grid">
       <div class="spud-telemetry-cell">
-        <span>TARGET</span>
+        <span class="spud-cell-head">${renderFigmaIcon('check-target', 'spud-cell-icon')}<span>TARGET</span></span>
         <strong>${escapeHtml(destination.name)}</strong>
         <small>SURFACE HABITAT</small>
       </div>
       <div class="spud-telemetry-cell">
-        <span>GRAVITY</span>
+        <span class="spud-cell-head">${renderFigmaIcon('check-gravity', 'spud-cell-icon')}<span>GRAVITY</span></span>
         <strong>${escapeHtml(destination.gravity)}</strong>
         <small>FIELD ENV</small>
       </div>
       <div class="spud-telemetry-cell">
-        <span>HAZARD</span>
+        <span class="spud-cell-head">${renderFigmaIcon('check-hazard', 'spud-cell-icon')}<span>HAZARD</span></span>
         <strong>${escapeHtml(destination.hazard)}</strong>
         <small>PRIMARY RISK</small>
       </div>
       <div class="spud-telemetry-cell">
-        <span>DURATION</span>
+        <span class="spud-cell-head">${renderFigmaIcon('check-duration', 'spud-cell-icon')}<span>DURATION</span></span>
         <strong>${TRIAL_MAX_DAY} DAYS</strong>
         <small>CO-OP TRIAL</small>
       </div>
       <div class="spud-telemetry-cell">
-        <span>SYSTEMS</span>
+        <span class="spud-cell-head">${renderFigmaIcon('check-systems', 'spud-cell-icon')}<span>SYSTEMS</span></span>
         <strong>4 CORE</strong>
         <small>ALL MUST PASS</small>
       </div>
       <div class="spud-telemetry-cell">
-        <span>MODE</span>
+        <span class="spud-cell-head">${renderFigmaIcon('check-mode', 'spud-cell-icon')}<span>MODE</span></span>
         <strong>${escapeHtml(DIFFICULTY_INFO[save.options.difficulty].name)}</strong>
         <small>DIFFICULTY</small>
       </div>
     </div>
     <footer class="spud-constellation-actions">
-      ${renderConstellationAction({ icon: 'back', label: 'BACK TO HABITAT', attrs: 'data-launch-back' })}
       ${renderConstellationAction({ icon: 'launch', label: 'BEGIN TRIAL · DAY 01', attrs: 'data-launch-begin', variant: 'primary' })}
     </footer>
   `;
@@ -2784,6 +2935,7 @@ function dayDurationMs(penaltyDay = mission.penaltyDay): number {
 }
 
 function showMissionShell(): void {
+  setHudDrawer(null);
   currentScreen = 'mission';
   stopMusic();
   stopLoop();
@@ -3144,10 +3296,10 @@ function renderReport(reason: string): void {
     <section class="spud-canvas-overlay earth-report-full ${isFinalDay ? (verdict.passed ? 'final-review passed' : 'final-review below-target') : ''} ${save.options.reducedMotion ? 'reduce-motion' : ''}" aria-labelledby="report-screen-title">
       <div class="spud-canvas-inner">
         ${renderConstellationTitle(
-          isFinalDay ? 'FINAL HABITAT REVIEW' : 'SHIFT TELEMETRY REPORT',
-          'report-screen-title',
-          `EARTH PROGRESS REPORT · DAY ${String(report.day).padStart(2, '0')} OF ${TRIAL_MAX_DAY + PENALTY_MAX_DAY} · ASSIGNMENTS ${report.completed} / ${report.assigned}`,
-        )}
+    isFinalDay ? 'FINAL HABITAT REVIEW' : 'SHIFT TELEMETRY REPORT',
+    'report-screen-title',
+    `EARTH PROGRESS REPORT · DAY ${String(report.day).padStart(2, '0')} OF ${TRIAL_MAX_DAY + PENALTY_MAX_DAY} · ASSIGNMENTS ${report.completed} / ${report.assigned}`,
+  )}
 
         <div class="spud-split-columns">
           <div class="spud-copy-stack">
@@ -3157,9 +3309,9 @@ function renderReport(reason: string): void {
             </div>
             <div class="spud-slot-list">
               ${mission.tasks.map(id => {
-                const task = taskById(id);
-                const done = mission.completed.includes(id);
-                return `
+    const task = taskById(id);
+    const done = mission.completed.includes(id);
+    return `
                   <div class="spud-slot-row report-task ${done ? 'selected' : ''}">
                     <div>
                       <strong>${escapeHtml(task?.name ?? id)}</strong>
@@ -3168,7 +3320,7 @@ function renderReport(reason: string): void {
                     <span class="spud-status-tag ${done ? 'is-done' : 'is-urgent'}">${done ? 'DONE ✓' : 'MISSED'}</span>
                   </div>
                 `;
-              }).join('')}
+  }).join('')}
             </div>
             <div class="spud-meta-inline">
               <span>MISSED SHIFT DAYS: ${mission.missedDays}</span>
@@ -3182,20 +3334,20 @@ function renderReport(reason: string): void {
             <div class="spud-constellation-heading">HABITAT GAUGES &amp; SHIFT NET DELTA</div>
             <div class="spud-stat-bars">
               ${metricOrder.map(metric => {
-                const value = Math.round(mission.metrics[metric]);
-                const prevVal = Math.round(baselineMetrics[metric]);
-                const delta = value - prevVal;
-                const deltaBadge = delta > 0 ? `+${delta} ▲` : delta < 0 ? `${delta} ▼` : '0';
-                const deltaColor = delta > 0 ? 'var(--spud-gain)' : delta < 0 ? 'var(--spud-danger)' : 'var(--spud-ink-muted)';
-                const target = PASS_THRESHOLDS[metric as keyof typeof PASS_THRESHOLDS];
-                return `
+    const value = Math.round(mission.metrics[metric]);
+    const prevVal = Math.round(baselineMetrics[metric]);
+    const delta = value - prevVal;
+    const deltaBadge = delta > 0 ? `+${delta} ▲` : delta < 0 ? `${delta} ▼` : '0';
+    const deltaColor = delta > 0 ? 'var(--spud-gain)' : delta < 0 ? 'var(--spud-danger)' : 'var(--spud-ink-muted)';
+    const target = PASS_THRESHOLDS[metric as keyof typeof PASS_THRESHOLDS];
+    return `
                   <div class="spud-stat-row" style="grid-template-columns:86px 1fr 94px;">
                     <span>${METRIC_LABELS[metric].split(' ')[0]!.toUpperCase()}</span>
                     <div class="spud-stat-track"><div class="spud-stat-fill" style="width:${Math.min(100, Math.max(0, value))}%"></div></div>
                     <b style="text-align:right;">${value} <small style="color:${deltaColor};font-weight:600;">(${deltaBadge})</small> <small style="color:var(--spud-ink-muted);font-weight:500;">/ ${typeof target === 'number' ? Math.round(target) : '—'}</small></b>
                   </div>
                 `;
-              }).join('')}
+  }).join('')}
             </div>
             ${isFinalDay ? `
               <div class="spud-constellation-divider" aria-hidden="true"></div>
@@ -3217,11 +3369,11 @@ function renderReport(reason: string): void {
         <footer class="spud-constellation-actions">
           ${renderConstellationAction({ icon: 'back', label: 'SAVE & EXIT', attrs: 'data-report-save' })}
           ${renderConstellationAction({
-            icon: isFinalDay && (verdict.passed || mission.penaltyDay >= PENALTY_MAX_DAY) ? 'cert' : 'forward',
-            label: isFinalDay && (verdict.passed || mission.penaltyDay >= PENALTY_MAX_DAY) ? 'SEE FINAL RESULT' : 'NEXT SHIFT',
-            attrs: 'data-report-next',
-            variant: 'primary',
-          })}
+    icon: isFinalDay && (verdict.passed || mission.penaltyDay >= PENALTY_MAX_DAY) ? 'cert' : 'forward',
+    label: isFinalDay && (verdict.passed || mission.penaltyDay >= PENALTY_MAX_DAY) ? 'SEE FINAL RESULT' : 'NEXT SHIFT',
+    attrs: 'data-report-next',
+    variant: 'primary',
+  })}
         </footer>
       </div>
     </section>
@@ -3269,10 +3421,10 @@ function completeMission(): void {
     <section class="spud-canvas-overlay mission-end ${save.options.reducedMotion ? 'reduce-motion' : ''}" aria-labelledby="mission-end-title">
       <div class="spud-canvas-inner">
         ${renderConstellationTitle(
-          passed ? 'HABITAT CERTIFIED ★' : 'TRIAL BELOW TARGET',
-          'mission-end-title',
-          `SPUDNAUT SPACE AGENCY · FINAL EVALUATION · ${passed ? 'CERTIFIED' : 'REVIEW LOGGED'}`,
-        )}
+    passed ? 'HABITAT CERTIFIED ★' : 'TRIAL BELOW TARGET',
+    'mission-end-title',
+    `SPUDNAUT SPACE AGENCY · FINAL EVALUATION · ${passed ? 'CERTIFIED' : 'REVIEW LOGGED'}`,
+  )}
         <div class="spud-split-columns">
           <div class="spud-copy-stack">
             <div class="spud-loadout-portrait" style="--choice-accent:${color.css}">
@@ -3286,8 +3438,8 @@ function completeMission(): void {
             <div class="spud-copy-block">
               <p>
                 ${passed
-                  ? `${escapeHtml(save.name)} and the crew held all four systems together for ${TRIAL_MAX_DAY + mission.penaltyDay} days on ${escapeHtml(destination.name)}. Earth approves the habitat design.`
-                  : `${escapeHtml(save.name)} completed the trial on ${escapeHtml(destination.name)}, but the final metrics fell below certification targets. Earth has logged the telemetry for the next crew.`}
+      ? `${escapeHtml(save.name)} and the crew held all four systems together for ${TRIAL_MAX_DAY + mission.penaltyDay} days on ${escapeHtml(destination.name)}. Earth approves the habitat design.`
+      : `${escapeHtml(save.name)} completed the trial on ${escapeHtml(destination.name)}, but the final metrics fell below certification targets. Earth has logged the telemetry for the next crew.`}
               </p>
             </div>
             <div class="spud-telemetry-grid is-four">
@@ -3430,14 +3582,115 @@ function saveTrialProgress(): void {
   persistSave(save);
 }
 
+const FIGMA_SYSTEM_ACCENTS: Record<string, string> = {
+  power: '#e8bc69',
+  life: '#8cdae9',
+  farming: '#b7d47d',
+  shielding: '#c3a6e8',
+};
+
+const DONE_SUMMARY_BY_SYSTEM: Record<string, string> = {
+  electrical: 'Power routing restored.',
+  'life support': 'Oxygen and water checks complete.',
+  farm: 'Starch harvest collected.',
+};
+
+function syncHudRoomText(room: string): void {
+  const upper = (room || 'Central Hub').toUpperCase();
+  const roomEl = document.querySelector<HTMLElement>('#hud-room');
+  if (roomEl) roomEl.textContent = upper;
+  const tasksCrumb = document.querySelector<HTMLElement>('#hud-tasks-breadcrumb');
+  if (tasksCrumb) tasksCrumb.innerHTML = `<i aria-hidden="true"></i>${escapeHtml(upper)} &nbsp;/&nbsp; CREW TASK LOG`;
+  const statusCrumb = document.querySelector<HTMLElement>('#hud-status-breadcrumb');
+  if (statusCrumb) statusCrumb.innerHTML = `<i aria-hidden="true"></i>${escapeHtml(upper)} &nbsp;/&nbsp; SYSTEM TELEMETRY`;
+}
+
+function setHudDrawer(mode: HudDrawerMode): void {
+  activeHudDrawer = mode;
+  const panel = document.querySelector<HTMLElement>('#hud-drawer-panel');
+  const backdrop = document.querySelector<HTMLElement>('#hud-drawer-backdrop');
+  document.querySelectorAll<HTMLButtonElement>('.hud-drawer-tab').forEach(tab => {
+    const active = tab.dataset.action === mode;
+    tab.classList.toggle('is-active', active);
+    tab.setAttribute('aria-expanded', String(active));
+  });
+  document.querySelectorAll<HTMLElement>('[data-drawer-view]').forEach(view => {
+    view.hidden = view.dataset.drawerView !== mode;
+  });
+  if (panel) panel.hidden = mode === null;
+  if (backdrop) backdrop.hidden = mode === null;
+  if (mode !== null) syncHudRoomText(mission.room || 'Central Hub');
+}
+
+function updateRadarMarker(x = mission.playerX, y = mission.playerY): void {
+  const playerDot = document.querySelector<HTMLElement>('#hud-radar-player');
+  const map = activeMap();
+  if (!playerDot || !map.width || !map.height) return;
+  const pctX = Math.max(0, Math.min(100, (x / map.width) * 100));
+  const pctY = Math.max(0, Math.min(100, (y / map.height) * 100));
+  playerDot.style.left = `${pctX}%`;
+  playerDot.style.top = `${pctY}%`;
+  playerDot.style.setProperty('--player-color', getColor(save.colorId).css);
+}
+
+function updateRadarPings(): void {
+  const pingsEl = document.querySelector<HTMLElement>('#hud-radar-pings');
+  const map = activeMap();
+  if (!pingsEl || !map.width || !map.height) return;
+  pingsEl.innerHTML = map.interactions
+    .filter(item => mission.tasks.includes(item.id))
+    .map(item => {
+      const done = mission.completed.includes(item.id);
+      const pctX = Math.max(0, Math.min(100, (item.x / map.width) * 100));
+      const pctY = Math.max(0, Math.min(100, (item.y / map.height) * 100));
+      return `<span class="hud-radar-ping ${done ? 'is-done' : ''}" style="left:${pctX}%;top:${pctY}%;"></span>`;
+    })
+    .join('');
+}
+
+function tasksDrawerMarkup(): string {
+  if (!mission.tasks.length) {
+    return '<div class="hud-task-empty">Plan today\'s shift to receive crew assignments.</div>';
+  }
+  return mission.tasks.map((id, index) => {
+    const task = taskById(id);
+    if (!task) return '';
+    const offer = assignmentOffer(task);
+    const done = mission.completed.includes(id);
+    const num = String(index + 1).padStart(2, '0');
+    const category = escapeHtml(offer.system.toUpperCase());
+    const summary = done
+      ? (DONE_SUMMARY_BY_SYSTEM[offer.system.toLowerCase()] ?? `${offer.system} check complete.`)
+      : offer.blurb;
+    return `
+      <button
+        type="button"
+        class="hud-task-card-item ${done ? 'is-done' : 'is-pending'}"
+        ${done ? 'disabled' : `data-drawer-walk-task="${escapeHtml(id)}" title="Auto-pilot to ${escapeHtml(getRoomName(task.roomId))}"`}
+      >
+        <span class="hud-task-item-kicker">${num} &nbsp; ${category}</span>
+        <strong class="hud-task-item-title">${escapeHtml(task.name)}</strong>
+        <small class="hud-task-item-desc">${escapeHtml(summary)}</small>
+        <span class="hud-task-item-status">
+          ${done
+        ? '<i class="hud-task-check" aria-hidden="true">✓</i><span>COMPLETED</span>'
+        : `<i class="hud-task-route-dot" aria-hidden="true"></i><span>ROUTE · ${escapeHtml(getRoomName(task.roomId).toUpperCase())}</span>`}
+        </span>
+      </button>
+    `;
+  }).join('');
+}
+
 function systemsMarkup(): string {
   return SYSTEMS.map(system => {
     const value = systemHealth(mission.metrics, system.id);
+    const accent = FIGMA_SYSTEM_ACCENTS[system.id] ?? system.accent;
     const detail = system.metrics.map(metric => `${METRIC_LABELS[metric]} ${Math.round(mission.metrics[metric])}`).join(' · ');
-    return `<div class="system-bar" style="--accent:${system.accent}">
-      <div style="display:flex;justify-content:space-between;align-items:center;"><span>${system.short}</span><b>${value}</b></div>
-      <div class="system-bar-track"><div class="system-bar-fill" style="width:${value}%;background:linear-gradient(90deg,${system.accent},rgba(255,255,255,0.7));"></div></div>
-      <small>${detail}</small>
+    return `<div class="system-bar hud-status-card" style="--accent:${accent}">
+      <div class="hud-status-card-head"><span class="hud-status-bar-tag" aria-hidden="true"></span><span>${system.short}</span></div>
+      <div class="hud-status-card-value"><b>${value}</b><small>/ 100</small></div>
+      <div class="system-bar-track"><div class="system-bar-fill" style="width:${value}%;background:${accent};"></div></div>
+      <small class="hud-status-card-detail">${detail}</small>
     </div>`;
   }).join('');
 }
@@ -3447,13 +3700,23 @@ function updateHUD(): void {
   const dayPill = document.querySelector<HTMLDivElement>('#trial-day');
   if (dayPill) dayPill.textContent = trialDayLabel(mission);
   const taskLabel = document.querySelector<HTMLSpanElement>('#task-label');
-  const taskStatus = mission.tasks.length ? `TASKS ${mission.completed.length} / ${mission.tasks.length}` : 'PLANNING';
+  const taskStatus = mission.tasks.length ? `${mission.completed.length} / ${mission.tasks.length}` : 'PLANNING';
   if (taskLabel && taskLabel.textContent !== taskStatus) taskLabel.textContent = taskStatus;
   const fill = document.querySelector<HTMLSpanElement>('#task-fill');
   if (fill) {
     const pct = mission.tasks.length ? (mission.completed.length / mission.tasks.length) * 100 : 0;
     fill.style.width = `${pct}%`;
   }
+  const tasksSummary = document.querySelector<HTMLElement>('#hud-tasks-summary');
+  if (tasksSummary) {
+    const allDone = mission.tasks.length > 0 && mission.completed.length >= mission.tasks.length;
+    tasksSummary.classList.toggle('is-complete', allDone);
+    tasksSummary.innerHTML = `<i aria-hidden="true"></i>${mission.tasks.length ? `${mission.completed.length} / ${mission.tasks.length} COMPLETE` : 'PLANNING SHIFT'}`;
+  }
+  const tasksList = document.querySelector<HTMLElement>('#hud-tasks-list');
+  if (tasksList) tasksList.innerHTML = tasksDrawerMarkup();
+  const portrait = document.querySelector<HTMLImageElement>('#hud-portrait');
+  if (portrait) portrait.src = specialistById(lobby.specialist).art;
   const crew = document.querySelector<HTMLSpanElement>('#crew-progress');
   if (crew) crew.textContent = `MISSED SHIFTS ${mission.missedDays}`;
   const name = document.querySelector<HTMLElement>('#hud-player-name');
@@ -3462,6 +3725,7 @@ function updateHUD(): void {
   if (meta) meta.textContent = `${specialistById(lobby.specialist).shortName} · ${destinationById(lobby.destination).name.toUpperCase()}`;
   const room = document.querySelector<HTMLElement>('#hud-room');
   if (room) room.textContent = (mission.room || 'Central Hub').toUpperCase();
+  syncHudRoomText(mission.room || 'Central Hub');
   const fpsBadge = document.querySelector<HTMLElement>('#hud-fps');
   if (fpsBadge) fpsBadge.hidden = !save.options.showFps;
   const dot = document.querySelector<HTMLElement>('#hud-color-dot');
@@ -3470,6 +3734,8 @@ function updateHUD(): void {
   if (systems) systems.innerHTML = systemsMarkup();
   const clock = document.querySelector<HTMLDivElement>('#day-clock');
   if (clock && mission.phase === 'playing' && !mission.tasks.length) clock.textContent = 'PLANNING';
+  updateRadarMarker();
+  updateRadarPings();
   updateActionButtons();
 }
 
@@ -3493,7 +3759,10 @@ function updateActionButtons(): void {
     prompt.hidden = false;
   }
   prompt.classList.toggle('has-task', relevant);
-  use.hidden = !relevant;
+  use.hidden = currentScreen === 'mission' ? false : !relevant;
+  use.disabled = !relevant;
+  use.classList.toggle('is-ready', relevant);
+  use.classList.toggle('is-inactive', !relevant);
 }
 
 function showToast(message: string): void {
@@ -3513,6 +3782,7 @@ function gameMenuClose(label: string): string {
 }
 
 function showGameMenu(): () => void {
+  setHudDrawer(null);
   const dialog = modalRoot.querySelector<HTMLDialogElement>('.game-menu-dialog')!;
   const close = (): void => {
     dialog.close();
@@ -3586,125 +3856,40 @@ function openMap(): void {
   });
 }
 
-function openTaskList(): void {
-  if (currentScreen !== 'mission') {
-    if (currentScreen === 'training') renderTrainingHud();
-    return;
-  }
-  let selectedTaskId = mission.tasks[0] ?? '';
-
-  const renderTaskInspector = (taskId: string): string => {
-    const task = taskById(taskId);
-    if (!task) return '<div class="spud-copy-block"><h2>NO TASK SELECTED</h2><p>Plan the shift to receive assignments.</p></div>';
-    const offer = assignmentOffer(task);
-    const sysName = offer.system.toUpperCase();
-    const done = mission.completed.includes(task.id);
-    return `
-      <div class="spud-loadout-portrait">
-        <div class="spud-portrait-ring"><img src="/assets/ui/icons/${offer.icon}.png" alt="" style="width:40px;height:40px;" /></div>
-        <div class="spud-loadout-meta">
-          <span>${escapeHtml(getRoomName(task.roomId).toUpperCase())} · ${escapeHtml(sysName)}</span>
-          <h3>${escapeHtml(task.name)}</h3>
-          <small>${done ? 'COMPLETED ✓' : 'PENDING MAINTENANCE'}</small>
-        </div>
-      </div>
-      <div class="spud-copy-block">
-        <h2>TELEMETRY &amp; WALK ESTIMATE</h2>
-        <p>${escapeHtml(offer.blurb)}</p>
-        <div style="display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:4px;">${assignmentPreview(task.id)}</div>
-      </div>
-      ${!done ? renderConstellationAction({
-        icon: 'launch',
-        label: `WALK TO STATION (${getRoomName(task.roomId).toUpperCase()})`,
-        attrs: `data-walk-task="${task.id}"`,
-        variant: 'primary',
-      }) : ''}
-    `;
-  };
-
-  modalRoot.innerHTML = `
-    <dialog class="game-menu-dialog" aria-labelledby="game-tasks-title">
-      <section class="spud-copy-stack task-list-card">
-        <header class="spud-modal-top">
-          <div>
-            <span class="spud-constellation-kicker" style="margin-bottom:2px;">DAY ${String(missionDayNumber()).padStart(2, '0')} · ${escapeHtml(mission.eventCard?.name ?? 'ROUTINE SHIFT')}</span>
-            <h2 id="game-tasks-title">TODAY'S ASSIGNMENTS</h2>
-          </div>
-          ${gameMenuClose('tasks')}
-        </header>
-        <div class="spud-split-columns">
-          <div class="spud-copy-stack">
-            <div class="spud-slot-list">
-              ${mission.tasks.length
-                ? mission.tasks.map(id => {
-                  const task = taskById(id);
-                  const done = mission.completed.includes(id);
-                  return `
-                    <button type="button" class="spud-slot-row report-task ${id === selectedTaskId ? 'selected' : ''}" data-task-slot="${id}">
-                      <div>
-                        <strong>${escapeHtml(task?.name ?? id)}</strong>
-                        <small>${escapeHtml(getRoomName(task?.roomId ?? ''))}</small>
-                      </div>
-                      <span class="spud-status-tag ${done ? 'is-done' : ''}">${done ? 'DONE ✓' : 'ACTIVE'}</span>
-                    </button>
-                  `;
-                }).join('')
-                : '<div class="spud-copy-block"><p>No assignments scheduled yet.</p></div>'}
-            </div>
-            <div class="spud-meta-inline">
-              <span>COMPLETED: ${mission.completed.length} / ${mission.tasks.length}</span>
-            </div>
-          </div>
-          <div class="spud-vertical-rule" aria-hidden="true"></div>
-          <aside class="spud-copy-stack" id="task-modal-inspector">
-            ${renderTaskInspector(selectedTaskId)}
-          </aside>
-        </div>
-      </section>
-    </dialog>
-  `;
-  const close = showGameMenu();
-  const wireWalkBtn = (): void => {
-    modalRoot.querySelector<HTMLButtonElement>('[data-walk-task]')?.addEventListener('click', event => {
-      const id = (event.currentTarget as HTMLButtonElement).dataset.walkTask ?? '';
-      const task = taskById(id);
-      if (!task) return;
-      sfx.click();
-      close();
-      walkStationTo(task.x, task.y, task.name);
-    });
-  };
-  wireWalkBtn();
-  modalRoot.querySelectorAll<HTMLButtonElement>('[data-task-slot]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      selectedTaskId = btn.dataset.taskSlot ?? '';
-      sfx.click();
-      modalRoot.querySelectorAll<HTMLButtonElement>('[data-task-slot]').forEach(el => el.classList.toggle('selected', el === btn));
-      const inspector = modalRoot.querySelector<HTMLElement>('#task-modal-inspector');
-      if (inspector) {
-        inspector.innerHTML = renderTaskInspector(selectedTaskId);
-        wireWalkBtn();
-      }
-    });
-  });
+function toggleHudDrawer(mode: 'tasks' | 'status'): void {
+  if (currentScreen !== 'mission') return;
+  if (!isMissionActive() && activeHudDrawer === null) return;
+  sfx.click();
+  setHudDrawer(activeHudDrawer === mode ? null : mode);
 }
 
-function openMissionLog(): void {
-  if (currentScreen !== 'mission') return;
-  const reports = [...mission.reports].reverse();
-  let selectedDay = reports[0]?.day ?? -1;
+function openTaskList(): void {
+  if (currentScreen !== 'mission') {
+    if (currentScreen === 'training') {
+      sfx.click();
+      renderTrainingHud();
+    }
+    return;
+  }
+  toggleHudDrawer('tasks');
+}
 
-  const renderLogInspector = (dayNum: number): string => {
-    const rep = reports.find(r => r.day === dayNum) ?? reports[0];
-    if (!rep) {
-      return `
+  function openMissionLog(): void {
+    if (currentScreen !== 'mission') return;
+    const reports = [...mission.reports].reverse();
+    let selectedDay = reports[0]?.day ?? -1;
+
+    const renderLogInspector = (dayNum: number): string => {
+      const rep = reports.find(r => r.day === dayNum) ?? reports[0];
+      if (!rep) {
+        return `
         <div class="spud-copy-block">
           <h2>NO EARTH REPORTS SENT YET</h2>
           <p>Complete your first timed shift to transmit daily telemetry to Earth Command.</p>
         </div>
       `;
-    }
-    return `
+      }
+      return `
       <div class="spud-copy-block">
         <h2>DAY ${String(rep.day).padStart(2, '0')} · ${escapeHtml(rep.event.toUpperCase())}</h2>
         <p>Assignments Completed: ${rep.completed} / ${rep.assigned}</p>
@@ -3725,9 +3910,9 @@ function openMissionLog(): void {
         </div>
       ` : ''}
     `;
-  };
+    };
 
-  modalRoot.innerHTML = `
+    modalRoot.innerHTML = `
     <dialog class="game-menu-dialog" aria-labelledby="mission-log-title">
       <section class="spud-copy-stack help-card">
         <header class="spud-modal-top">
@@ -3762,20 +3947,20 @@ function openMissionLog(): void {
         </div>
       </section>
     </dialog>`;
-  showGameMenu();
-  modalRoot.querySelectorAll<HTMLButtonElement>('[data-log-day]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      selectedDay = Number(btn.dataset.logDay);
-      sfx.click();
-      modalRoot.querySelectorAll<HTMLButtonElement>('[data-log-day]').forEach(el => el.classList.toggle('selected', el === btn));
-      const inspector = modalRoot.querySelector<HTMLElement>('#mission-log-inspector');
-      if (inspector) inspector.innerHTML = renderLogInspector(selectedDay);
+    showGameMenu();
+    modalRoot.querySelectorAll<HTMLButtonElement>('[data-log-day]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        selectedDay = Number(btn.dataset.logDay);
+        sfx.click();
+        modalRoot.querySelectorAll<HTMLButtonElement>('[data-log-day]').forEach(el => el.classList.toggle('selected', el === btn));
+        const inspector = modalRoot.querySelector<HTMLElement>('#mission-log-inspector');
+        if (inspector) inspector.innerHTML = renderLogInspector(selectedDay);
+      });
     });
-  });
-}
+  }
 
-function openHelp(): void {
-  modalRoot.innerHTML = `
+  function openHelp(): void {
+    modalRoot.innerHTML = `
     <dialog class="game-menu-dialog game-help-dialog" aria-labelledby="game-help-title">
       <section class="spud-copy-stack help-card">
         <header class="spud-modal-top">
@@ -3804,153 +3989,184 @@ function openHelp(): void {
       </section>
     </dialog>
   `;
-  showGameMenu();
-}
-
-function applyOptions(): void {
-  const master = (save.options.masterVolume ?? 80) / 100;
-  configureSfx({ enabled: save.options.sound && master > 0, volume: Math.round(save.options.volume * master) });
-  configureMusic({ enabled: save.options.music && master > 0, volume: Math.round(save.options.musicVolume * master) });
-  document.body.classList.toggle('reduce-motion', Boolean(save.options.reducedMotion));
-  if (save.options.reducedMotion) {
-    document.documentElement.style.setProperty('--parallax-x', '0');
-    document.documentElement.style.setProperty('--parallax-y', '0');
+    showGameMenu();
   }
-  if (game && sceneReady) void import('./game').then(({ setSceneReducedMotion }) => setSceneReducedMotion(game!, save.options.reducedMotion));
-  const fpsEnabled = Boolean(save.options.showFps);
-  const hudFps = document.querySelector<HTMLElement>('#hud-fps');
-  if (hudFps) hudFps.hidden = !fpsEnabled;
-  const trainingFps = document.querySelector<HTMLElement>('#training-fps');
-  if (trainingFps) trainingFps.hidden = !fpsEnabled;
-  if (currentScreen === 'mission' || currentScreen === 'training') configureScene();
-}
 
-function saveSettings(): void {
-  persistSave(save);
-}
-
-function wireControls(): void {
-  document.addEventListener('pointermove', event => {
-    if (save.options.reducedMotion) return;
-    if (currentScreen === 'training' || currentScreen === 'mission') return;
-    const nx = (event.clientX / Math.max(1, window.innerWidth) - 0.5) * 2;
-    const ny = (event.clientY / Math.max(1, window.innerHeight) - 0.5) * 2;
-    document.documentElement.style.setProperty('--parallax-x', nx.toFixed(3));
-    document.documentElement.style.setProperty('--parallax-y', ny.toFixed(3));
-  }, { passive: true });
-
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden && isMissionActive()) {
-      pauseMissionForModal();
-      saveTrialProgress();
-    } else if (!document.hidden && currentScreen === 'mission' && mission.modalOpen && !modalRoot.childElementCount) {
-      resumeMissionAfterModal();
+  function applyOptions(): void {
+    const master = (save.options.masterVolume ?? 80) / 100;
+    configureSfx({ enabled: save.options.sound && master > 0, volume: Math.round(save.options.volume * master) });
+    configureMusic({ enabled: save.options.music && master > 0, volume: Math.round(save.options.musicVolume * master) });
+    document.body.classList.toggle('reduce-motion', Boolean(save.options.reducedMotion));
+    if (save.options.reducedMotion) {
+      document.documentElement.style.setProperty('--parallax-x', '0');
+      document.documentElement.style.setProperty('--parallax-y', '0');
     }
-  });
-  window.addEventListener('pagehide', () => {
-    if (isMissionActive() && !document.hidden) saveTrialProgress();
-  });
-  document.addEventListener('keydown', event => {
-    const target = event.target as HTMLElement | null;
-    if (target?.closest('dialog[open]')) return;
-    if (event.key === 'Escape' && currentScreen === 'options') {
-      (screenRoot.querySelector<HTMLButtonElement>('[data-game-return]')
-        ?? screenRoot.querySelector<HTMLButtonElement>('[data-options-back]'))?.click();
-      return;
-    }
-    if (target?.closest('input, textarea')) return;
+    if (game && sceneReady) void import('./game').then(({ setSceneReducedMotion }) => setSceneReducedMotion(game!, save.options.reducedMotion));
+    const fpsEnabled = Boolean(save.options.showFps);
+    const hudFps = document.querySelector<HTMLElement>('#hud-fps');
+    if (hudFps) hudFps.hidden = !fpsEnabled;
+    const trainingFps = document.querySelector<HTMLElement>('#training-fps');
+    if (trainingFps) trainingFps.hidden = !fpsEnabled;
+    if (currentScreen === 'mission' || currentScreen === 'training') configureScene();
+  }
 
-    if (event.key === 'Enter' && (currentScreen === 'splash' || currentScreen === 'launch') && !target?.closest('button, a')) {
-      const skipBtn = screenRoot.querySelector<HTMLButtonElement>('.intro-skip');
-      if (skipBtn) {
-        event.preventDefault();
-        skipBtn.click();
+  function saveSettings(): void {
+    persistSave(save);
+  }
+
+  function wireControls(): void {
+    document.addEventListener('pointermove', event => {
+      if (save.options.reducedMotion) return;
+      if (currentScreen === 'training' || currentScreen === 'mission') return;
+      const nx = (event.clientX / Math.max(1, window.innerWidth) - 0.5) * 2;
+      const ny = (event.clientY / Math.max(1, window.innerHeight) - 0.5) * 2;
+      document.documentElement.style.setProperty('--parallax-x', nx.toFixed(3));
+      document.documentElement.style.setProperty('--parallax-y', ny.toFixed(3));
+    }, { passive: true });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && isMissionActive()) {
+        pauseMissionForModal();
+        saveTrialProgress();
+      } else if (!document.hidden && currentScreen === 'mission' && mission.modalOpen && !modalRoot.childElementCount) {
+        resumeMissionAfterModal();
+      }
+    });
+    window.addEventListener('pagehide', () => {
+      if (isMissionActive() && !document.hidden) saveTrialProgress();
+    });
+    document.addEventListener('keydown', event => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('dialog[open]')) return;
+      if (event.key === 'Escape' && currentScreen === 'options') {
+        (screenRoot.querySelector<HTMLButtonElement>('[data-game-return]')
+          ?? screenRoot.querySelector<HTMLButtonElement>('[data-options-back]'))?.click();
         return;
       }
-    }
+      if (target?.closest('input, textarea')) return;
 
-    if (currentScreen === 'menu' && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
-      const items = Array.from(screenRoot.querySelectorAll<HTMLButtonElement>('.spud-center-nav .spud-menu-item'));
-      if (items.length) {
-        event.preventDefault();
-        const activeIdx = items.findIndex(el => el.classList.contains('is-active'));
-        const nextIdx = event.key === 'ArrowDown'
-          ? (activeIdx + 1) % items.length
-          : (activeIdx <= 0 ? items.length - 1 : activeIdx - 1);
-        items[nextIdx]?.focus();
-        sfx.click();
-      }
-      return;
-    }
-    if (event.key === 'Escape') {
-      if (modalRoot.childElementCount) {
-        const close = modalRoot.querySelector<HTMLButtonElement>('[data-result-continue], [data-close]');
-        if (close) close.click();
-        else {
-          modalRoot.replaceChildren();
-          resumeFromModal();
+      if (event.key === 'Enter' && (currentScreen === 'splash' || currentScreen === 'launch') && !target?.closest('button, a')) {
+        const skipBtn = screenRoot.querySelector<HTMLButtonElement>('.intro-skip');
+        if (skipBtn) {
+          event.preventDefault();
+          skipBtn.click();
+          return;
         }
       }
-      return;
-    }
-    if (currentScreen !== 'mission' && currentScreen !== 'training') return;
-    if (currentScreen === 'mission' && !isMissionActive()) return;
-    if (modalRoot.childElementCount || event.ctrlKey || event.altKey || event.metaKey || event.repeat) return;
-    const key = event.key.toLowerCase();
-    if (key === 'm') {
-      event.preventDefault();
+
+      if (currentScreen === 'menu' && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+        const items = Array.from(screenRoot.querySelectorAll<HTMLButtonElement>('.spud-center-nav .spud-menu-item'));
+        if (items.length) {
+          event.preventDefault();
+          const activeIdx = items.findIndex(el => el.classList.contains('is-active'));
+          const nextIdx = event.key === 'ArrowDown'
+            ? (activeIdx + 1) % items.length
+            : (activeIdx <= 0 ? items.length - 1 : activeIdx - 1);
+          items[nextIdx]?.focus();
+          sfx.click();
+        }
+        return;
+      }
+      if (event.key === 'Escape') {
+        if (modalRoot.childElementCount) {
+          const close = modalRoot.querySelector<HTMLButtonElement>('[data-result-continue], [data-close]');
+          if (close) close.click();
+          else {
+            modalRoot.replaceChildren();
+            resumeFromModal();
+          }
+        } else if (activeHudDrawer !== null) {
+          sfx.click();
+          setHudDrawer(null);
+        }
+        return;
+      }
+      if (currentScreen !== 'mission' && currentScreen !== 'training') return;
+      if (currentScreen === 'mission' && !isMissionActive()) return;
+      if (modalRoot.childElementCount || event.ctrlKey || event.altKey || event.metaKey || event.repeat) return;
+      const key = event.key.toLowerCase();
+      if (key === 'm') {
+        event.preventDefault();
+        openMap();
+      } else if (key === 't' && currentScreen === 'mission') {
+        event.preventDefault();
+        openTaskList();
+      } else if ((key === 'v' || event.key === 'Tab') && currentScreen === 'mission') {
+        event.preventDefault();
+        toggleHudDrawer('status');
+      } else if (key === 'o' && currentScreen === 'mission') {
+        event.preventDefault();
+        showOptions();
+      } else if (key === 'l' && currentScreen === 'mission') {
+        event.preventDefault();
+        openMissionLog();
+      } else if (key === '?' || key === 'h') {
+        event.preventDefault();
+        openHelp();
+      }
+    });
+
+    document.querySelector('[data-action="map"]')?.addEventListener('click', () => {
+      sfx.click();
       openMap();
-    } else if (key === 't' && currentScreen === 'mission') {
-      event.preventDefault();
-      openTaskList();
-    } else if (key === 'o' && currentScreen === 'mission') {
-      event.preventDefault();
+    });
+    document.querySelector('[data-action="options"]')?.addEventListener('click', () => {
+      if (!isMissionActive()) return;
+      sfx.click();
       showOptions();
-    } else if (key === '?' || key === 'h') {
-      event.preventDefault();
+    });
+    document.querySelector('[data-action="tasks"]')?.addEventListener('click', () => {
+      sfx.click();
+      openTaskList();
+    });
+    document.querySelector('[data-action="status"]')?.addEventListener('click', () => {
+      toggleHudDrawer('status');
+    });
+    document.querySelector('#hud-drawer-backdrop')?.addEventListener('click', () => {
+      if (activeHudDrawer === null) return;
+      sfx.click();
+      setHudDrawer(null);
+    });
+    document.querySelectorAll('[data-drawer-close]').forEach(btn => btn.addEventListener('click', () => {
+      sfx.click();
+      setHudDrawer(null);
+    }));
+    document.querySelector('#hud-tasks-list')?.addEventListener('click', event => {
+      const target = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-drawer-walk-task]');
+      const taskId = target?.dataset.drawerWalkTask;
+      if (!taskId) return;
+      const task = taskById(taskId);
+      if (!task) return;
+      sfx.click();
+      setHudDrawer(null);
+      walkStationTo(task.x, task.y, task.name);
+    });
+    document.querySelector('[data-action="log"]')?.addEventListener('click', () => {
+      sfx.click();
+      openMissionLog();
+    });
+    document.querySelector('[data-action="help"]')?.addEventListener('click', () => {
+      sfx.click();
       openHelp();
-    }
-  });
+    });
+    document.querySelector('[data-action="use"]')?.addEventListener('click', () => {
+      if (!currentPrompt.id) return;
+      sfx.click();
+      if (currentScreen === 'training') handleTrainingInteract(currentPrompt.id);
+      else if (game) void import('./game').then(({ interactStation }) => interactStation(game!));
+    });
 
-  document.querySelector('[data-action="map"]')?.addEventListener('click', () => {
-    sfx.click();
-    openMap();
-  });
-  document.querySelector('[data-action="options"]')?.addEventListener('click', () => {
-    if (!isMissionActive()) return;
-    sfx.click();
-    showOptions();
-  });
-  document.querySelector('[data-action="tasks"]')?.addEventListener('click', () => {
-    sfx.click();
-    openTaskList();
-  });
-  document.querySelector('[data-action="log"]')?.addEventListener('click', () => {
-    sfx.click();
-    openMissionLog();
-  });
-  document.querySelector('[data-action="help"]')?.addEventListener('click', () => {
-    sfx.click();
-    openHelp();
-  });
-  document.querySelector('[data-action="use"]')?.addEventListener('click', () => {
-    if (!currentPrompt.id) return;
-    sfx.click();
-    if (currentScreen === 'training') handleTrainingInteract(currentPrompt.id);
-    else if (game) void import('./game').then(({ interactStation }) => interactStation(game!));
-  });
+    const unlockAudio = (): void => {
+      if (save.options.music) startMusic();
+      document.removeEventListener('pointerdown', unlockAudio);
+    };
+    document.addEventListener('pointerdown', unlockAudio);
+  }
 
-  const unlockAudio = (): void => {
-    if (save.options.music) startMusic();
-    document.removeEventListener('pointerdown', unlockAudio);
-  };
-  document.addEventListener('pointerdown', unlockAudio);
-}
+  function init(): void {
+    applyOptions();
+    wireControls();
+    showSplash();
+  }
 
-function init(): void {
-  applyOptions();
-  wireControls();
-  showSplash();
-}
-
-init();
+  init();

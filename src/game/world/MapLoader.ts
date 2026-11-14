@@ -4,6 +4,17 @@ import { DEPTH_FLOOR, DEPTH_OVERHEAD, DEPTH_WALL } from '../constants';
 import { SpawnPoint } from '../entities/SpawnPoint';
 import { Vent } from '../entities/Vent';
 import type { Room } from './Room';
+import {
+  FIGMA_CONTACT_SHADOWS,
+  FIGMA_DEPTH_SLICES,
+  FIGMA_DESIGN_SIZE,
+  FIGMA_FLAT_DECALS,
+  FIGMA_HYDROPONICS_PLATFORM,
+  FIGMA_OUTER_VOID_CLEANUP,
+  FIGMA_STATUS_LIGHTS,
+  FIGMA_TO_WORLD,
+  WORLD_MAP_SIZE,
+} from './figmaMapLayers';
 
 /** Lightweight tile grid backing Tiled BFS pathfinding and minimap layout. */
 export interface MinimapModel {
@@ -25,7 +36,7 @@ export interface LoadedMap {
   wallLayer: Phaser.Tilemaps.TilemapLayer;
   overheadLayer: Phaser.Tilemaps.TilemapLayer;
   artImage: Phaser.GameObjects.Image;
-  depthArtwork: Phaser.GameObjects.Image[];
+  depthArtwork: (Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle)[];
   spawn: SpawnPoint;
   vents: Vent[];
   rooms: Room[];
@@ -87,14 +98,23 @@ export class MapLoader {
     wallLayer.setDepth(DEPTH_WALL);
     overheadLayer.setDepth(DEPTH_OVERHEAD);
 
+    const useFigmaMaster =
+      this.scene.textures.exists(AssetKeys.figmaFloorPlan) &&
+      this.scene.textures.exists(AssetKeys.figmaObjectsSheet);
+
     const artImage = this.scene.add
-      .image(0, 0, AssetKeys.mapImage)
+      .image(0, 0, useFigmaMaster ? AssetKeys.figmaFloorPlan : AssetKeys.mapFloorImage)
       .setOrigin(0)
       .setDepth(DEPTH_FLOOR);
+    if (useFigmaMaster) {
+      artImage.setDisplaySize(WORLD_MAP_SIZE, WORLD_MAP_SIZE);
+    }
     if (typeof options?.artTint === 'number') {
       artImage.setTint(options.artTint);
     }
-    const depthArtwork = this.createDepthArtwork(map, options?.artTint);
+    const depthArtwork = useFigmaMaster
+      ? this.createFigmaLayeredWorld(options?.artTint)
+      : this.createDepthArtwork(map, options?.artTint);
 
     floorLayer.setVisible(false);
     wallLayer.setVisible(false);
@@ -128,14 +148,184 @@ export class MapLoader {
     };
   }
 
+  private createFigmaLayeredWorld(tint?: number): (Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle)[] {
+    const textures = this.scene.textures;
+    const floorTex = textures.get(AssetKeys.figmaFloorPlan);
+    const objTex = textures.get(AssetKeys.figmaObjectsSheet);
+    const floorImg = floorTex.getSourceImage() as HTMLImageElement | HTMLCanvasElement;
+    const objImg = objTex.getSourceImage() as HTMLImageElement | HTMLCanvasElement;
+    if (!floorImg?.width || !objImg?.width) return [];
+
+    const floorSrcScale = floorImg.width / FIGMA_DESIGN_SIZE;
+    const objSrcScale = objImg.width / FIGMA_DESIGN_SIZE;
+    const items: (Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle)[] = [];
+
+    // 01 · Outer void cleanup
+    const voidRect = this.scene.add
+      .rectangle(
+        FIGMA_OUTER_VOID_CLEANUP.x * FIGMA_TO_WORLD,
+        FIGMA_OUTER_VOID_CLEANUP.y * FIGMA_TO_WORLD,
+        FIGMA_OUTER_VOID_CLEANUP.w * FIGMA_TO_WORLD,
+        FIGMA_OUTER_VOID_CLEANUP.h * FIGMA_TO_WORLD,
+        0x222222,
+        1,
+      )
+      .setOrigin(0)
+      .setDepth(DEPTH_FLOOR + 1);
+    items.push(voidRect);
+
+    // 01 · Recessed wall status lights — below actors
+    for (const light of FIGMA_STATUS_LIGHTS) {
+      const glow = this.scene.add
+        .rectangle(
+          (light.x - 2) * FIGMA_TO_WORLD,
+          (light.y - 2) * FIGMA_TO_WORLD,
+          (light.w + 4) * FIGMA_TO_WORLD,
+          (light.h + 4) * FIGMA_TO_WORLD,
+          0x7de4e9,
+          0.18,
+        )
+        .setOrigin(0)
+        .setDepth(DEPTH_FLOOR + 1);
+      const bar = this.scene.add
+        .rectangle(
+          light.x * FIGMA_TO_WORLD,
+          light.y * FIGMA_TO_WORLD,
+          light.w * FIGMA_TO_WORLD,
+          light.h * FIGMA_TO_WORLD,
+          0x82dfe4,
+          0.6,
+        )
+        .setOrigin(0)
+        .setDepth(DEPTH_FLOOR + 1);
+      items.push(glow, bar);
+    }
+
+    // 01 · 20 SVG floor contact shadows — below actors
+    for (const shadow of FIGMA_CONTACT_SHADOWS) {
+      if (!textures.exists(shadow.key)) continue;
+      const img = this.scene.add
+        .image(shadow.x * FIGMA_TO_WORLD, shadow.y * FIGMA_TO_WORLD, shadow.key)
+        .setOrigin(0)
+        .setDisplaySize(shadow.w * FIGMA_TO_WORLD, shadow.h * FIGMA_TO_WORLD)
+        .setDepth(DEPTH_FLOOR + 1);
+      if (tint !== undefined) img.setTint(tint);
+      items.push(img);
+    }
+
+    // 01 · Flat floor decals (central floor vent & airlock threshold) — always below actors
+    for (const decal of FIGMA_FLAT_DECALS) {
+      const frame = `figma-decal-${decal.x}-${decal.y}`;
+      if (!objTex.has(frame)) {
+        objTex.add(
+          frame,
+          0,
+          Math.round(decal.x * objSrcScale),
+          Math.round(decal.y * objSrcScale),
+          Math.round(decal.w * objSrcScale),
+          Math.round(decal.h * objSrcScale),
+        );
+      }
+      const img = this.scene.add
+        .image(decal.x * FIGMA_TO_WORLD, decal.y * FIGMA_TO_WORLD, AssetKeys.figmaObjectsSheet, frame)
+        .setOrigin(0)
+        .setDisplaySize(decal.w * FIGMA_TO_WORLD, decal.h * FIGMA_TO_WORLD)
+        .setDepth(DEPTH_FLOOR + 1)
+        .setName(decal.name);
+      if (tint !== undefined) img.setTint(tint);
+      items.push(img);
+    }
+
+    // 02 · Built-in hydroponics raised platform occluder (foot Y=750)
+    if (textures.exists(AssetKeys.figmaHydroponicsPlatform)) {
+      const p = FIGMA_HYDROPONICS_PLATFORM;
+      const img = this.scene.add
+        .image(p.x * FIGMA_TO_WORLD, p.y * FIGMA_TO_WORLD, AssetKeys.figmaHydroponicsPlatform)
+        .setOrigin(0)
+        .setDisplaySize(p.w * FIGMA_TO_WORLD, p.h * FIGMA_TO_WORLD)
+        .setDepth(Math.round(p.footY * FIGMA_TO_WORLD))
+        .setName(p.name);
+      if (tint !== undefined) img.setTint(tint);
+      items.push(img);
+    }
+
+    // 02 · Depth-sorted wall/edge occluders & 3D props sorted by feet Y
+    for (const slice of FIGMA_DEPTH_SLICES) {
+      const isFloor = slice.source === 'floor';
+      const texKey = isFloor ? AssetKeys.figmaFloorPlan : AssetKeys.figmaObjectsSheet;
+      const tex = isFloor ? floorTex : objTex;
+      const srcScale = isFloor ? floorSrcScale : objSrcScale;
+      const frame = `figma-slice-${slice.source}-${slice.x}-${slice.y}-${slice.w}-${slice.h}`;
+      if (!tex.has(frame)) {
+        tex.add(
+          frame,
+          0,
+          Math.round(slice.x * srcScale),
+          Math.round(slice.y * srcScale),
+          Math.round(slice.w * srcScale),
+          Math.round(slice.h * srcScale),
+        );
+      }
+      const img = this.scene.add
+        .image(slice.x * FIGMA_TO_WORLD, slice.y * FIGMA_TO_WORLD, texKey, frame)
+        .setOrigin(0)
+        .setDisplaySize(slice.w * FIGMA_TO_WORLD, slice.h * FIGMA_TO_WORLD)
+        .setDepth(Math.round(slice.footY * FIGMA_TO_WORLD))
+        .setName(slice.name);
+      if (tint !== undefined) img.setTint(tint);
+      items.push(img);
+    }
+
+    return items;
+  }
+
   private createDepthArtwork(map: Phaser.Tilemaps.Tilemap, tint?: number): Phaser.GameObjects.Image[] {
     const layer = map.getObjectLayer('depth-artwork');
     if (!layer) return [];
     const textures = this.scene.textures;
-    const art = textures.get(AssetKeys.mapImage);
-    const source = art.getSourceImage();
-    if (!(source instanceof HTMLImageElement || source instanceof HTMLCanvasElement)) return [];
+    const floorTex = textures.get(AssetKeys.mapFloorImage);
+    const floorSrc = floorTex.getSourceImage();
+    const objTex = textures.get(AssetKeys.mapObjectsImage);
+    const objSrc = objTex.getSourceImage();
+    if (
+      !(floorSrc instanceof HTMLImageElement || floorSrc instanceof HTMLCanvasElement) ||
+      !(objSrc instanceof HTMLImageElement || objSrc instanceof HTMLCanvasElement)
+    ) {
+      return [];
+    }
     const images: Phaser.GameObjects.Image[] = [];
+
+    // Preserve any un-sliced flat decals (floor vents, hatches, wall plaques) below characters
+    const decalKey = 'station-floor-decals';
+    if (!textures.exists(decalKey)) {
+      const decalCanvas = textures.createCanvas(decalKey, map.widthInPixels, map.heightInPixels);
+      if (decalCanvas) {
+        const dctx = decalCanvas.getContext();
+        dctx.drawImage(objSrc, 0, 0);
+        dctx.save();
+        dctx.globalCompositeOperation = 'destination-out';
+        for (const object of layer.objects as unknown as TiledObject[]) {
+          const outline = object.polygon;
+          if (object.type !== 'DepthArtwork' || object.name.startsWith('Wall ') || !outline || outline.length < 3) {
+            continue;
+          }
+          dctx.beginPath();
+          for (const [index, point] of outline.entries()) {
+            if (index === 0) dctx.moveTo(object.x + point.x, object.y + point.y);
+            else dctx.lineTo(object.x + point.x, object.y + point.y);
+          }
+          dctx.closePath();
+          dctx.fill();
+        }
+        dctx.restore();
+        decalCanvas.refresh();
+      }
+    }
+    if (textures.exists(decalKey)) {
+      const decalImg = this.scene.add.image(0, 0, decalKey).setOrigin(0).setDepth(DEPTH_FLOOR + 1);
+      if (tint !== undefined) decalImg.setTint(tint);
+      images.push(decalImg);
+    }
 
     for (const object of layer.objects as unknown as TiledObject[]) {
       const outline = object.polygon;
@@ -143,14 +333,19 @@ export class MapLoader {
       const depth = object.properties?.find(property => property.name === 'depth')?.value;
       if (typeof depth !== 'number') continue;
 
+      const isWall = object.name.startsWith('Wall ');
+      const sourceTexKey = isWall ? AssetKeys.mapFloorImage : AssetKeys.mapObjectsImage;
+      const sourceTex = isWall ? floorTex : objTex;
+      const sourceImg = isWall ? floorSrc : objSrc;
+
       const width = Math.max(...outline.map(point => point.x));
       const height = Math.max(...outline.map(point => point.y));
       const frame = `station-art-${object.id}`;
       const rectangle = outline.length === 4 && outline.every(({ x, y }) => (x === 0 || x === width) && (y === 0 || y === height));
       let image: Phaser.GameObjects.Image;
       if (rectangle) {
-        if (!art.has(frame)) art.add(frame, 0, object.x, object.y, width, height);
-        image = this.scene.add.image(object.x, object.y, AssetKeys.mapImage, frame);
+        if (!sourceTex.has(frame)) sourceTex.add(frame, 0, object.x, object.y, width, height);
+        image = this.scene.add.image(object.x, object.y, sourceTexKey, frame);
       } else {
         if (!textures.exists(frame)) {
           const texture = textures.createCanvas(frame, width, height);
@@ -164,7 +359,7 @@ export class MapLoader {
           }
           context.closePath();
           context.clip();
-          context.drawImage(source, -object.x, -object.y);
+          context.drawImage(sourceImg, -object.x, -object.y);
           context.restore();
           texture.refresh();
         }
