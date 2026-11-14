@@ -1,23 +1,35 @@
 import Phaser from 'phaser';
 import { AssetKeys } from '../assets/AssetKeys';
+import {
+  applyResolvedSpriteVisual,
+  resolveCharacterVisual,
+  SPRITE_DISPLAY_HEIGHT,
+  SPRITE_DISPLAY_WIDTH,
+  SPRITE_ORIGIN_X,
+  SPRITE_ORIGIN_Y,
+} from '../assets/characterSprites';
 import { GHOST_SPEED, PLAYER_FEET, WALK_SPEED } from '../constants';
 import { moveVelocity } from '../utils/vectors';
 
-const BODY_WIDTH = 56;
-const BODY_HEIGHT = 70;
+const LEGACY_BODY_WIDTH = 56;
+const LEGACY_BODY_HEIGHT = 70;
 
 /**
- * Arcade-physics potato player entity with fitted feet collider, walk bob,
+ * Arcade-physics potato player entity with fitted feet collider, sprite
+ * idle/walk/helmet playback (with procedural fallback for static skins),
  * drop shadow, callsign label, specialist speed multiplier, and horizontal flip.
  */
 export class Player {
   readonly sprite: Phaser.Physics.Arcade.Sprite;
   private readonly shadow: Phaser.GameObjects.Ellipse;
   private readonly nameLabel: Phaser.GameObjects.Text;
-  private baseScaleX: number;
-  private baseScaleY: number;
+  private baseTextureKey: string;
+  private baseScaleX = 1;
+  private baseScaleY = 1;
+  private usesAnimatedSheet = false;
   private facing: 1 | -1 = 1;
   private moving = false;
+  private helmeted = false;
   private bobTime = 0;
 
   canMove = true;
@@ -33,21 +45,34 @@ export class Player {
     y: number,
     name = 'Spudnaut',
     textureKey: string = AssetKeys.playerBody,
+    helmeted = false,
   ) {
-    this.sprite = scene.physics.add.sprite(x, y, textureKey);
+    this.baseTextureKey = textureKey;
+    this.helmeted = helmeted;
+
+    const initialVisual = resolveCharacterVisual({
+      baseTextureKey: textureKey,
+      moving: false,
+      helmeted,
+      reducedMotion: false,
+    });
+    const initialTexture =
+      initialVisual && scene.textures.exists(initialVisual.textureKey)
+        ? initialVisual.textureKey
+        : textureKey;
+
+    this.sprite = scene.physics.add.sprite(x, y, initialTexture);
     this.sprite.setCollideWorldBounds(true);
     this.sprite.setDepth(y + 28);
-    this.sprite.setDisplaySize(BODY_WIDTH, BODY_HEIGHT);
-    this.baseScaleX = this.sprite.scaleX;
-    this.baseScaleY = this.sprite.scaleY;
-
+    this.applySpriteMetrics(Boolean(initialVisual && scene.textures.exists(initialVisual.textureKey)));
     this.syncBodyHitbox();
+    this.updateVisualAnimation(true);
 
     this.shadow = scene.add.ellipse(x, y + 30, 46, 15, 0x000000, 0.35);
     this.shadow.setDepth(y + 27);
 
     this.nameLabel = scene.add
-      .text(x, y - 52, name.toUpperCase(), {
+      .text(x, y - 55, name.toUpperCase(), {
         fontFamily: 'Consolas, monospace',
         fontSize: '11px',
         fontStyle: 'bold',
@@ -75,15 +100,28 @@ export class Player {
     return base * this.speedMultiplier;
   }
 
-  setAppearance(textureKey: string, name: string): void {
-    if (this.sprite.texture.key !== textureKey && this.sprite.scene.textures.exists(textureKey)) {
-      this.sprite.setTexture(textureKey);
-      this.sprite.setDisplaySize(BODY_WIDTH, BODY_HEIGHT);
-      this.baseScaleX = this.sprite.scaleX;
-      this.baseScaleY = this.sprite.scaleY;
-      this.syncBodyHitbox();
+  setAppearance(textureKey: string, name: string, helmeted = this.helmeted): void {
+    const skinChanged = this.baseTextureKey !== textureKey;
+    const helmetChanged = this.helmeted !== helmeted;
+    if (skinChanged && (this.sprite.scene.textures.exists(textureKey) || resolveCharacterVisual({
+      baseTextureKey: textureKey,
+      moving: this.moving,
+      helmeted,
+      reducedMotion: this.reducedMotion,
+    }))) {
+      this.baseTextureKey = textureKey;
+    }
+    this.helmeted = helmeted;
+    if (skinChanged || helmetChanged) {
+      this.updateVisualAnimation(true);
     }
     this.nameLabel.setText(name.toUpperCase());
+  }
+
+  setHelmeted(helmeted: boolean): void {
+    if (this.helmeted === helmeted) return;
+    this.helmeted = helmeted;
+    this.updateVisualAnimation(true);
   }
 
   setPosition(x: number, y: number): void {
@@ -132,11 +170,13 @@ export class Player {
     this.shadow.setAlpha(this.isGhost ? 0.15 : 0.35);
 
     this.nameLabel.x = this.sprite.x;
-    this.nameLabel.y = y - 50;
+    this.nameLabel.y = y - (this.usesAnimatedSheet ? 55 : 50);
     this.nameLabel.setDepth(depth + 2);
     this.nameLabel.setAlpha(ghostAlpha);
 
-    if (this.moving && !this.reducedMotion) {
+    this.updateVisualAnimation();
+
+    if (!this.usesAnimatedSheet && this.moving && !this.reducedMotion) {
       this.bobTime += delta;
       const phase = this.bobTime / 90;
       const bob = Math.sin(phase) * 2;
@@ -149,12 +189,56 @@ export class Player {
     }
   }
 
+  private applySpriteMetrics(animatedSheet: boolean): void {
+    this.usesAnimatedSheet = animatedSheet;
+    if (animatedSheet) {
+      this.sprite.setOrigin(SPRITE_ORIGIN_X, SPRITE_ORIGIN_Y);
+      this.sprite.setDisplaySize(SPRITE_DISPLAY_WIDTH, SPRITE_DISPLAY_HEIGHT);
+    } else {
+      this.sprite.setOrigin(0.5, 0.5);
+      this.sprite.setDisplaySize(LEGACY_BODY_WIDTH, LEGACY_BODY_HEIGHT);
+    }
+    this.baseScaleX = this.sprite.scaleX;
+    this.baseScaleY = this.sprite.scaleY;
+  }
+
+  private updateVisualAnimation(forceMetrics = false): void {
+    const visual = resolveCharacterVisual({
+      baseTextureKey: this.baseTextureKey,
+      moving: this.moving,
+      helmeted: this.helmeted,
+      reducedMotion: this.reducedMotion,
+    });
+    const scene = this.sprite.scene;
+    if (visual && scene.textures.exists(visual.textureKey)) {
+      const modeChanged = !this.usesAnimatedSheet;
+      applyResolvedSpriteVisual(scene, this.sprite, visual);
+      if (forceMetrics || modeChanged) {
+        this.applySpriteMetrics(true);
+        this.syncBodyHitbox();
+      }
+      return;
+    }
+
+    const modeChanged = this.usesAnimatedSheet;
+    this.sprite.anims.stop();
+    if (this.sprite.texture.key !== this.baseTextureKey && scene.textures.exists(this.baseTextureKey)) {
+      this.sprite.setTexture(this.baseTextureKey);
+    }
+    if (forceMetrics || modeChanged) {
+      this.applySpriteMetrics(false);
+      this.syncBodyHitbox();
+    }
+  }
+
   private syncBodyHitbox(): void {
     const body = this.sprite.body as Phaser.Physics.Arcade.Body;
+    const dispW = this.sprite.displayWidth;
+    const dispH = this.sprite.displayHeight;
     body.setSize(PLAYER_FEET.width / this.baseScaleX, PLAYER_FEET.height / this.baseScaleY, false);
     body.setOffset(
-      ((BODY_WIDTH - PLAYER_FEET.width) / 2) / this.baseScaleX,
-      ((BODY_HEIGHT - PLAYER_FEET.height) / 2 + PLAYER_FEET.offsetY) / this.baseScaleY,
+      (dispW * this.sprite.originX - PLAYER_FEET.width / 2) / this.baseScaleX,
+      (dispH * this.sprite.originY + PLAYER_FEET.offsetY - PLAYER_FEET.height / 2) / this.baseScaleY,
     );
   }
 

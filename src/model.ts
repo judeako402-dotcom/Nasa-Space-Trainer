@@ -73,6 +73,7 @@ export interface SavedTrial extends TrialProgress {
   remainingMs?: number;
   shiftDurationMs?: number;
   eventChoiceId?: string;
+  donkiReport?: { id: string; type: 'FLR' | 'CME' | 'SEP' | 'GST'; date: string; url: string; summary: string };
   position?: { x: number; y: number };
   planning?: { eventBase: MissionMetrics; selected: string[] };
 }
@@ -233,11 +234,11 @@ export const TASKS: TaskDef[] = [
   { id: 'align-engine', name: 'Align Sun-Tracking Array', kind: 'calibrate', roomId: 'reactor', x: 784, y: 400, system: 'power' },
   { id: 'wiring-cafeteria', name: 'Route Greenhouse Power', kind: 'wiring', roomId: 'cafeteria', x: 352, y: 800, system: 'power' },
   { id: 'garbage', name: 'Sort Galley Water Filters', kind: 'garbage', roomId: 'cafeteria', x: 480, y: 800, system: 'life' },
-  { id: 'grow-light-balance', name: 'Balance Grow-Light Spectrum', kind: 'calibrate', roomId: 'cafeteria', x: 608, y: 800, system: 'farming' },
+  { id: 'grow-light-balance', name: 'Balance Grow-Light Spectrum', kind: 'calibrate', roomId: 'cafeteria', x: 608, y: 784, system: 'farming' },
   { id: 'nutrient-loop', name: 'Check Hydroponics Nutrient Loop', kind: 'inspect', roomId: 'cafeteria', x: 544, y: 928, system: 'farming' },
   { id: 'asteroids', name: 'Survey EVA Safe Route', kind: 'inspect', roomId: 'admin', x: 928, y: 800, system: 'science' },
-  { id: 'steering', name: 'Plan Rover Traverse', kind: 'calibrate', roomId: 'communications', x: 1360, y: 336, system: 'science' },
-  { id: 'download-nav', name: 'Upload Surface Weather', kind: 'download', roomId: 'communications', x: 1872, y: 272, system: 'science' },
+  { id: 'steering', name: 'Plan Rover Traverse', kind: 'calibrate', roomId: 'communications', x: 1360, y: 368, system: 'science' },
+  { id: 'download-nav', name: 'Upload Surface Weather', kind: 'download', roomId: 'communications', x: 1792, y: 384, system: 'science' },
   { id: 'reactor-start', name: 'Tune Thermal Control', kind: 'calibrate', roomId: 'reactor', x: 736, y: 416, system: 'power' },
   { id: 'inspect', name: 'Analyze Regolith Sample', kind: 'inspect', roomId: 'medbay', x: 736, y: 1376, system: 'science' },
   { id: 'calibrate', name: 'Balance Habitat Power Bus', kind: 'calibrate', roomId: 'reactor', x: 864, y: 416, system: 'power' },
@@ -245,7 +246,7 @@ export const TASKS: TaskDef[] = [
   { id: 'upload-admin', name: 'Send Earth Science Log', kind: 'download', roomId: 'communications', x: 1568, y: 352, system: 'science' },
   { id: 'fuel-storage', name: 'Replace Battery Module', kind: 'fuel', roomId: 'storage', x: 1376, y: 736, system: 'power' },
   { id: 'shields', name: 'Prime Shields', kind: 'shield', roomId: 'security', x: 416, y: 1312 },
-  { id: 'wiring-electrical', name: 'Reconnect Power Distribution Bus', kind: 'wiring', roomId: 'reactor', x: 1056, y: 416, system: 'power' },
+  { id: 'wiring-electrical', name: 'Reconnect Power Distribution Bus', kind: 'wiring', roomId: 'reactor', x: 1104, y: 400, system: 'power' },
   { id: 'review-cams', name: 'Review Rover Terrain Images', kind: 'download', roomId: 'security', x: 240, y: 1200, system: 'science' },
   { id: 'clean-o2', name: 'Service CO2 Scrubber Filter', kind: 'garbage', roomId: 'storage', x: 1808, y: 752, system: 'life' },
   { id: 'reboot-comms', name: 'Align Deep-Space Antenna', kind: 'calibrate', roomId: 'communications', x: 1760, y: 352, system: 'science' },
@@ -636,11 +637,24 @@ function parseSavedTrial(value: unknown): SavedTrial | null {
     shiftDurationMs: typeof trial.shiftDurationMs === 'number' && Number.isFinite(trial.shiftDurationMs) && trial.shiftDurationMs > 0
       ? Math.min(300000, trial.shiftDurationMs) : undefined,
     eventChoiceId: typeof trial.eventChoiceId === 'string' ? trial.eventChoiceId : undefined,
+    donkiReport: isSavedDonkiReport(trial.donkiReport) ? trial.donkiReport : undefined,
     position: position && Number.isFinite(position.x) && Number.isFinite(position.y)
       && position.x > 0 && position.x < WORLD_WIDTH && position.y > 0 && position.y < WORLD_HEIGHT
       ? { x: position.x, y: position.y } : undefined,
     planning: planningBase ? { eventBase: planningBase, selected } : undefined,
   };
+}
+
+function isSavedDonkiReport(
+  value: unknown,
+): value is NonNullable<SavedTrial['donkiReport']> {
+  if (!value || typeof value !== 'object') return false;
+  const report = value as Partial<NonNullable<SavedTrial['donkiReport']>>;
+  return typeof report.id === 'string'
+    && (report.type === 'FLR' || report.type === 'CME' || report.type === 'SEP' || report.type === 'GST')
+    && typeof report.date === 'string' && Number.isFinite(Date.parse(report.date))
+    && typeof report.url === 'string'
+    && typeof report.summary === 'string';
 }
 
 /* v7 saves only tracked oxygen, starch, morale, and research. Fill the new

@@ -3,7 +3,6 @@ export type PropKind =
   | 'table'
   | 'crate'
   | 'pipe'
-  | 'vent'
   | 'bunk'
   | 'tank'
   | 'planter'

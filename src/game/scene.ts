@@ -8,6 +8,19 @@ import { MapGeometry } from '../sim/navigation';
 import type { InputSnapshot, PlayerState } from '../sim/movement';
 import { createPlayerState, lerp, stepPlayer } from '../sim/movement';
 import { AssetKeys, MapKeys } from './assets/AssetKeys';
+import {
+  applyResolvedSpriteVisual,
+  hasAnimatedSprite,
+  preloadCharacterSprites,
+  registerCharacterAnimations,
+  resolveCharacterVisual,
+  SPRITE_CREW_DISPLAY_HEIGHT,
+  SPRITE_CREW_DISPLAY_WIDTH,
+  SPRITE_DISPLAY_HEIGHT,
+  SPRITE_DISPLAY_WIDTH,
+  SPRITE_ORIGIN_X,
+  SPRITE_ORIGIN_Y,
+} from './assets/characterSprites';
 import { createPlaceholderTextures } from './assets/PlaceholderFactory';
 import { DEBUG_PAN_SPEED, DEMO_PAN_DURATION, PLAYER_FEET } from './constants';
 import { CrewNPC } from './entities/CrewNPC';
@@ -18,7 +31,7 @@ import { InputSystem } from './systems/InputSystem';
 import { InteractionSystem } from './systems/InteractionSystem';
 import { compressPath, findPath, gridFromTiles, hasTileClearance, tileAtPixel, type Tile, type WalkableGrid } from './utils/pathing';
 import { MapLoader, type LoadedMap } from './world/MapLoader';
-import { FIGMA_CONTACT_SHADOWS } from './world/figmaMapLayers';
+import { FIGMA_CONTACT_SHADOWS, FIGMA_LAYER_TEXTURES, TASK_OBJECT_OUTLINE_SPECS } from './world/figmaMapLayers';
 import { roomAt } from './world/Room';
 
 export type MapId = 'training' | 'surface';
@@ -29,6 +42,7 @@ export interface SceneGameState {
   playerName: string;
   colorId: PlayerColorId;
   playerArt: string;
+  helmet?: boolean;
   x: number;
   y: number;
   speed: number;
@@ -40,6 +54,7 @@ export interface SceneGameState {
 }
 
 export type GameEvent =
+  | { type: 'load-progress'; progress: number }
   | { type: 'ready' }
   | { type: 'move'; x: number; y: number; room: string }
   | { type: 'prompt'; interactionId: string | null; name: string; kind: string; room: string }
@@ -108,7 +123,7 @@ function nearestWalkableTile(grid: WalkableGrid, target: Tile): Tile | null {
 /**
  * Unified station Phaser scene:
  * - `surface` (Main Mission): Tiled `spudnaut-station.tmj` + illustrated floorplan,
- *   Arcade Physics walls, FollowerCamera, Y-sorted TaskStations/Vents/Props, and
+ *   Arcade Physics walls, FollowerCamera, Y-sorted TaskStations/Props, and
  *   autonomous BFS-wandering CrewNPCs.
  * - `training` (Earth Simulator): keeps Training Deck procedural map and bridge flow.
  */
@@ -132,6 +147,8 @@ export class StationScene extends Phaser.Scene {
   private sim: PlayerState = createPlayerState(TRAINING_DECK.spawn.x, TRAINING_DECK.spawn.y);
   private playerRoot?: Phaser.GameObjects.Container;
   private playerBody?: Phaser.GameObjects.Container;
+  private trainingPlayerSprite?: Phaser.GameObjects.Sprite;
+  private readonly trainingCrewSprites: Array<{ sprite: Phaser.GameObjects.Sprite; baseTextureKey: string }> = [];
   private mapLayer?: Phaser.GameObjects.Container;
   private markerLayer?: Phaser.GameObjects.Container;
   private crewLayer?: Phaser.GameObjects.Container;
@@ -153,6 +170,7 @@ export class StationScene extends Phaser.Scene {
   private readonly tiledCrew: CrewNPC[] = [];
   private tiledRoute: { x: number; y: number }[] = [];
   private routeProgress?: { x: number; y: number; stalledMs: number };
+  private stationTransitionActive = false;
 
   constructor(onEvent: (event: GameEvent) => void, initial: SceneGameState) {
     super({ key: 'station' });
@@ -165,11 +183,16 @@ export class StationScene extends Phaser.Scene {
   }
 
   preload(): void {
+    this.load.on('progress', (progress: number) => {
+      this.onEvent({ type: 'load-progress', progress });
+    });
+
     for (const [path, key] of Object.entries(POTATO_TEXTURES)) {
       this.load.image(key, path);
     }
-    for (const [key, path] of Object.entries(ICON_TEXTURES)) {
-      this.load.image(`icon-${key}`, path);
+    preloadCharacterSprites(this);
+    for (const [name, path] of Object.entries(ICON_TEXTURES)) {
+      this.load.image(`icon-${name}`, path);
     }
     this.load.image('planet-earth', '/assets/placeholders/kenney/planets/planet00.png');
     this.load.image('planet-moon', '/assets/placeholders/kenney/planets/planet05.png');
@@ -182,6 +205,10 @@ export class StationScene extends Phaser.Scene {
     this.load.image(AssetKeys.figmaFloorPlan, '/assets/maps/figma/floor-plan.png');
     this.load.image(AssetKeys.figmaObjectsSheet, '/assets/maps/figma/objects-sheet.png');
     this.load.image(AssetKeys.figmaHydroponicsPlatform, '/assets/maps/figma/hydroponics-platform.png');
+    for (const layer of Object.values(FIGMA_LAYER_TEXTURES)) {
+      this.load.image(layer.key, layer.path);
+    }
+    this.load.image(AssetKeys.collisionMask, '/assets/maps/collision-mask.jpg');
     for (const shadow of FIGMA_CONTACT_SHADOWS) {
       this.load.svg(shadow.key, shadow.path);
     }
@@ -190,6 +217,7 @@ export class StationScene extends Phaser.Scene {
 
   create(): void {
     createPlaceholderTextures(this);
+    registerCharacterAnimations(this);
 
     this.cameras.main.setZoom(CAMERA.zoom);
     this.cameras.main.setBackgroundColor('#03060c');
@@ -244,7 +272,9 @@ export class StationScene extends Phaser.Scene {
   setReducedMotion(reduced: boolean): void {
     this.reducedMotion = reduced;
     if (this.tiledPlayer) this.tiledPlayer.reducedMotion = reduced;
+    for (const member of this.tiledCrew) member.setReducedMotion(reduced);
     this.followerCamera?.setReducedMotion(reduced);
+    this.syncTrainingCrewAnimations();
   }
 
   navigateTo(x: number, y: number): boolean {
@@ -271,6 +301,51 @@ export class StationScene extends Phaser.Scene {
     }
   }
 
+  transitionThroughBlack(onCovered: () => void): void {
+    if (!this.ready) {
+      throw new Error('Station scene is not ready for a transition');
+    }
+    if (this.stationTransitionActive) {
+      throw new Error('A station transition is already in progress');
+    }
+
+    this.stationTransitionActive = true;
+    const cover = this.add
+      .rectangle(0, 0, 1, 1, 0x000000)
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(100_000);
+    const progress = { value: 0 };
+    const updateCover = (): void => {
+      const { width, height } = this.scale;
+      cover
+        .setSize(width, height)
+        .setPosition(width / 2, height * (1.5 - progress.value));
+    };
+    const animate = (target: number, onComplete: () => void): void => {
+      this.tweens.add({
+        targets: progress,
+        value: target,
+        duration: this.reducedMotion ? 1 : 550,
+        ease: 'Linear',
+        onUpdate: updateCover,
+        onComplete,
+      });
+    };
+
+    updateCover();
+    animate(1, () => {
+      try {
+        onCovered();
+      } finally {
+        animate(2, () => {
+          cover.destroy();
+          this.stationTransitionActive = false;
+        });
+      }
+    });
+  }
+
   private resolveMapDef(state: SceneGameState): MapDefinition {
     return state.mapId === 'surface' && state.destination
       ? surfaceHabitatFor(state.destination)
@@ -278,6 +353,14 @@ export class StationScene extends Phaser.Scene {
   }
 
   private applyState(next: SceneGameState, respawn: boolean): void {
+    console.info('apply-debug', {
+      activeMode: this.activeMode,
+      mapId: next.mapId,
+      frozen: next.frozen,
+      player: Boolean(this.tiledPlayer),
+      grid: Boolean(this.tiledGrid),
+      map: Boolean(this.tiledMap),
+    });
     const modeChanged = this.activeMode !== next.mapId;
     const destinationChanged = next.mapId === 'surface' && next.destination !== this.state.destination;
     const prevActiveKey = [...this.state.activeInteractions].sort().join(',');
@@ -289,11 +372,11 @@ export class StationScene extends Phaser.Scene {
     this.map = this.resolveMapDef(next);
 
     if (next.mapId === 'surface') {
-      if (modeChanged || destinationChanged) {
+      if (modeChanged || destinationChanged || !this.tiledMap || !this.tiledPlayer || !this.tiledGrid) {
         this.teardownTraining();
         this.buildSurface();
       } else if (this.tiledPlayer) {
-        this.tiledPlayer.setAppearance(textureKeyForArt(next.playerArt), next.playerName);
+        this.tiledPlayer.setAppearance(textureKeyForArt(next.playerArt), next.playerName, Boolean(next.helmet));
         this.tiledPlayer.speedMultiplier = next.speed;
         this.tiledPlayer.canMove = !next.frozen;
         this.tiledPlayer.reducedMotion = this.reducedMotion;
@@ -314,7 +397,7 @@ export class StationScene extends Phaser.Scene {
     }
 
     // Training Deck path
-    if (modeChanged || destinationChanged) {
+    if (modeChanged || destinationChanged || !this.geometry || !this.playerRoot) {
       this.teardownSurface();
       this.sim = createPlayerState(next.x || this.map.spawn.x, next.y || this.map.spawn.y);
       this.camTargetX = this.sim.x;
@@ -338,6 +421,10 @@ export class StationScene extends Phaser.Scene {
       this.sim.route = [];
       this.sim.routeIndex = 0;
     }
+    if (!modeChanged && this.playerRoot && this.trainingPlayerSkinChanged(next)) {
+      this.createTrainingPlayer();
+    }
+    this.syncTrainingPlayerAnimation();
     this.playerRoot?.setAlpha(next.frozen ? 0.72 : 1);
     this.createTrainingMarkers();
     this.promptKey = '';
@@ -375,7 +462,6 @@ export class StationScene extends Phaser.Scene {
 
     const loader = new MapLoader(this, MapKeys.station);
     this.tiledMap = loader.load({
-      onVentTrigger: (ventId) => this.handleVentInteract(ventId),
       artTint: mars ? 0xffeae0 : undefined,
     });
 
@@ -392,6 +478,7 @@ export class StationScene extends Phaser.Scene {
       start.y,
       this.state.playerName,
       textureKeyForArt(this.state.playerArt),
+      Boolean(this.state.helmet),
     );
     this.tiledPlayer.speedMultiplier = this.state.speed;
     this.tiledPlayer.canMove = !this.state.frozen;
@@ -404,10 +491,6 @@ export class StationScene extends Phaser.Scene {
     this.followerCamera.setBounds(bounds);
     this.followerCamera.setReducedMotion(this.reducedMotion);
     this.followerCamera.snap();
-
-    for (const vent of this.tiledMap.vents) {
-      this.tiledInteraction.register(vent);
-    }
 
     this.spawnSurfaceStations();
     this.spawnSurfaceCrew();
@@ -428,7 +511,6 @@ export class StationScene extends Phaser.Scene {
     this.tiledCrew.length = 0;
     if (this.tiledMap) {
       this.tiledMap.spawn.destroy();
-      for (const vent of this.tiledMap.vents) vent.destroy();
       for (const image of this.tiledMap.depthArtwork) image.destroy();
       this.tiledMap.artImage.destroy();
       this.tiledMap.floorLayer.destroy();
@@ -454,7 +536,8 @@ export class StationScene extends Phaser.Scene {
         name: task.name,
         roomName: getRoomName(task.roomId),
         accent,
-        iconKey: `icon-${task.icon}`,
+        target: this.findSurfaceTaskTarget(task.x, task.y),
+        outlineSpec: TASK_OBJECT_OUTLINE_SPECS[task.id],
         assigned: activeSet.has(task.id),
         completed: doneSet.has(task.id),
         onTrigger: (taskId) => this.handleSurfaceTaskInteract(taskId),
@@ -462,6 +545,35 @@ export class StationScene extends Phaser.Scene {
       this.tiledStations.push(station);
       this.tiledInteraction.register(station);
     }
+  }
+
+  private findSurfaceTaskTarget(x: number, y: number): Phaser.GameObjects.Image | undefined {
+    let target: Phaser.GameObjects.Image | undefined;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (const artwork of this.tiledMap?.depthArtwork ?? []) {
+      if (!(artwork instanceof Phaser.GameObjects.Image)) continue;
+      const name = artwork.name.toLowerCase();
+      const textureKey = artwork.texture.key.toLowerCase();
+      if (
+        name.startsWith('wall ')
+        || name.includes('occluder')
+        || name.startsWith('flat ')
+        || textureKey.startsWith('shadow-')
+        || textureKey.includes('decals')
+      ) {
+        continue;
+      }
+
+      const bounds = artwork.getBounds();
+      const dx = Math.max(bounds.left - x, 0, x - bounds.right);
+      const dy = Math.max(bounds.top - y, 0, y - bounds.bottom);
+      const distance = Math.hypot(dx, dy);
+      if (distance < nearestDistance) {
+        target = artwork;
+        nearestDistance = distance;
+      }
+    }
+    return target;
   }
 
   private syncSurfaceStations(): void {
@@ -491,6 +603,7 @@ export class StationScene extends Phaser.Scene {
           role: member.role,
           accent: member.accent,
           lines: member.lines,
+          reducedMotion: this.reducedMotion,
           home: { x: member.x, y: member.y },
           wanderRadius: 150,
           findPath: (from, to) => this.findSurfacePath(from, to),
@@ -532,19 +645,6 @@ export class StationScene extends Phaser.Scene {
     if (this.state.frozen) return;
     this.tiledRoute = [];
     this.onEvent({ type: 'interact', interactionId: taskId, kind: 'task' });
-  }
-
-  private handleVentInteract(ventId: string): void {
-    if (this.state.frozen || !this.tiledMap || !this.tiledPlayer) return;
-    const others = this.tiledMap.vents.filter((v) => v.id !== ventId);
-    const dest = others[0];
-    if (dest) {
-      this.tiledRoute = [];
-      const position = this.safeSurfacePosition(dest.position.x, dest.position.y);
-      this.tiledPlayer.setPosition(position.x, position.y);
-      this.followerCamera?.snap();
-    }
-    this.onEvent({ type: 'interact', interactionId: ventId, kind: 'vent' });
   }
 
   private findSurfacePath(
@@ -737,8 +837,11 @@ export class StationScene extends Phaser.Scene {
     const renderX = lerp(this.sim.prevX, this.sim.x, alpha);
     const renderY = lerp(this.sim.prevY, this.sim.y, alpha);
     this.playerRoot.setPosition(renderX, renderY);
+    this.syncTrainingPlayerAnimation();
     if (this.playerBody) {
-      const bob = this.sim.moving && !this.reducedMotion ? Math.sin(time * 0.022) * 2.2 : 0;
+      const bob = !this.trainingPlayerSprite && this.sim.moving && !this.reducedMotion
+        ? Math.sin(time * 0.022) * 2.2
+        : 0;
       this.playerBody.setScale(this.sim.facing, 1);
       this.playerBody.y = bob;
     }
@@ -814,6 +917,7 @@ export class StationScene extends Phaser.Scene {
     if (!this.crewLayer) return;
     for (const child of this.crewLayer.getAll()) {
       if (!(child instanceof Phaser.GameObjects.Container)) continue;
+      if (child.getData('animated') === true) continue;
       const offset = Number(child.getData('offset') ?? 0);
       if (this.reducedMotion) continue;
       child.y = Number(child.getData('baseY') ?? child.y) + Math.sin(time * 0.002 + offset) * 2;
@@ -891,9 +995,11 @@ export class StationScene extends Phaser.Scene {
     this.markerLayer = undefined;
     this.crewLayer?.destroy(true);
     this.crewLayer = undefined;
+    this.trainingCrewSprites.length = 0;
     this.playerRoot?.destroy(true);
     this.playerRoot = undefined;
     this.playerBody = undefined;
+    this.trainingPlayerSprite = undefined;
     this.geometry = undefined;
   }
 
@@ -1061,20 +1167,36 @@ export class StationScene extends Phaser.Scene {
   private createTrainingCrew(): void {
     if (!this.crewLayer) return;
     this.crewLayer.removeAll(true);
+    this.trainingCrewSprites.length = 0;
     this.map.crew.forEach((crew, index) => {
       const root = this.add.container(crew.x, crew.y);
       root.setData('baseY', crew.y);
       root.setData('offset', index * 1.7);
       const body = this.add.container(0, 0);
       const key = textureKeyForArt(crew.art);
-      if (this.textures.exists(key)) {
+      const visual = resolveCharacterVisual({
+        baseTextureKey: key,
+        moving: false,
+        helmeted: false,
+        reducedMotion: this.reducedMotion,
+      });
+      const animated = Boolean(visual && this.textures.exists(visual.textureKey));
+      root.setData('animated', animated);
+
+      if (animated && visual) {
+        const sprite = this.add.sprite(0, -32, visual.textureKey)
+          .setOrigin(SPRITE_ORIGIN_X, SPRITE_ORIGIN_Y)
+          .setDisplaySize(SPRITE_CREW_DISPLAY_WIDTH, SPRITE_CREW_DISPLAY_HEIGHT);
+        body.add(sprite);
+        this.trainingCrewSprites.push({ sprite, baseTextureKey: key });
+      } else if (this.textures.exists(key)) {
         body.add(this.add.image(0, -38, key).setDisplaySize(46, 56).setOrigin(0.5, 0.5));
       } else {
         body.add(this.add.ellipse(0, -32, 44, 56, colorHex('green'), 1));
       }
       body.setScale(crew.facing, 1);
       root.add(body);
-      root.add(this.add.text(0, -74, crew.name.toUpperCase(), {
+      root.add(this.add.text(0, animated ? -82 : -74, crew.name.toUpperCase(), {
         color: '#dce7f5',
         fontFamily: 'Consolas, monospace',
         fontSize: '10px',
@@ -1082,29 +1204,48 @@ export class StationScene extends Phaser.Scene {
         backgroundColor: 'rgba(4,8,14,0.62)',
         padding: { x: 4, y: 2 },
       }).setOrigin(0.5));
-      root.add(this.add.text(0, -62, crew.role.toUpperCase(), {
+      root.add(this.add.text(0, animated ? -70 : -62, crew.role.toUpperCase(), {
         color: crew.accent,
         fontFamily: 'Consolas, monospace',
         fontSize: '8px',
       }).setOrigin(0.5));
       this.crewLayer?.add(root);
     });
+    this.syncTrainingCrewAnimations();
   }
 
   private createTrainingPlayer(): void {
     this.playerRoot?.destroy(true);
+    this.trainingPlayerSprite = undefined;
     const color = colorHex(this.state.colorId);
     const root = this.add.container(this.sim.x, this.sim.y).setDepth(30);
     const body = this.add.container(0, 0);
     const key = textureKeyForArt(this.state.playerArt);
-    if (this.textures.exists(key)) {
+    const helmeted = Boolean(this.state.helmet);
+    const visual = resolveCharacterVisual({
+      baseTextureKey: key,
+      moving: this.sim.moving,
+      helmeted,
+      reducedMotion: this.reducedMotion,
+    });
+    const animated = Boolean(visual && this.textures.exists(visual.textureKey));
+
+    body.add(this.add.ellipse(0, 4, 42, 13, 0x02060b, 0.42));
+    if (animated && visual) {
+      const sprite = this.add.sprite(0, -32, visual.textureKey)
+        .setOrigin(SPRITE_ORIGIN_X, SPRITE_ORIGIN_Y)
+        .setDisplaySize(SPRITE_DISPLAY_WIDTH, SPRITE_DISPLAY_HEIGHT);
+      sprite.setData('baseTextureKey', key);
+      sprite.setData('playerName', this.state.playerName);
+      body.add(sprite);
+      this.trainingPlayerSprite = sprite;
+    } else if (this.textures.exists(key)) {
       body.add(this.add.image(0, -38, key).setDisplaySize(52, 64).setOrigin(0.5, 0.5));
     } else {
       body.add(this.add.ellipse(0, -30, 44, 58, color, 1));
     }
-    body.add(this.add.ellipse(0, 4, 42, 13, 0x02060b, 0.42));
     root.add(body);
-    const label = this.add.text(0, -80, this.state.playerName.toUpperCase(), {
+    const label = this.add.text(0, animated ? -88 : -80, this.state.playerName.toUpperCase(), {
       color: '#fff1be',
       fontFamily: 'Consolas, monospace',
       fontSize: '11px',
@@ -1113,10 +1254,47 @@ export class StationScene extends Phaser.Scene {
       padding: { x: 5, y: 2 },
     }).setOrigin(0.5);
     root.add(label);
-    const marker = this.add.triangle(0, -96, 0, 0, 8, 0, 4, 8, 0xf5c451, 1).setName('caret');
+    const marker = this.add.triangle(0, animated ? -104 : -96, 0, 0, 8, 0, 4, 8, 0xf5c451, 1).setName('caret');
     root.add(marker);
     this.playerRoot = root;
     this.playerBody = body;
+    this.syncTrainingPlayerAnimation();
+  }
+
+  private trainingPlayerSkinChanged(next: SceneGameState): boolean {
+    const key = textureKeyForArt(next.playerArt);
+    const currentKey = this.trainingPlayerSprite?.getData('baseTextureKey');
+    const currentName = this.trainingPlayerSprite?.getData('playerName');
+    return (hasAnimatedSprite(key) ? currentKey !== key : Boolean(this.trainingPlayerSprite))
+      || (currentName !== undefined && currentName !== next.playerName);
+  }
+
+  private applyTrainingSpritePose(
+    sprite: Phaser.GameObjects.Sprite,
+    baseTextureKey: string,
+    moving: boolean,
+  ): void {
+    const visual = resolveCharacterVisual({
+      baseTextureKey,
+      moving,
+      helmeted: sprite === this.trainingPlayerSprite && Boolean(this.state.helmet),
+      reducedMotion: this.reducedMotion,
+    });
+    if (visual) applyResolvedSpriteVisual(this, sprite, visual);
+  }
+
+  private syncTrainingPlayerAnimation(): void {
+    const sprite = this.trainingPlayerSprite;
+    if (!sprite || !sprite.active) return;
+    const baseTextureKey = String(sprite.getData('baseTextureKey') ?? textureKeyForArt(this.state.playerArt));
+    this.applyTrainingSpritePose(sprite, baseTextureKey, this.sim.moving);
+  }
+
+  private syncTrainingCrewAnimations(): void {
+    for (const entry of this.trainingCrewSprites) {
+      if (!entry.sprite.active) continue;
+      this.applyTrainingSpritePose(entry.sprite, entry.baseTextureKey, false);
+    }
   }
 }
 
@@ -1152,7 +1330,7 @@ export function createStationGame(parent: HTMLElement, onEvent: (event: GameEven
         debug: false,
       },
     },
-    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+    scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },
     render: { antialias: true, roundPixels: false, powerPreference: 'high-performance' },
     scene: [new StationScene(onEvent, defaultState())],
   });
@@ -1180,4 +1358,12 @@ export function navigateStationTo(game: Phaser.Game, x: number, y: number): bool
 export function interactStation(game: Phaser.Game): void {
   const scene = game.scene.getScene('station') as StationScene | null;
   scene?.interactNow();
+}
+
+export function transitionStationThroughBlack(game: Phaser.Game, onCovered: () => void): void {
+  const scene = game.scene.getScene('station') as StationScene | null;
+  if (!scene) {
+    throw new Error('Station scene is not available for a transition');
+  }
+  scene.transitionThroughBlack(onCovered);
 }

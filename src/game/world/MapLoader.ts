@@ -2,7 +2,6 @@ import Phaser from 'phaser';
 import { AssetKeys, MapKeys } from '../assets/AssetKeys';
 import { DEPTH_FLOOR, DEPTH_OVERHEAD, DEPTH_WALL } from '../constants';
 import { SpawnPoint } from '../entities/SpawnPoint';
-import { Vent } from '../entities/Vent';
 import type { Room } from './Room';
 import {
   FIGMA_CONTACT_SHADOWS,
@@ -10,10 +9,12 @@ import {
   FIGMA_DESIGN_SIZE,
   FIGMA_FLAT_DECALS,
   FIGMA_HYDROPONICS_PLATFORM,
+  FIGMA_LAYER_TEXTURES,
   FIGMA_OUTER_VOID_CLEANUP,
   FIGMA_STATUS_LIGHTS,
   FIGMA_TO_WORLD,
   WORLD_MAP_SIZE,
+  type FigmaLayerSource,
 } from './figmaMapLayers';
 
 /** Lightweight tile grid backing Tiled BFS pathfinding and minimap layout. */
@@ -26,7 +27,6 @@ export interface MinimapModel {
   /** cols * rows, 1 = walkable floor tile. */
   floors: Uint8Array;
   rooms: Room[];
-  vents: { id: string; x: number; y: number }[];
   spawn: { x: number; y: number };
 }
 
@@ -38,7 +38,6 @@ export interface LoadedMap {
   artImage: Phaser.GameObjects.Image;
   depthArtwork: (Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle)[];
   spawn: SpawnPoint;
-  vents: Vent[];
   rooms: Room[];
   bounds: { x: number; y: number; width: number; height: number };
   minimap: MinimapModel;
@@ -72,7 +71,7 @@ interface TiledMapJson {
 /**
  * Loads spudnaut-station.tmj in Phaser 3.90, renders the illustrated station
  * artwork on DEPTH_FLOOR, configures invisible Arcade Physics wall tiles, and
- * extracts Room regions, SpawnPoint, Vents, and BFS collision data.
+ * extracts Room regions, SpawnPoint, and BFS collision data.
  */
 export class MapLoader {
   constructor(
@@ -80,10 +79,7 @@ export class MapLoader {
     private readonly mapKey: string = MapKeys.station,
   ) {}
 
-  load(options?: {
-    onVentTrigger?: (ventId: string, position: { x: number; y: number }) => void;
-    artTint?: number;
-  }): LoadedMap {
+  load(options?: { artTint?: number }): LoadedMap {
     const map = this.scene.make.tilemap({ key: this.mapKey });
     const tileset = map.addTilesetImage(AssetKeys.tileset, AssetKeys.tileset);
     if (!tileset) {
@@ -120,9 +116,9 @@ export class MapLoader {
     wallLayer.setVisible(false);
     overheadLayer.setVisible(false);
 
+    const parsed = this.spawnEntities(map);
+    const collisionMask = this.applyCollisionMask(map, wallLayer);
     wallLayer.setCollisionByExclusion([-1]);
-
-    const parsed = this.spawnEntities(map, options?.onVentTrigger);
 
     const bounds = {
       x: 0,
@@ -131,7 +127,7 @@ export class MapLoader {
       height: map.heightInPixels,
     };
 
-    const minimap = this.buildMinimap(parsed.vents, parsed.rooms, parsed.spawn);
+    const minimap = this.buildMinimap(parsed.rooms, parsed.spawn, collisionMask);
 
     return {
       map,
@@ -141,23 +137,71 @@ export class MapLoader {
       artImage,
       depthArtwork,
       spawn: parsed.spawn,
-      vents: parsed.vents,
       rooms: parsed.rooms,
       bounds,
       minimap,
     };
   }
 
+  private resolveFigmaTexture(
+    source: FigmaLayerSource,
+  ): { key: string; tex: Phaser.Textures.Texture; scale: number } | null {
+    const textures = this.scene.textures;
+    let key: string;
+    if (source === 'floor') {
+      key = AssetKeys.figmaFloorPlan;
+    } else if (source === 'objects') {
+      key = AssetKeys.figmaObjectsSheet;
+    } else {
+      const layerEntry = FIGMA_LAYER_TEXTURES[source];
+      if (layerEntry && textures.exists(layerEntry.key)) {
+        key = layerEntry.key;
+      } else {
+        key = source === 'walls' ? AssetKeys.figmaFloorPlan : AssetKeys.figmaObjectsSheet;
+      }
+    }
+    if (!textures.exists(key)) return null;
+    const tex = textures.get(key);
+    const img = tex.getSourceImage() as HTMLImageElement | HTMLCanvasElement | undefined;
+    if (!img?.width) return null;
+    return { key, tex, scale: img.width / FIGMA_DESIGN_SIZE };
+  }
+
+  /** Registers a cropped frame from a Figma layer texture and places its scaled world image. */
+  private addFigmaSliceImage(
+    slice: { name: string; x: number; y: number; w: number; h: number; source: FigmaLayerSource },
+    depth: number,
+    tint?: number,
+  ): Phaser.GameObjects.Image | null {
+    const resolved = this.resolveFigmaTexture(slice.source);
+    if (!resolved) return null;
+    const frame = `figma-slice-${slice.source}-${slice.x}-${slice.y}-${slice.w}-${slice.h}`;
+    if (!resolved.tex.has(frame)) {
+      resolved.tex.add(
+        frame,
+        0,
+        Math.round(slice.x * resolved.scale),
+        Math.round(slice.y * resolved.scale),
+        Math.round(slice.w * resolved.scale),
+        Math.round(slice.h * resolved.scale),
+      );
+    }
+    const img = this.scene.add
+      .image(slice.x * FIGMA_TO_WORLD, slice.y * FIGMA_TO_WORLD, resolved.key, frame)
+      .setOrigin(0)
+      .setDisplaySize(slice.w * FIGMA_TO_WORLD, slice.h * FIGMA_TO_WORLD)
+      .setDepth(depth)
+      .setName(slice.name);
+    if (tint !== undefined) img.setTint(tint);
+    return img;
+  }
+
   private createFigmaLayeredWorld(tint?: number): (Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle)[] {
     const textures = this.scene.textures;
     const floorTex = textures.get(AssetKeys.figmaFloorPlan);
-    const objTex = textures.get(AssetKeys.figmaObjectsSheet);
     const floorImg = floorTex.getSourceImage() as HTMLImageElement | HTMLCanvasElement;
-    const objImg = objTex.getSourceImage() as HTMLImageElement | HTMLCanvasElement;
-    if (!floorImg?.width || !objImg?.width) return [];
+    if (!floorImg?.width) return [];
 
-    const floorSrcScale = floorImg.width / FIGMA_DESIGN_SIZE;
-    const objSrcScale = objImg.width / FIGMA_DESIGN_SIZE;
     const items: (Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle)[] = [];
 
     // 01 · Outer void cleanup
@@ -213,67 +257,34 @@ export class MapLoader {
       items.push(img);
     }
 
-    // 01 · Flat floor decals (central floor vent & airlock threshold) — always below actors
+    // 01 · Flat floor decals — always below actors
     for (const decal of FIGMA_FLAT_DECALS) {
-      const frame = `figma-decal-${decal.x}-${decal.y}`;
-      if (!objTex.has(frame)) {
-        objTex.add(
-          frame,
-          0,
-          Math.round(decal.x * objSrcScale),
-          Math.round(decal.y * objSrcScale),
-          Math.round(decal.w * objSrcScale),
-          Math.round(decal.h * objSrcScale),
-        );
-      }
-      const img = this.scene.add
-        .image(decal.x * FIGMA_TO_WORLD, decal.y * FIGMA_TO_WORLD, AssetKeys.figmaObjectsSheet, frame)
-        .setOrigin(0)
-        .setDisplaySize(decal.w * FIGMA_TO_WORLD, decal.h * FIGMA_TO_WORLD)
-        .setDepth(DEPTH_FLOOR + 1)
-        .setName(decal.name);
-      if (tint !== undefined) img.setTint(tint);
-      items.push(img);
+      const img = this.addFigmaSliceImage(decal, DEPTH_FLOOR + 1, tint);
+      if (img) items.push(img);
     }
 
-    // 02 · Built-in hydroponics raised platform occluder (foot Y=750)
-    if (textures.exists(AssetKeys.figmaHydroponicsPlatform)) {
-      const p = FIGMA_HYDROPONICS_PLATFORM;
-      const img = this.scene.add
+    // 02 · Built-in hydroponics raised platform occluder (foot Y=754)
+    const p = FIGMA_HYDROPONICS_PLATFORM;
+    const hydroImg = textures.exists(AssetKeys.figmaLayerLiferoomTop)
+      ? this.addFigmaSliceImage(p, Math.round(p.footY * FIGMA_TO_WORLD), tint)
+      : null;
+    if (hydroImg) {
+      items.push(hydroImg);
+    } else if (textures.exists(AssetKeys.figmaHydroponicsPlatform)) {
+      const fallback = this.scene.add
         .image(p.x * FIGMA_TO_WORLD, p.y * FIGMA_TO_WORLD, AssetKeys.figmaHydroponicsPlatform)
         .setOrigin(0)
         .setDisplaySize(p.w * FIGMA_TO_WORLD, p.h * FIGMA_TO_WORLD)
         .setDepth(Math.round(p.footY * FIGMA_TO_WORLD))
         .setName(p.name);
-      if (tint !== undefined) img.setTint(tint);
-      items.push(img);
+      if (tint !== undefined) fallback.setTint(tint);
+      items.push(fallback);
     }
 
     // 02 · Depth-sorted wall/edge occluders & 3D props sorted by feet Y
     for (const slice of FIGMA_DEPTH_SLICES) {
-      const isFloor = slice.source === 'floor';
-      const texKey = isFloor ? AssetKeys.figmaFloorPlan : AssetKeys.figmaObjectsSheet;
-      const tex = isFloor ? floorTex : objTex;
-      const srcScale = isFloor ? floorSrcScale : objSrcScale;
-      const frame = `figma-slice-${slice.source}-${slice.x}-${slice.y}-${slice.w}-${slice.h}`;
-      if (!tex.has(frame)) {
-        tex.add(
-          frame,
-          0,
-          Math.round(slice.x * srcScale),
-          Math.round(slice.y * srcScale),
-          Math.round(slice.w * srcScale),
-          Math.round(slice.h * srcScale),
-        );
-      }
-      const img = this.scene.add
-        .image(slice.x * FIGMA_TO_WORLD, slice.y * FIGMA_TO_WORLD, texKey, frame)
-        .setOrigin(0)
-        .setDisplaySize(slice.w * FIGMA_TO_WORLD, slice.h * FIGMA_TO_WORLD)
-        .setDepth(Math.round(slice.footY * FIGMA_TO_WORLD))
-        .setName(slice.name);
-      if (tint !== undefined) img.setTint(tint);
-      items.push(img);
+      const img = this.addFigmaSliceImage(slice, Math.round(slice.footY * FIGMA_TO_WORLD), tint);
+      if (img) items.push(img);
     }
 
     return items;
@@ -295,7 +306,7 @@ export class MapLoader {
     }
     const images: Phaser.GameObjects.Image[] = [];
 
-    // Preserve any un-sliced flat decals (floor vents, hatches, wall plaques) below characters
+    // Preserve any un-sliced flat decals below characters
     const decalKey = 'station-floor-decals';
     if (!textures.exists(decalKey)) {
       const decalCanvas = textures.createCanvas(decalKey, map.widthInPixels, map.heightInPixels);
@@ -373,9 +384,9 @@ export class MapLoader {
   }
 
   private buildMinimap(
-    vents: Vent[],
     rooms: Room[],
     spawn: SpawnPoint,
+    collisionMask: Uint8Array,
   ): MinimapModel {
     const cached = this.scene.cache.tilemap.get(this.mapKey) as unknown as
       | { data: TiledMapJson }
@@ -398,6 +409,9 @@ export class MapLoader {
         if (layer.name === 'floor') floors[i] = 1;
       }
     }
+    for (let i = 0; i < collisionMask.length; i += 1) {
+      if (collisionMask[i]) walls[i] = 1;
+    }
 
     return {
       cols,
@@ -406,21 +420,15 @@ export class MapLoader {
       walls,
       floors,
       rooms,
-      vents: vents.map((v) => ({ id: v.id, x: v.position.x, y: v.position.y })),
       spawn: { x: spawn.x, y: spawn.y },
     };
   }
 
-  private spawnEntities(
-    map: Phaser.Tilemaps.Tilemap,
-    onVentTrigger?: (ventId: string, position: { x: number; y: number }) => void,
-  ): {
+  private spawnEntities(map: Phaser.Tilemaps.Tilemap): {
     spawn: SpawnPoint;
-    vents: Vent[];
     rooms: Room[];
   } {
     const objectLayer = map.getObjectLayer('objects');
-    const vents: Vent[] = [];
     const rooms: Room[] = [];
     let spawn: SpawnPoint | null = null;
 
@@ -429,19 +437,6 @@ export class MapLoader {
         switch (obj.type) {
           case 'SpawnPoint':
             spawn = new SpawnPoint(this.scene, obj.x, obj.y, false);
-            break;
-          case 'Vent':
-            vents.push(
-              new Vent(
-                this.scene,
-                obj.name || `vent-${obj.id}`,
-                obj.x,
-                obj.y,
-                obj.width,
-                obj.height,
-                onVentTrigger,
-              ),
-            );
             break;
           case 'Room':
             rooms.push({
@@ -459,7 +454,59 @@ export class MapLoader {
       spawn = new SpawnPoint(this.scene, map.widthInPixels / 2, map.heightInPixels / 2, false);
     }
 
-    return { spawn, vents, rooms };
+    return { spawn, rooms };
+  }
+
+  private applyCollisionMask(
+    map: Phaser.Tilemaps.Tilemap,
+    wallLayer: Phaser.Tilemaps.TilemapLayer,
+  ): Uint8Array {
+    const collisionTileIndex = wallLayer
+      .getTilesWithin(0, 0, map.width, map.height)
+      .find((tile) => tile.index >= 0)?.index;
+    if (collisionTileIndex === undefined) {
+      throw new Error(`Wall layer in map "${this.mapKey}" has no tile to use for collision`);
+    }
+
+    const texture = this.scene.textures.get(AssetKeys.collisionMask);
+    const source = texture.getSourceImage() as HTMLImageElement | HTMLCanvasElement;
+    if (!source?.width || !source.height) {
+      throw new Error(`Collision mask "${AssetKeys.collisionMask}" has no image data`);
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = map.widthInPixels;
+    canvas.height = map.heightInPixels;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) {
+      throw new Error('Unable to create a canvas context for the station collision mask');
+    }
+    context.drawImage(source, 0, 0, canvas.width, canvas.height);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    const collisionMask = new Uint8Array(map.width * map.height);
+    for (let row = 0; row < map.height; row += 1) {
+      for (let col = 0; col < map.width; col += 1) {
+        let wallSamples = 0;
+        let samples = 0;
+        for (let y = row * map.tileHeight; y < (row + 1) * map.tileHeight; y += 2) {
+          for (let x = col * map.tileWidth; x < (col + 1) * map.tileWidth; x += 2) {
+            const pixelIndex = (y * canvas.width + x) * 4;
+            if (pixels[pixelIndex] >= 60) wallSamples += 1;
+            samples += 1;
+          }
+        }
+        const index = row * map.width + col;
+        if (wallSamples / samples < 0.2) continue;
+
+        collisionMask[index] = 1;
+        const tile = wallLayer.getTileAt(col, row);
+        if (!tile || tile.index < 0) {
+          wallLayer.putTileAt(collisionTileIndex, col, row);
+        }
+      }
+    }
+
+    return collisionMask;
   }
 
   private asLayer(

@@ -1,4 +1,5 @@
 import type { DestinationId } from '../model';
+import type { DonkiReport } from './donki';
 
 export interface EventCard {
   id: string;
@@ -9,6 +10,7 @@ export interface EventCard {
   description: string;
   effect: string;
   deltas: Partial<Record<'power' | 'oxygen' | 'water' | 'starch' | 'hull' | 'morale' | 'research', number>>;
+  source?: DonkiReport;
 }
 
 export const EVENT_CARDS: EventCard[] = [

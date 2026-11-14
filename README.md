@@ -39,6 +39,12 @@ The trial is cooperative: there are no impostors, kills, meetings, voting, eject
 | O | Open in-game settings |
 | Esc | Close a task or panel |
 
+## Space weather and EVA
+
+Daily shifts may use NASA's DONKI space-weather reports (FLR, CME, SEP, and GST) to add a recent observation to the existing fictional Solar Flare Watch event. The game requests the previous seven days and caches the result in memory; when DONKI is unavailable or rate-limited, the deterministic event flow continues unchanged. Set `VITE_NASA_API_KEY` in a local `.env` file to use your own NASA API key. Vite variables are included in browser code, so this key is public to players; never put a private or server-only key there. Without it, the game uses NASA's public `DEMO_KEY`.
+
+EVA means **Extravehicular Activity**, commonly called a spacewalk. In this game, EVA refers to existing suited outdoor assignments such as collecting geology samples and inspecting the exterior power cable.
+
 ## Source layout
 
 - `src/model.ts` — mission types, station layout, assignments, exam questions, and local saves.

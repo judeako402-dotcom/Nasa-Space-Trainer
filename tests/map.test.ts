@@ -1,7 +1,12 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { PLAYER_FEET } from '../src/game/constants';
 import { findPath, gridFromTiles, hasTileClearance, tileAtPixel, type Tile } from '../src/game/utils/pathing';
+import {
+  FIGMA_DESIGN_SIZE,
+  FIGMA_LAYER_TEXTURES,
+  TASK_OBJECT_OUTLINE_SPECS,
+} from '../src/game/world/figmaMapLayers';
 import { PLAYER_SPAWN, TASKS } from '../src/model';
 
 /**
@@ -90,7 +95,7 @@ describe('station map structure', () => {
       'walls',
     ]);
     const artwork = layer('depth-artwork').objects ?? [];
-    expect(artwork.map(object => object.name)).toContain('Cargo container');
+    expect(artwork.map(object => object.name)).toContain('Cargo command terminal');
     expect(artwork.some(object => object.name.startsWith('Wall '))).toBe(true);
     for (const object of artwork) {
       expect(object.type).toBe('DepthArtwork');
@@ -138,9 +143,9 @@ describe('station map structure', () => {
     }
   });
 
-  it('ships three task consoles and two vents (story contract)', () => {
+  it('retains task interaction anchors and removes vent objects', () => {
     expect(taskObjs).toHaveLength(3);
-    expect(ventObjs).toHaveLength(2);
+    expect(ventObjs).toHaveLength(0);
     for (const t of taskObjs) {
       expect(prop(t, 'promptText'), t.name).toBeTruthy();
     }
@@ -161,8 +166,39 @@ describe('station map collision', () => {
   });
 
   it('blocks the walls beside doors and solid cargo props', () => {
-    for (const [x, y] of [[1232, 800], [690, 1300], [1600, 940], [1680, 770], [1890, 1060]]) {
+    for (const [x, y] of [[1232, 800], [690, 1300], [1860, 860], [1680, 770], [1890, 1060]]) {
       expect(fits(x, y), `collider fits inside a wall or prop at ${x}, ${y}`).toBe(false);
+    }
+    expect(fits(1600, 940)).toBe(true);
+  });
+
+  it('blocks reactor, comms, and airlock perimeter silhouettes while keeping doorways and tasks clear', () => {
+    for (const [x, y] of [
+      [624, 272],
+      [656, 304],
+      [912, 368],
+      [1360, 272],
+      [1360, 336],
+      [1424, 304],
+      [1552, 336],
+      [1488, 336],
+      [1856, 288],
+      [1776, 1360],
+      [1552, 1360],
+      [1552, 1456],
+      [1808, 848],
+    ]) {
+      expect(fits(x, y), `collider overlaps prop perimeter at ${x}, ${y}`).toBe(false);
+    }
+    for (const [x, y] of [
+      [1360, 368],
+      [1792, 384],
+      [1808, 752],
+      [608, 784],
+      [1104, 400],
+      [1664, 1360],
+    ]) {
+      expect(fits(x, y), `walkable task or doorway blocked at ${x}, ${y}`).toBe(true);
     }
   });
 
@@ -278,6 +314,30 @@ describe('station map traversability', () => {
         findPath(grid, modelSpawnTile!, taskTile!),
         `task ${task.id} unreachable from PLAYER_SPAWN`,
       ).not.toBeNull();
+    }
+  });
+
+  it('defines valid layer outline specs for every mission task in TASKS', () => {
+    expect(Object.keys(TASK_OBJECT_OUTLINE_SPECS).sort()).toEqual(
+      TASKS.map((t) => t.id).sort(),
+    );
+
+    for (const task of TASKS) {
+      const spec = TASK_OBJECT_OUTLINE_SPECS[task.id];
+      expect(spec, `missing outline spec for task ${task.id}`).toBeDefined();
+      expect(spec.w).toBeGreaterThan(0);
+      expect(spec.h).toBeGreaterThan(0);
+      expect(spec.x).toBeGreaterThanOrEqual(0);
+      expect(spec.y).toBeGreaterThanOrEqual(0);
+      expect(spec.x + spec.w).toBeLessThanOrEqual(FIGMA_DESIGN_SIZE);
+      expect(spec.y + spec.h).toBeLessThanOrEqual(FIGMA_DESIGN_SIZE);
+      expect(spec.footY).toBeGreaterThan(0);
+
+      if (spec.source !== 'floor' && spec.source !== 'objects') {
+        const layer = FIGMA_LAYER_TEXTURES[spec.source];
+        expect(layer, `invalid layer source ${spec.source} for task ${task.id}`).toBeDefined();
+        expect(existsSync(`public${layer.path}`), `missing asset ${layer.path}`).toBe(true);
+      }
     }
   });
 });

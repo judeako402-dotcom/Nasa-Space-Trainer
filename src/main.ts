@@ -10,6 +10,7 @@ import type {
 } from './model';
 import { DAILY_OPERATIONS_DRIFT, DAY, PASS_THRESHOLDS, SYSTEMS } from './data/balance';
 import { EVENT_CARDS } from './data/events';
+import { fetchLatestDonkiReport, solarEventFromDonkiReport } from './data/donki';
 import type { MapDefinition } from './data/mapTypes';
 import { STORY_BEATS } from './data/story';
 import { surfaceHabitatFor } from './data/surfaceHabitat';
@@ -22,6 +23,7 @@ import {
 import { createRng, seedFor } from './sim/rng';
 import type { createStationGame } from './game';
 import type { GameEvent, SceneGameState } from './game';
+import { supportsHelmetArt } from './game/assets/characterSprites';
 import { renderTaskGame } from './minigames';
 import { configureSfx, sfx } from './sfx';
 import { configureMusic, startMusic, stopMusic } from './audio/music';
@@ -78,10 +80,49 @@ let loopTimer = 0;
 let splashTimer = 0;
 let gameLoadPromise: Promise<PhaserGame> | null = null;
 let currentPrompt: PromptState = { id: null, name: '', kind: '', room: 'Cafeteria' };
+let countdownAlertShiftStart = 0;
+let toastTimer = 0;
+let sceneLoadProgress = 0;
+let manualHelmetOverride: boolean | null = null;
 
 /* Phaser's full type is only needed for the game handle. Importing the namespace
    keeps this file's runtime surface focused on the DOM and the simulation. */
 type PhaserGame = ReturnType<typeof createStationGame>;
+
+function effectivePlayerHelmet(): boolean {
+  if (!supportsHelmetArt(specialistById(lobby.specialist).art)) return false;
+  if (manualHelmetOverride !== null) return manualHelmetOverride;
+  if (currentScreen !== 'mission') return false;
+  return mission.room.toLowerCase().includes('airlock') || mission.metrics.oxygen < 45;
+}
+
+function setSceneLoadingState(active: boolean, progress?: number, label?: string): void {
+  const overlay = document.querySelector<HTMLElement>('#scene-loading');
+  const bar = document.querySelector<HTMLProgressElement>('#scene-loading-progress');
+  const title = document.querySelector<HTMLElement>('#scene-loading-label');
+  const detail = document.querySelector<HTMLElement>('#scene-loading-detail');
+  if (!overlay) return;
+
+  overlay.hidden = !active;
+  if (active) {
+    sceneShell.setAttribute('aria-busy', 'true');
+    if (bar) {
+      if (typeof progress === 'number' && progress > 0) {
+        const pct = Math.max(1, Math.min(100, Math.round(progress * 100)));
+        bar.max = 100;
+        bar.value = pct;
+        if (title) title.textContent = label ?? `LOADING HABITAT SYSTEMS · ${pct}%`;
+        if (detail) detail.textContent = pct >= 95 ? 'Finalizing tilemap & crew animations...' : 'Streaming station & crew assets';
+      } else {
+        bar.removeAttribute('value');
+        if (title) title.textContent = label ?? 'CONNECTING HABITAT ENGINE...';
+        if (detail) detail.textContent = 'Initializing Phaser simulation & sprites';
+      }
+    }
+  } else {
+    sceneShell.removeAttribute('aria-busy');
+  }
+}
 
 function ensureStationGame(): Promise<PhaserGame> {
   if (game) return Promise.resolve(game);
@@ -96,6 +137,14 @@ function ensureStationGame(): Promise<PhaserGame> {
 
 const app = document.querySelector<HTMLDivElement>('#app');
 if (!app) throw new Error('Missing #app root element.');
+const requestAppFullscreen = (): void => {
+  if (!document.fullscreenEnabled || document.fullscreenElement) return;
+  void document.documentElement.requestFullscreen().catch((error: unknown) => {
+    console.warn('Fullscreen request was denied; the game remains sized to the viewport.', error);
+  });
+};
+app.addEventListener('pointerdown', requestAppFullscreen, { capture: true });
+app.addEventListener('keydown', requestAppFullscreen, { capture: true });
 
 type ConstellationIconId =
   | 'play'
@@ -204,6 +253,20 @@ app.innerHTML = `
     <main class="screen-root" id="screen-root"></main>
     <div class="scene-shell" id="scene-shell" hidden>
       <div id="game-canvas" class="game-canvas"></div>
+      <div class="scene-loading" id="scene-loading" role="status" aria-live="polite" hidden>
+        <div class="scene-loading-card">
+          <div class="scene-loading-stage" aria-hidden="true">
+            <img class="scene-loading-strip" src="/assets/loading/loading-runner-sheet.png" alt="" draggable="false" />
+            <img class="scene-loading-poster" src="/assets/loading/loading-poster.png" alt="" draggable="false" />
+          </div>
+          <div class="scene-loading-copy">
+            <span class="scene-loading-kicker">SPUDNAUT TELEMETRY LINK</span>
+            <strong id="scene-loading-label">CONNECTING HABITAT ENGINE...</strong>
+            <progress class="spud-load-progress" id="scene-loading-progress" max="100"></progress>
+            <small id="scene-loading-detail">Streaming station &amp; crew assets</small>
+          </div>
+        </div>
+      </div>
       <div class="scene-vignette" aria-hidden="true"></div>
       <div class="hud mission-hud" id="hud" hidden>
         <div class="hud-top-left">
@@ -321,6 +384,18 @@ app.innerHTML = `
                 ${renderFigmaIcon('location-pin', 'hud-pin-icon')}
                 <span id="hud-room">CENTRAL HUB</span>
               </div>
+              <button
+                type="button"
+                class="hud-helmet-btn"
+                id="hud-helmet-btn"
+                data-action="helmet"
+                aria-pressed="false"
+                aria-keyshortcuts="G"
+                title="Toggle EVA Helmet (G)"
+              >
+                <span id="hud-helmet-label">EVA: OPEN</span>
+                <kbd aria-hidden="true">G</kbd>
+              </button>
             </div>
           </div>
         </div>
@@ -517,6 +592,7 @@ function setScreen(screen: ScreenId, markup: string): void {
   overlayRoot.replaceChildren();
   modalRoot.replaceChildren();
   sceneShell.hidden = true;
+  setSceneLoadingState(false);
   hud.hidden = true;
   trainingHud.hidden = true;
   screenRoot.hidden = false;
@@ -802,8 +878,12 @@ function showTraining(): void {
   document.body.dataset.screen = 'game';
   training = createTrainingState();
   trainingHudExpanded = false;
+  manualHelmetOverride = null;
   currentPrompt = { id: null, name: '', kind: '', room: 'Cafeteria' };
   wakeStationGame();
+  if (!sceneReady) {
+    setSceneLoadingState(true, sceneLoadProgress > 0 ? sceneLoadProgress : undefined);
+  }
   if (game) configureScene({ respawn: true });
   else void ensureStationGame().then(() => { if (currentScreen === 'training') configureScene({ respawn: true }); });
   renderTrainingHud();
@@ -871,6 +951,7 @@ function trainingSceneState(): SceneGameState {
     playerName: save.name,
     colorId: save.colorId,
     playerArt: specialistById(lobby.specialist).art,
+    helmet: effectivePlayerHelmet(),
     x: training.x,
     y: training.y,
     speed: movementSpeed(),
@@ -889,6 +970,7 @@ function missionSceneState(): SceneGameState {
     playerName: save.name,
     colorId: save.colorId,
     playerArt: specialistById(lobby.specialist).art,
+    helmet: effectivePlayerHelmet(),
     x: mission.playerX,
     y: mission.playerY,
     speed: movementSpeed(),
@@ -900,7 +982,33 @@ function missionSceneState(): SceneGameState {
   };
 }
 
-function configureScene(options: { respawn?: boolean } = {}): void {
+function syncHelmetButton(): void {
+  const btn = document.querySelector<HTMLButtonElement>('#hud-helmet-btn');
+  const label = document.querySelector<HTMLElement>('#hud-helmet-label');
+  if (!btn || !label) return;
+  const supported = supportsHelmetArt(specialistById(lobby.specialist).art);
+  btn.hidden = !supported;
+  if (!supported) return;
+  const sealed = effectivePlayerHelmet();
+  btn.setAttribute('aria-pressed', String(sealed));
+  btn.classList.toggle('is-sealed', sealed);
+  label.textContent = sealed ? 'EVA: SEALED' : 'EVA: OPEN';
+}
+
+function togglePlayerHelmet(): void {
+  if (!supportsHelmetArt(specialistById(lobby.specialist).art)) {
+    showToast('EVA visor toggle is unavailable for this specialist suit.');
+    return;
+  }
+  const next = !effectivePlayerHelmet();
+  manualHelmetOverride = next;
+  sfx.click();
+  configureScene();
+  syncHelmetButton();
+  showToast(next ? 'EVA helmet sealed.' : 'EVA helmet retracted.');
+}
+
+function configureScene(options: { respawn?: boolean; onConfigured?: () => void } = {}): void {
   if (!game) return;
   const state = currentScreen === 'training' ? trainingSceneState() : missionSceneState();
   if (!sceneReady) {
@@ -910,13 +1018,27 @@ function configureScene(options: { respawn?: boolean } = {}): void {
   }
   const activeGame = game;
   void import('./game').then(({ configureStationGame }) => {
-    if (activeGame === game) configureStationGame(activeGame, state, { respawn: options.respawn === true });
+    if (activeGame === game) {
+      configureStationGame(activeGame, state, { respawn: options.respawn === true });
+      options.onConfigured?.();
+    }
   });
 }
 
 function onGameEvent(event: GameEvent): void {
+  if (event.type === 'load-progress') {
+    sceneLoadProgress = event.progress;
+    if (!sceneReady && (currentScreen === 'training' || currentScreen === 'mission')) {
+      setSceneLoadingState(true, event.progress);
+    }
+    return;
+  }
   if (event.type === 'ready') {
     sceneReady = true;
+    sceneLoadProgress = 1;
+    const finishReady = (): void => {
+      requestAnimationFrame(() => setSceneLoadingState(false));
+    };
     if (pendingScene) {
       const pending = pendingScene;
       pendingScene = null;
@@ -924,11 +1046,13 @@ function onGameEvent(event: GameEvent): void {
         const activeGame = game;
         void import('./game').then(({ configureStationGame }) => {
           if (activeGame === game) configureStationGame(activeGame, pending.state, { respawn: pending.respawn });
+          finishReady();
         });
+        return;
       }
-    } else {
-      configureScene();
     }
+    configureScene({ onConfigured: finishReady });
+    if (!game) finishReady();
     return;
   }
   if (currentScreen !== 'mission' && currentScreen !== 'training') return;
@@ -950,6 +1074,8 @@ function onGameEvent(event: GameEvent): void {
         const roomEl = document.querySelector<HTMLElement>('#hud-room');
         if (roomEl) roomEl.textContent = event.room.toUpperCase();
         syncHudRoomText(event.room);
+        if (manualHelmetOverride === null) configureScene();
+        syncHelmetButton();
       }
     }
     return;
@@ -973,11 +1099,6 @@ function onGameEvent(event: GameEvent): void {
     return;
   }
   if (event.type === 'interact') {
-    if (event.kind === 'vent') {
-      sfx.click();
-      showToast('Traversed Maintenance Duct');
-      return;
-    }
     if (currentScreen === 'training') handleTrainingInteract(event.interactionId);
     else openMissionTask(event.interactionId);
     return;
@@ -2948,6 +3069,9 @@ function showMissionShell(): void {
   trainingHud.hidden = true;
   document.body.dataset.screen = 'game';
   wakeStationGame();
+  if (!sceneReady) {
+    setSceneLoadingState(true, sceneLoadProgress > 0 ? sceneLoadProgress : undefined);
+  }
   if (!game) void ensureStationGame().then(() => { if (currentScreen === 'mission') { configureScene(); applyOptions(); } });
   applyOptions();
   updateHUD();
@@ -2982,6 +3106,24 @@ function startDay(draft?: SavedTrial['planning']): void {
   updateHUD();
   startPlanning();
   saveTrialProgress();
+  if (missionDayNumber() > 1) refreshPlanningWithDonki(mission.dayStartedAt);
+}
+
+function refreshPlanningWithDonki(dayStartedAt: number): void {
+  void fetchLatestDonkiReport().then(report => {
+    if (!report || currentScreen !== 'mission' || mission.phase !== 'playing'
+      || mission.dayStartedAt !== dayStartedAt || mission.tasks.length > 0) return;
+    mission.eventCard = solarEventFromDonkiReport(report);
+    const responses = mission.eventCard.responses ?? [];
+    selectedEventChoice = responses.some(response => response.id === selectedEventChoice)
+      ? selectedEventChoice : responses[0]?.id ?? 'default';
+    applyPlanningEventChoice(selectedEventChoice);
+    if (overlayRoot.querySelector('.shift-planner')) startPlanning();
+    updateHUD();
+    saveTrialProgress();
+  }).catch((error: unknown) => {
+    console.warn('NASA DONKI refresh failed; retaining deterministic mission events.', error);
+  });
 }
 
 function computeProjectedMetrics(): MissionMetrics {
@@ -3038,6 +3180,7 @@ function startPlanning(): void {
           <div class="spud-copy-block">
             <h2 id="shift-event-title">${escapeHtml((event?.kind ?? 'routine').toUpperCase())} · ${escapeHtml((event?.name ?? 'Routine Shift').toUpperCase())}</h2>
             <p>${escapeHtml(event?.description ?? 'The habitat is quiet. Keep the systems steady.')}</p>
+            ${event?.source ? `<small class="spud-constellation-kicker" style="margin:0;">NASA DONKI · ${event.source.type} · ${escapeHtml(event.source.date.slice(0, 10))} · <a href="${escapeHtml(event.source.url)}" target="_blank" rel="noopener noreferrer">SOURCE</a></small>` : ''}
           </div>
           ${event?.responses?.length ? `
             <div class="spud-event-responses" role="group" aria-label="Event response">
@@ -3240,6 +3383,10 @@ function tickClock(): void {
   if (!isMissionActive()) return;
   if (mission.modalOpen) return;
   const remaining = remainingShiftMs(mission, Date.now());
+  if (remaining > 0 && remaining <= 30000 && countdownAlertShiftStart !== mission.dayStartedAt) {
+    countdownAlertShiftStart = mission.dayStartedAt;
+    showToast('30 SECONDS LEFT', 5000);
+  }
   const clock = document.querySelector<HTMLDivElement>('#day-clock');
   if (clock) {
     const total = Math.ceil(remaining / 1000);
@@ -3510,7 +3657,8 @@ function resumeTrial(): void {
     specialist: save.specialist,
     destination: save.destination,
   };
-  const restoredEvent = saved.eventId ? EVENT_CARDS.find(event => event.id === saved.eventId) ?? null : null;
+  const savedEvent = saved.eventId ? EVENT_CARDS.find(event => event.id === saved.eventId) ?? null : null;
+  const restoredEvent = saved.donkiReport ? solarEventFromDonkiReport(saved.donkiReport) : savedEvent;
   const shiftDurationMs = saved.shiftDurationMs ?? Math.max(dayDurationMs(saved.penaltyDay), saved.remainingMs ?? 0);
   const elapsedMs = Math.max(0, shiftDurationMs - (saved.remainingMs ?? shiftDurationMs));
   planningEventBase = null;
@@ -3568,6 +3716,7 @@ function saveTrialProgress(): void {
     tasks: [...mission.tasks],
     completed: [...mission.completed],
     eventId: mission.eventCard?.id ?? null,
+    donkiReport: mission.eventCard?.source,
     eventChoiceId: selectedEventChoice || undefined,
     position: { x: mission.playerX, y: mission.playerY },
     reports: [...mission.reports],
@@ -3726,6 +3875,7 @@ function updateHUD(): void {
   const room = document.querySelector<HTMLElement>('#hud-room');
   if (room) room.textContent = (mission.room || 'Central Hub').toUpperCase();
   syncHudRoomText(mission.room || 'Central Hub');
+  syncHelmetButton();
   const fpsBadge = document.querySelector<HTMLElement>('#hud-fps');
   if (fpsBadge) fpsBadge.hidden = !save.options.showFps;
   const dot = document.querySelector<HTMLElement>('#hud-color-dot');
@@ -3744,7 +3894,7 @@ function updateActionButtons(): void {
   const use = document.querySelector<HTMLButtonElement>('[data-action="use"]');
   if (!prompt || !use) return;
   const id = currentPrompt.id;
-  const isSpecial = currentPrompt.kind === 'crew' || currentPrompt.kind === 'vent';
+  const isSpecial = currentPrompt.kind === 'crew';
   const relevant = Boolean(id) && (currentScreen === 'training' || (isMissionActive() && (isSpecial || mission.tasks.includes(id ?? ''))));
   if (!id) {
     prompt.textContent = '';
@@ -3765,16 +3915,20 @@ function updateActionButtons(): void {
   use.classList.toggle('is-inactive', !relevant);
 }
 
-function showToast(message: string): void {
+function showToast(message: string, durationMs = 3400): void {
   const target = currentScreen === 'training'
     ? document.querySelector<HTMLDivElement>('#training-toast')
     : document.querySelector<HTMLDivElement>('#toast');
   if (!target) return;
+  window.clearTimeout(toastTimer);
   target.textContent = message;
   target.classList.add('visible');
-  window.setTimeout(() => {
-    if (target.textContent === message) target.classList.remove('visible');
-  }, 3400);
+  target.classList.toggle('countdown-warning', message === '30 SECONDS LEFT');
+  toastTimer = window.setTimeout(() => {
+    if (target.textContent === message) {
+      target.classList.remove('visible', 'countdown-warning');
+    }
+  }, durationMs);
 }
 
 function gameMenuClose(label: string): string {
@@ -3973,7 +4127,7 @@ function openTaskList(): void {
         <div class="spud-copy-stack">
           <div class="spud-copy-block">
             <h2>01 · MOVEMENT &amp; AUTO-PILOT</h2>
-            <p>Use <b>WASD</b> or the <b>arrow keys</b> to walk. Click or tap the deck, a room in <b>Map (M)</b>, or a destination in <b>Tasks (T)</b> to auto-pilot.</p>
+            <p>Use <b>WASD</b> or the <b>arrow keys</b> to walk. Click or tap the deck, a room in <b>Map (M)</b>, or a destination in <b>Tasks (T)</b> to auto-pilot. Press <b>G</b> to toggle your EVA helmet.</p>
           </div>
           <div class="spud-constellation-divider" aria-hidden="true"></div>
           <div class="spud-copy-block">
@@ -4100,12 +4254,19 @@ function openTaskList(): void {
       } else if (key === 'l' && currentScreen === 'mission') {
         event.preventDefault();
         openMissionLog();
+      } else if (key === 'g') {
+        event.preventDefault();
+        togglePlayerHelmet();
       } else if (key === '?' || key === 'h') {
         event.preventDefault();
         openHelp();
       }
     });
 
+    document.querySelector('[data-action="helmet"]')?.addEventListener('click', () => {
+      if (!isMissionActive() && currentScreen !== 'training') return;
+      togglePlayerHelmet();
+    });
     document.querySelector('[data-action="map"]')?.addEventListener('click', () => {
       sfx.click();
       openMap();

@@ -41,6 +41,7 @@
 html,
 body,
 #app {
+  width: 100%;
   min-height: 100%;
   margin: 0;
 }
@@ -52,6 +53,7 @@ html {
 body {
   min-width: 320px;
   min-height: 100vh;
+  min-height: 100dvh;
   overflow-x: hidden;
   background:
     radial-gradient(circle at 82% 8%, rgba(239, 125, 13, 0.07), transparent 34%),
@@ -130,11 +132,11 @@ p {
 
 .game-frame {
   position: relative;
-  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .screen-root {
-  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .overlay-root,
@@ -4940,16 +4942,6 @@ body[data-screen="options"] {
   border: 1px solid #ffd0d0;
 }
 
-.action-button.vent {
-  color: #e8edf4;
-  background: linear-gradient(180deg, #53667e, #2b394c 52%, #17212e);
-  border: 1px solid #7186a1;
-}
-
-.action-button.vent small {
-  color: rgba(232, 237, 244, 0.55);
-}
-
 .toast {
   position: absolute;
   left: 50%;
@@ -8898,6 +8890,7 @@ body.reduce-motion *::after {
   text-align: right;
   backdrop-filter: blur(8px);
 }
+
 
 .interaction-prompt.has-task {
   color: var(--gold-bright);

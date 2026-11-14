@@ -3,14 +3,12 @@ import { AssetKeys } from './AssetKeys';
 
 /**
  * Generates procedural textures at runtime for tileset collision layers,
- * vents, task consoles, and station decor props.
+ * and station decor props.
  */
 export function createPlaceholderTextures(scene: Phaser.Scene): void {
   makeTileFloor(scene);
   makeTileWall(scene);
   makeTileset(scene);
-  makeTaskConsole(scene);
-  makeVent(scene);
   makeDoor(scene);
   makeSpawn(scene);
   makeCrate(scene);
@@ -67,36 +65,6 @@ function makeTileset(scene: Phaser.Scene): void {
     g.fillRect(32, 0, 32, 4);
     g.lineStyle(1, 0x3a3f50, 1);
     g.strokeRect(32.5, 0.5, 31, 31);
-  });
-}
-
-function makeTaskConsole(scene: Phaser.Scene): void {
-  graphicsTexture(scene, AssetKeys.taskConsole, 56, 64, (g) => {
-    g.fillStyle(0xe8b93c, 1);
-    g.fillRoundedRect(0, 0, 56, 64, 6);
-    g.fillStyle(0x1d2b3a, 1);
-    g.fillRoundedRect(8, 8, 40, 28, 4);
-    g.fillStyle(0x4ade80, 1);
-    g.fillRect(13, 14, 30, 4);
-    g.fillRect(13, 22, 22, 4);
-    g.fillStyle(0xc79a2b, 1);
-    g.fillRect(10, 44, 12, 10);
-    g.fillRect(34, 44, 12, 10);
-    g.lineStyle(2, 0x8a6d1f, 1);
-    g.strokeRoundedRect(0, 0, 56, 64, 6);
-  });
-}
-
-function makeVent(scene: Phaser.Scene): void {
-  graphicsTexture(scene, AssetKeys.vent, 64, 48, (g) => {
-    g.fillStyle(0x6b7280, 1);
-    g.fillRoundedRect(0, 0, 64, 48, 8);
-    g.fillStyle(0x4b5563, 1);
-    for (let i = 0; i < 3; i++) {
-      g.fillRect(10, 10 + i * 10, 44, 5);
-    }
-    g.lineStyle(2, 0x374151, 1);
-    g.strokeRoundedRect(0, 0, 64, 48, 8);
   });
 }
 
