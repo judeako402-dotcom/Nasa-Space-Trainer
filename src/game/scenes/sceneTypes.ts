@@ -29,7 +29,7 @@ export interface SceneGameState {
 export type GameEvent =
   | { type: 'load-progress'; progress: number }
   | { type: 'ready' }
-  | { type: 'move'; x: number; y: number; room: string }
+  | { type: 'move'; x: number; y: number; room: string; moving: boolean }
   | { type: 'prompt'; interactionId: string | null; name: string; kind: string; room: string }
   | { type: 'interact'; interactionId: string; kind: string }
   | { type: 'crew'; crewId: string; name: string; lines: string[] }

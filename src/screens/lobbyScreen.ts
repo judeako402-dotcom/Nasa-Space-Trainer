@@ -667,7 +667,7 @@ export function showLaunch(): void {
       <h1 id="launch-title" class="spud-comic-heading" tabindex="-1">FINAL FLIGHT CHECK</h1>
     </header>
     <div class="spud-flight-check-showcase">
-      <div class="spud-flight-visual-card" aria-label="${escapeHtml(name)} · ${escapeHtml(specialist.name)} · ${escapeHtml(color.name)} Suit">
+      <div class="spud-flight-visual-card" role="img" aria-label="${escapeHtml(name)} · ${escapeHtml(specialist.name)} · ${escapeHtml(color.name)} Suit">
         <div class="spud-flight-crew-chamber" style="--choice-accent:${color.css}">
           ${renderCharacterSpriteThumb(specialist.art, true, lobby.colorId)}
         </div>

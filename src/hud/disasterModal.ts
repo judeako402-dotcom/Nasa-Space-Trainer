@@ -21,7 +21,7 @@ export function showDisaster(
     modalRoot,
     markup: `
       <div class="modal-shade">
-        <section class="spud-modal-frame disaster-card is-emergency-event${feedback ? '' : ' is-pop-entering'}" role="alertdialog" aria-modal="true" aria-labelledby="disaster-title">
+        <section class="spud-modal-frame disaster-card is-emergency-event${feedback ? '' : ' is-pop-entering'}" role="alertdialog" aria-modal="true" aria-labelledby="disaster-title" aria-describedby="disaster-event-desc disaster-hint">
           <div class="hud-event-kicker is-emergency">SPACE WEATHER EMERGENCY · REPAIR PROTOCOL</div>
           <header class="disaster-warning">
             <span class="disaster-warning-glyph" aria-hidden="true">⚠</span>
@@ -32,7 +32,12 @@ export function showDisaster(
                 : 'Simulated space-weather alert'}</small>
             </div>
           </header>
-          <div class="disaster-tools">
+          <div class="disaster-briefing-box">
+            <p class="disaster-event-desc" id="disaster-event-desc">${escapeHtml(eventDetail)}</p>
+            <p class="disaster-hint" id="disaster-hint"><strong>HINT</strong><span>${escapeHtml(hint)}</span></p>
+            ${feedback ? `<p class="disaster-clue" role="status">${escapeHtml(feedback)}</p>` : ''}
+          </div>
+          <div class="disaster-tools" role="group" aria-label="Choose a repair tool">
             ${disasterTools(type).map((tool, index) => `
               <button type="button" class="disaster-tool-btn is-${tool}" data-disaster-tool="${tool}" style="--sibling-index:${index + 1}">
                 <img class="disaster-tool-art" src="${DISASTER_TOOLS[tool].cardImg}" alt="" aria-hidden="true" draggable="false" />
@@ -41,20 +46,42 @@ export function showDisaster(
               </button>
             `).join('')}
           </div>
-          <div class="disaster-briefing-box">
-            <p class="disaster-event-desc">${escapeHtml(eventDetail)}</p>
-            <p class="disaster-hint"><strong>HINT</strong><span>${escapeHtml(hint)}</span></p>
-            ${feedback ? `<p class="disaster-clue" role="status">${escapeHtml(feedback)}</p>` : ''}
-          </div>
         </section>
       </div>`,
     focusSelector: '[data-disaster-tool]',
   });
-  modalRoot.querySelectorAll<HTMLButtonElement>('[data-disaster-tool]').forEach(button => {
+  const toolButtons = Array.from(modalRoot.querySelectorAll<HTMLButtonElement>('[data-disaster-tool]'));
+  let selectionStarted = false;
+  toolButtons.forEach(button => {
     button.addEventListener('click', () => {
+      if (selectionStarted) return;
+      selectionStarted = true;
+      const selectedTool = button.dataset.disasterTool as MissionMetric;
+      const finishSelection = (): void => {
+        if (!button.isConnected) return;
+        clearActiveModals(modalRoot, { restoreFocus: false });
+        resumeMissionAfterModal();
+        choose(selectedTool);
+      };
+      if (selectedTool === DISASTER_REPAIRS[type].system) {
+        const reducedMotion = document.body.classList.contains('reduce-motion')
+          || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (reducedMotion) {
+          finishSelection();
+          return;
+        }
+        toolButtons.forEach(toolButton => { toolButton.disabled = true; });
+        button.classList.add('is-targeted');
+        const fallbackTimer = window.setTimeout(finishSelection, 280);
+        button.addEventListener('animationend', () => {
+          window.clearTimeout(fallbackTimer);
+          finishSelection();
+        }, { once: true });
+        return;
+      }
       clearActiveModals(modalRoot, { restoreFocus: false });
       resumeMissionAfterModal();
-      choose(button.dataset.disasterTool as MissionMetric);
+      choose(selectedTool);
     });
   });
 }

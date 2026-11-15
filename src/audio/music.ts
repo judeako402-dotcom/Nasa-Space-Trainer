@@ -1,3 +1,5 @@
+import { setAmbient } from '../sfx';
+
 let element: HTMLAudioElement | null = null;
 let enabled = true;
 let volume = 0.55;
@@ -98,6 +100,7 @@ function scheduleOstStep(): void {
 }
 
 export function startGameplayOst(mode: OstMode = 'ambient'): void {
+  setAmbient(true);
   if (!enabled || typeof window === 'undefined' || !window.AudioContext) return;
   if (ostMode === mode && ostTimer) return;
   try {
@@ -172,6 +175,7 @@ export function configureMusic(next: { enabled: boolean; volume: number }): void
 }
 
 export function startMusic(fadeMs = 1400, delayMs = 0): void {
+  setAmbient(false);
   stopGameplayOst();
   if (!enabled) return;
   const audio = ensureElement();
@@ -194,6 +198,7 @@ export function startMusic(fadeMs = 1400, delayMs = 0): void {
 }
 
 export function stopMusic(fadeMs = 900): void {
+  setAmbient(false);
   stopGameplayOst();
   const audio = element;
   if (!audio) {

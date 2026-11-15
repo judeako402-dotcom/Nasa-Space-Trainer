@@ -13,7 +13,7 @@ import { TRAINING_DECK } from '../data/trainingDeck';
 import type { createStationGame, GameEvent, MapId, SceneGameState } from '../game';
 import { supportsHelmetArt } from '../game/assets/characterSprites';
 import { configureMusic, startMusic } from '../audio/music';
-import { configureSfx } from '../sfx';
+import { configureSfx, setAmbient, setWalking } from '../sfx';
 import { clearActiveModals } from '../ui/modalController';
 import {
   createInitialExam, createMissionState, createTrainingState,
@@ -317,6 +317,8 @@ export function wakeStationGame(): void {
 
 export function setScreen(screen: ScreenId, markup: string): void {
   const { overlayRoot, modalRoot, sceneShell, hud, trainingHud, screenRoot } = dom();
+  setWalking(false);
+  if (screen !== 'mission' && screen !== 'training') setAmbient(false);
   session.pendingScene = null;
   session.splashCleanup?.();
   session.splashCleanup = null;
@@ -509,6 +511,7 @@ export function applyOptions(): void {
 }
 
 export function pauseTrainingForModal(): void {
+  setWalking(false);
   session.training.modalOpen = true;
   configureScene();
   routes.updateActionButtons();
@@ -522,6 +525,7 @@ export function resumeTraining(): void {
 
 export function pauseMissionForModal(): void {
   if (!isMissionActive() || session.mission.modalOpen) return;
+  setWalking(false);
   session.mission.modalOpen = true;
   session.mission.pauseStartedAt = Date.now();
   configureScene();

@@ -32,7 +32,7 @@ import { showSplash } from './screens/splashScreen';
 import {
   handleTrainingInteract, renderTrainingHud, showStory, showTraining,
 } from './screens/trainingScreen';
-import { sfx } from './sfx';
+import { setWalking, sfx } from './sfx';
 import { confirmReplaceSavedTrial, showAbortMissionConfirmation } from './ui/confirmDialog';
 import { mountAppFrame } from './ui/layout';
 import { clearActiveModals } from './ui/modalController';
@@ -142,6 +142,7 @@ function onGameEvent(event: GameEvent): void {
   if (session.currentScreen !== 'mission' && session.currentScreen !== 'training') return;
 
   if (event.type === 'move') {
+    setWalking(event.moving);
     if (session.currentScreen === 'training') {
       session.training.x = event.x;
       session.training.y = event.y;
@@ -198,15 +199,23 @@ function onGameEvent(event: GameEvent): void {
   }
 
   if (event.type === 'interact') {
+    setWalking(false);
     if (session.currentScreen === 'training') {
+      sfx.taskInteraction();
       handleTrainingInteract(event.interactionId);
     } else if (session.mission.opening === 'blackout') {
-      if (event.interactionId === REACTOR_POWER_SWITCH.id) restoreStationPower();
+      if (event.interactionId === REACTOR_POWER_SWITCH.id) {
+        sfx.flipSwitch();
+        restoreStationPower();
+      }
     } else if (event.kind === 'exit' || event.interactionId === 'airlock-exit') {
+      sfx.taskInteraction();
       openExteriorSortieModal();
     } else if (event.kind === 'bed' || event.interactionId === 'crew-bed') {
+      sfx.taskInteraction();
       openBedSkipModal();
     } else {
+      sfx.taskInteraction();
       openMissionTask(event.interactionId);
     }
     return;

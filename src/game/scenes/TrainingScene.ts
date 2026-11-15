@@ -265,7 +265,7 @@ export class TrainingScene extends Phaser.Scene implements StationControllableSc
     if (room !== this.lastEmittedRoom || now - this.lastMoveEvent > 140) {
       this.lastMoveEvent = now;
       this.lastEmittedRoom = room;
-      this.coordinator.onEvent({ type: 'move', x: this.sim.x, y: this.sim.y, room });
+      this.coordinator.onEvent({ type: 'move', x: this.sim.x, y: this.sim.y, room, moving: this.sim.moving });
     }
   }
 

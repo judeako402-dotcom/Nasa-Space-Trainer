@@ -876,7 +876,14 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
     if (force || room !== this.lastEmittedRoom || now - this.lastMoveEvent > 140) {
       this.lastMoveEvent = now;
       this.lastEmittedRoom = room;
-      this.coordinator.onEvent({ type: 'move', x: pos.x, y: pos.y, room });
+      const velocity = this.tiledPlayer.velocity;
+      this.coordinator.onEvent({
+        type: 'move',
+        x: pos.x,
+        y: pos.y,
+        room,
+        moving: velocity.x !== 0 || velocity.y !== 0,
+      });
     }
   }
 

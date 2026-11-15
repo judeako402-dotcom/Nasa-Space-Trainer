@@ -18,7 +18,7 @@ import {
   setSceneLoadingState, showToast, stopLoop, wakeStationGame,
 } from '../app/session';
 import { createMissionState } from '../app/state';
-import { sfx } from '../sfx';
+import { setWalking, sfx } from '../sfx';
 import {
   createMajorEventRun, majorEventChance, majorEventForReport,
   storeMajorEventReports, takeNextMajorEvent,
@@ -223,29 +223,40 @@ export function failMissionToCheckpoint(failedStatus: MissionMetric, reason: str
 
   const renderFailureSummary = (): void => {
     overlayRoot.innerHTML = `
-      <section class="spud-canvas-overlay mission-end ${save.options.reducedMotion ? 'reduce-motion' : ''}" aria-labelledby="mission-failed-title">
-        <div class="spud-canvas-inner">
+      <section class="spud-canvas-overlay mission-end checkpoint-screen ${save.options.reducedMotion ? 'reduce-motion' : ''}" aria-labelledby="mission-failed-title">
+        <div class="spud-canvas-inner checkpoint-frame">
           ${renderConstellationTitle(
             `${METRIC_LABELS[failedStatus].toUpperCase()} DEPLETED · GAME OVER`,
             'mission-failed-title',
             `DAY ${String(missionDayNumber()).padStart(2, '0')} · ${destinationById(lobby.destination).name.toUpperCase()} · MAJOR SAVE POINT RESTORED`,
           )}
-          <div class="spud-copy-stack">
-            <div class="spud-copy-block">
-              <h2>CRITICAL SYSTEM FAILURE</h2>
+          <div class="checkpoint-layout">
+            <section class="checkpoint-story-panel" aria-labelledby="checkpoint-story-title">
+              <span class="checkpoint-story-kicker">CHECKPOINT RECOVERY</span>
+              <h2 id="checkpoint-story-title">CRITICAL SYSTEM FAILURE</h2>
               <p>${escapeHtml(reason)}</p>
-              <small class="spud-constellation-kicker" style="margin-top:6px;">SAVED CHECKPOINT: ${escapeHtml(checkpointLabel.toUpperCase())} · COMPLETED ${mission.completed.length} / ${mission.tasks.length}</small>
-            </div>
-            <div class="spud-telemetry-grid is-four">
-              ${metricOrder.map((key) => `
-                <div class="spud-telemetry-cell">
-                  <span>${escapeHtml(METRIC_LABELS[key].toUpperCase())}</span>
-                  <strong>${Math.round(mission.metrics[key])}%</strong>
-                </div>
-              `).join('')}
-            </div>
+              <div class="checkpoint-save-readout">
+                <span>SAVED CHECKPOINT · ${escapeHtml(checkpointLabel.toUpperCase())}</span>
+                <span>COMPLETED · ${mission.completed.length} / ${mission.tasks.length}</span>
+              </div>
+            </section>
+            <section class="checkpoint-meters" aria-label="Restored system levels">
+              ${metricOrder.map((key) => {
+                const value = Math.round(mission.metrics[key]);
+                return `
+                  <div class="checkpoint-meter" data-metric="${key}">
+                    <img src="/assets/ui/spudnaut/icons/stat-${key}.svg" alt="" aria-hidden="true" />
+                    <strong>${escapeHtml(METRIC_LABELS[key])}</strong>
+                    <div class="checkpoint-meter-track" role="meter" aria-label="${escapeHtml(METRIC_LABELS[key])}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${value}" aria-valuetext="${value}%">
+                      <div class="checkpoint-meter-fill" style="height:${value}%"></div>
+                      <span class="checkpoint-meter-value">${value}%</span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </section>
           </div>
-          <footer class="spud-constellation-actions">
+          <footer class="checkpoint-actions">
             ${renderConstellationAction({ icon: 'back', label: 'MAIN MENU', attrs: 'data-failure-menu' })}
             ${renderConstellationAction({ icon: 'launch', label: 'LOAD MAJOR SAVE POINT', attrs: 'data-failure-resume', variant: 'primary' })}
           </footer>
@@ -253,6 +264,7 @@ export function failMissionToCheckpoint(failedStatus: MissionMetric, reason: str
       </section>
     `;
 
+    overlayRoot.querySelector<HTMLElement>('#mission-failed-title')?.focus();
     overlayRoot.querySelector('[data-failure-menu]')?.addEventListener('click', () => {
       sfx.click();
       overlayRoot.replaceChildren();
@@ -381,6 +393,8 @@ export function handleEmergencyRepair(taskId: string): void {
 }
 
 let lastLiveDrainAt = 0;
+let nextLifeCueAt = 0;
+let nextFarmCueAt = 0;
 
 function tickClock(): void {
   const { mission, lobby } = session;
@@ -403,6 +417,14 @@ function tickClock(): void {
       : undefined;
     const next = applyLiveOperationsDrain(before, elapsedSeconds, lobby.specialist, emergencySystem);
     mission.metrics = next;
+    if (mission.metrics.life <= 25 && now >= nextLifeCueAt) {
+      sfx.grunt();
+      nextLifeCueAt = now + 45_000;
+    }
+    if (mission.metrics.farm <= 25 && now >= nextFarmCueAt) {
+      sfx.stomachRumble();
+      nextFarmCueAt = now + 60_000;
+    }
     const integerChanged = (['life', 'power', 'research', 'farm'] as const).some(
       (k) => Math.round(before[k]) !== Math.round(next[k]),
     );
@@ -435,6 +457,9 @@ function tickClock(): void {
 
 export function showMissionShell(): void {
   const { overlayRoot, modalRoot, screenRoot, sceneShell, hud, trainingHud } = dom();
+  setWalking(false);
+  nextLifeCueAt = 0;
+  nextFarmCueAt = 0;
   session.splashCleanup?.();
   session.splashCleanup = null;
   setHudDrawer(null);
@@ -710,16 +735,23 @@ export function startPlanning(): void {
     const offer = mission.offers.find((item) => item.taskId === inspectedOfferId);
     if (!offer) return '<p>No assignment to preview.</p>';
     return `
-      <strong style="color:#ffffff;font-size:15px;">${escapeHtml(offer.name)}</strong>
-      <p>${escapeHtml(getRoomName(offer.roomId))} · ${escapeHtml(offer.blurb)}</p>
-      <div style="display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:4px;">${assignmentPreview(offer.taskId)}</div>
+      <h3 class="shift-planner-preview-title">${escapeHtml(offer.name)}</h3>
+      <p class="shift-planner-preview-room">${escapeHtml(getRoomName(offer.roomId))}</p>
+      <p class="shift-planner-preview-description">${escapeHtml(offer.blurb)}</p>
+      <div class="shift-planner-preview-effects">${assignmentPreview(offer.taskId)}</div>
     `;
+  };
+
+  const renderFocusedOfferVisual = (): string => {
+    const offer = mission.offers.find((item) => item.taskId === inspectedOfferId);
+    if (!offer) return '';
+    return `<img src="/assets/ui/icons/${offer.icon}.png" alt="" draggable="false" />`;
   };
 
   overlayRoot.innerHTML = `
     <dialog class="spud-canvas-overlay shift-planner has-planning-art ${save.options.reducedMotion ? 'reduce-motion' : ''}" aria-labelledby="shift-planning-title">
       <img class="spud-planning-art-bg" src="/assets/ui/spudnaut/design/moonbase-dark.webp" alt="" aria-hidden="true" draggable="false" />
-      <div class="spud-canvas-inner">
+      <div class="spud-canvas-inner shift-planner-frame">
         ${renderConstellationTitle('SHIFT PLANNING', 'shift-planning-title', `${goal} · DAY ${String(day).padStart(2, '0')} · ${levelLabel} · ${destinationById(lobby.destination).name.toUpperCase()}`)}
 
         <section class="spud-copy-stack spud-planning-hazard-card" data-event-kind="${escapeHtml(event?.kind ?? 'routine')}" aria-labelledby="shift-event-title">
@@ -747,11 +779,14 @@ export function startPlanning(): void {
           ` : ''}
         </section>
 
-        <div class="spud-constellation-divider" aria-hidden="true"></div>
-
-        <div class="spud-split-columns spud-planning-columns">
-          <section class="spud-copy-stack spud-arcade-panel-box" aria-labelledby="shift-assignments-title">
-            <div class="spud-constellation-heading" id="shift-assignments-title">ASSIGNMENTS · CHOOSE ${required} OF ${mission.offers.length}</div>
+        <div class="shift-planner-layout">
+          <section class="spud-copy-stack spud-arcade-panel-box shift-planner-left-panel" aria-labelledby="shift-assignments-title">
+            <div class="spud-constellation-heading shift-assignments-heading" id="shift-assignments-title">ASSIGNMENTS · CHOOSE ${required} OF ${mission.offers.length}</div>
+            <div class="shift-planner-task-visual" id="planning-task-visual" aria-hidden="true">
+              <span class="shift-planner-visual-kicker">ASSIGNMENT PREVIEW</span>
+              ${renderFocusedOfferVisual()}
+              <span class="shift-planner-visual-room">${escapeHtml(getRoomName(mission.offers[0]?.roomId ?? ''))}</span>
+            </div>
             <div class="shift-offers" role="group" aria-labelledby="shift-assignments-title">
               ${mission.offers.map((offer) => `
                 <button type="button" class="shift-offer" data-offer="${offer.taskId}" aria-pressed="false" style="--offer-accent:${offer.accent}">
@@ -765,20 +800,21 @@ export function startPlanning(): void {
                 </button>
               `).join('')}
             </div>
+            <div class="planning-status-bars hud-status-bars shift-planner-focused-bars" id="planning-status-bars" aria-label="Focused assignment impact">${statusBarsMarkup()}</div>
           </section>
 
-          <div class="spud-vertical-rule" aria-hidden="true"></div>
-
-          <aside class="spud-copy-stack spud-arcade-panel-box" aria-label="Planning details">
+          <aside class="spud-copy-stack spud-arcade-panel-box shift-planner-right-panel" aria-label="Planning details">
             <div class="spud-copy-block">
               <h2>ASSIGNMENT PREVIEW</h2>
               <div id="planning-offer-inspector">${renderFocusedOfferBox()}</div>
             </div>
             <div class="spud-constellation-divider" aria-hidden="true"></div>
-            <div class="spud-copy-block">
-              <h2>SHIFT FORECAST</h2>
-              <small>Current → projected if all selected assignments succeed.</small>
-              <div class="spud-stat-bars is-segmented" id="planning-projected-gauges" style="margin-top:6px;">${renderProjectedGaugesMarkup()}</div>
+            <div class="spud-copy-block shift-planner-forecast">
+              <div class="shift-planner-forecast-heading">
+                <h2>SHIFT FORECAST</h2>
+                <small>Projected if all selected assignments succeed.</small>
+              </div>
+              <div class="shift-planner-gauges" id="planning-projected-gauges">${renderProjectedGaugesMarkup()}</div>
               <details class="shift-drift" style="margin-top:4px;">
                 <summary>DAILY OPERATING COSTS</summary>
                 <div style="display:flex;flex-wrap:wrap;gap:8px 14px;padding-top:6px;">${metricChips(DAILY_OPERATIONS_DRIFT)}</div>
@@ -797,7 +833,6 @@ export function startPlanning(): void {
           </div>
           ${renderConstellationAction({ icon: 'launch', label: 'START SHIFT', attrs: 'data-planning-confirm', variant: 'primary', disabled: true })}
         </footer>
-        <div class="planning-status-bars hud-status-bars" id="planning-status-bars" aria-label="Task impact preview">${statusBarsMarkup()}</div>
       </div>
     </dialog>
   `;
@@ -810,12 +845,18 @@ export function startPlanning(): void {
   const confirm = dialog.querySelector<HTMLButtonElement>('[data-planning-confirm]')!;
   const gauges = dialog.querySelector<HTMLElement>('#planning-projected-gauges')!;
   const inspector = dialog.querySelector<HTMLElement>('#planning-offer-inspector')!;
+  const visual = dialog.querySelector<HTMLElement>('#planning-task-visual')!;
   const offers = Array.from(dialog.querySelectorAll<HTMLButtonElement>('[data-offer]'));
   const statusBars = dialog.querySelector<HTMLElement>('#planning-status-bars')!;
 
   const inspectOffer = (id: string): void => {
     inspectedOfferId = id;
     inspector.innerHTML = renderFocusedOfferBox();
+    visual.innerHTML = `
+      <span class="shift-planner-visual-kicker">ASSIGNMENT PREVIEW</span>
+      ${renderFocusedOfferVisual()}
+      <span class="shift-planner-visual-room">${escapeHtml(getRoomName(mission.offers.find((item) => item.taskId === id)?.roomId ?? ''))}</span>
+    `;
     const task = taskById(id);
     statusBars.innerHTML = statusBarsMarkup(task ? taskExchange(task, lobby.specialist, mission.majorEventRun.difficulty) : undefined);
   };
@@ -1162,7 +1203,7 @@ export function renderReport(reason: string): void {
                       <strong style="color:${item.met ? 'var(--spud-gain)' : 'var(--spud-danger)'};">${item.value} / ${item.target}</strong>
                     </div>
                   `).join('')}
-                </div>
+                </section>
               </div>
             ` : ''}
           </aside>
@@ -1213,6 +1254,8 @@ export function completeMission(): void {
   const difficulty = mission.majorEventRun.difficulty;
   const maxDays = trialMaxDays(difficulty);
   stopLoop();
+  setWalking(false);
+  stopMusic(350);
   mission.phase = 'complete';
   const verdict = evaluateMission(mission.metrics, mission.totalAssigned, mission.totalCompleted);
   const passed = verdict.passed;
@@ -1227,7 +1270,17 @@ export function completeMission(): void {
   save.activeTrial = null;
   save.trialDay = 1;
   persistSave(save);
-  playHomecoming(overlayRoot, save.options.reducedMotion, () => renderMissionEnd(passed, maxDays, justUnlockedVeteran));
+  const masterVolume = (save.options.masterVolume ?? 80) / 100;
+  playHomecoming(
+    overlayRoot,
+    save.options.reducedMotion,
+    () => renderMissionEnd(passed, maxDays, justUnlockedVeteran),
+    {
+      soundEnabled: save.options.sound && masterVolume > 0 && save.options.volume > 0,
+      soundVolume: (save.options.volume / 100) * masterVolume,
+      onArrival: () => (passed ? sfx.win() : sfx.lose()),
+    },
+  );
 }
 
 function renderMissionEnd(passed: boolean, maxDays: number, justUnlockedVeteran = false): void {
