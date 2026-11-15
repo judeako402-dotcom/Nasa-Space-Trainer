@@ -1,4 +1,15 @@
-import type { MissionMetric, TaskKind } from '../model';
+import type { MissionMetric, MissionMetrics, TaskKind } from '../model';
+
+export interface DialogueOptions {
+  speaker: string;
+  role: string;
+  art: string;
+  accent: string;
+  lines: string[];
+  spotlight?: 'tasks' | 'task-drawer' | 'status-drawer' | 'guide';
+  advanceKey?: 'T' | 'V';
+  onClose?: () => void;
+}
 
 export interface ScreenRoutes {
   showSplash(): void;
@@ -38,19 +49,13 @@ export interface ScreenRoutes {
   setHudDrawer(mode: 'tasks' | 'status' | null): void;
   updateRadarMarker(x?: number, y?: number): void;
   syncHudRoomText(room: string): void;
-  showDialogue(options: {
-    speaker: string;
-    role: string;
-    art: string;
-    accent: string;
-    lines: string[];
-    onClose?: () => void;
-  }): void;
+  showDialogue(options: DialogueOptions): void;
   openMinigameModal(options: {
     eyebrow: string;
     title: string;
     kind: TaskKind;
     system?: MissionMetric;
+    effect?: Partial<MissionMetrics>;
     tip?: string;
     onClose: () => void;
     onComplete: () => void;

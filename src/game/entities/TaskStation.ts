@@ -226,6 +226,7 @@ export class TaskStation implements Interactable {
   readonly id: string;
   readonly kind = 'task' as const;
   readonly roomName: string;
+  readonly priority: number;
   position: { x: number; y: number };
   bounds?: RectBounds;
   interactionRadius = INTERACTION_RADIUS;
@@ -234,6 +235,7 @@ export class TaskStation implements Interactable {
 
   private readonly outline: Phaser.GameObjects.Graphics;
   private readonly outlineImage?: Phaser.GameObjects.Image;
+  private readonly outlineBounds?: RectBounds;
   private readonly onTrigger?: (taskId: string) => void;
   private highlighted = false;
   private assigned = true;
@@ -252,6 +254,9 @@ export class TaskStation implements Interactable {
       : options;
 
     this.id = opts.id;
+    const emergency = this.id.startsWith('emergency-');
+    this.priority = emergency ? 1 : 0;
+    if (emergency) this.interactionRadius = 62;
     this.roomName = opts.roomName;
     this.promptText = opts.name;
     this.assigned = opts.assigned ?? true;
@@ -260,7 +265,7 @@ export class TaskStation implements Interactable {
     this.position = { x: x + width / 2, y: y + height / 2 };
 
     if (opts.outlineSpec) {
-      this.bounds = {
+      this.outlineBounds = {
         x: opts.outlineSpec.x * FIGMA_TO_WORLD,
         y: opts.outlineSpec.y * FIGMA_TO_WORLD,
         width: opts.outlineSpec.w * FIGMA_TO_WORLD,
@@ -269,16 +274,18 @@ export class TaskStation implements Interactable {
       this.outlineImage = buildOutlineImage(scene, this.id, opts.outlineSpec);
     } else if (opts.target) {
       const targetBounds = opts.target.getBounds();
-      this.bounds = {
+      this.outlineBounds = {
         x: targetBounds.x,
         y: targetBounds.y,
         width: targetBounds.width,
         height: targetBounds.height,
       };
     }
+    // The artwork can be tall or wide. Emergency cards unlock near the walkable repair spot.
+    if (!emergency) this.bounds = this.outlineBounds;
 
     this.outline = scene.add.graphics();
-    if (opts.target && this.bounds) {
+    if (opts.target && this.outlineBounds) {
       this.outline.setDepth(opts.target.depth + 1);
     } else {
       this.outline.setDepth(this.position.y + 2);
@@ -322,15 +329,16 @@ export class TaskStation implements Interactable {
     }
 
     this.outline.clear();
-    this.outline.setVisible(missionActive && Boolean(this.bounds));
-    if (!this.bounds || !missionActive) return;
+    const bounds = this.outlineBounds;
+    this.outline.setVisible(missionActive && Boolean(bounds));
+    if (!bounds || !missionActive) return;
     const padding = 6;
     this.outline.lineStyle(this.highlighted ? 7 : 5, color, 1);
     this.outline.strokeRoundedRect(
-      this.bounds.x - padding,
-      this.bounds.y - padding,
-      this.bounds.width + padding * 2,
-      this.bounds.height + padding * 2,
+      bounds.x - padding,
+      bounds.y - padding,
+      bounds.width + padding * 2,
+      bounds.height + padding * 2,
       8,
     );
   }

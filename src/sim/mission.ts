@@ -1,4 +1,7 @@
-import { DAILY_OPERATIONS_DRIFT, DAY, DIFFICULTY_EXCHANGE, METRIC_START, PASS_THRESHOLDS, SYSTEMS } from '../data/balance';
+import {
+  DAILY_OPERATIONS_DRIFT, DAY, DIFFICULTY_EXCHANGE, EMERGENCY_DRAIN_MULTIPLIER,
+  LIVE_DRAIN_PER_SECOND, METRIC_START, PASS_THRESHOLDS, SYSTEMS,
+} from '../data/balance';
 import { EVENT_CARDS, type EventCard } from '../data/events';
 import type { DifficultyId, MissionMetrics, SpecialistId, TaskDef } from '../model';
 import type { Rng } from './rng';
@@ -40,7 +43,6 @@ const SYSTEM_META: Record<AssignmentSystem, { icon: string; accent: string; blur
 const ROLE_SYSTEM: Record<SpecialistId, AssignmentSystem> = {
   repairman: 'power',
   farmer: 'farm',
-  traveller: 'life',
   researcher: 'research',
 };
 
@@ -62,12 +64,15 @@ export function systemOfTask(task: TaskDef): AssignmentSystem {
 
 export function assignmentOffer(task: TaskDef): AssignmentOffer {
   const system = systemOfTask(task);
+  const { icon, accent, blurb } = SYSTEM_META[system];
   return {
     taskId: task.id,
     name: task.name,
     roomId: task.roomId,
     system,
-    ...SYSTEM_META[system],
+    icon,
+    accent,
+    blurb: task.blurb ?? blurb,
   };
 }
 
@@ -108,12 +113,35 @@ export function applyMetricExchange(metrics: MissionMetrics, deltas: Partial<Mis
   return next;
 }
 
-export function applyDailyOperations(metrics: MissionMetrics, role?: SpecialistId): MissionMetrics {
+function applyScaledOperations(
+  metrics: MissionMetrics,
+  rates: Record<keyof MissionMetrics, number>,
+  scale: number,
+  role?: SpecialistId,
+  emergencySystem?: keyof MissionMetrics,
+): MissionMetrics {
+  const mult = (key: keyof MissionMetrics): number => (emergencySystem === key ? EMERGENCY_DRAIN_MULTIPLIER : 1);
   return applyMetricExchange(metrics, {
-    ...DAILY_OPERATIONS_DRIFT,
-    life: DAILY_OPERATIONS_DRIFT.life * (role === 'farmer' ? 0.5 : 1),
-    power: DAILY_OPERATIONS_DRIFT.power * (role === 'repairman' ? 0.5 : 1),
+    life: rates.life * scale * mult('life') * (role === 'farmer' ? 0.5 : 1),
+    power: rates.power * scale * mult('power') * (role === 'repairman' ? 0.5 : 1),
+    research: rates.research * scale * mult('research'),
+    farm: rates.farm * scale * mult('farm'),
   });
+}
+
+export function applyDailyOperations(metrics: MissionMetrics, role?: SpecialistId): MissionMetrics {
+  return applyScaledOperations(metrics, DAILY_OPERATIONS_DRIFT, 1, role);
+}
+
+/** Applies live per-second habitat consumption during active shift gameplay (3x on active emergency system). */
+export function applyLiveOperationsDrain(
+  metrics: MissionMetrics,
+  elapsedSeconds: number,
+  role?: SpecialistId,
+  emergencySystem?: keyof MissionMetrics,
+): MissionMetrics {
+  if (elapsedSeconds <= 0) return metrics;
+  return applyScaledOperations(metrics, LIVE_DRAIN_PER_SECOND, elapsedSeconds, role, emergencySystem);
 }
 
 export function metricDeltas(metrics: MissionMetrics, next: MissionMetrics): Partial<MissionMetrics> {

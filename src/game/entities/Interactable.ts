@@ -7,11 +7,12 @@ import type { Vec2 } from '../utils/vectors';
  */
 export interface Interactable {
   readonly id?: string;
-  readonly kind?: 'task' | 'crew' | 'exit';
+  readonly kind?: 'task' | 'crew' | 'exit' | 'bed';
   readonly roomName?: string;
   position: Vec2;
   bounds?: RectBounds;
   interactionRadius: number;
+  readonly priority?: number;
   promptText: string;
   enabled: boolean;
   onInteract(): void;

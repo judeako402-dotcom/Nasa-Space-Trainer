@@ -98,7 +98,6 @@ export class TrainingScene extends Phaser.Scene implements StationControllableSc
     this.input.keyboard?.on('keydown-E', () => {
       this.tryInteract();
     });
-    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => this.handlePointer(pointer));
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.ready = false;
@@ -138,13 +137,10 @@ export class TrainingScene extends Phaser.Scene implements StationControllableSc
     this.syncPlayerAnimation();
   }
 
-  navigateTo(x: number, y: number): boolean {
-    if (!this.ready || this.state.frozen || !this.geometry) return false;
-    const target = this.nearestInteraction(x, y, 90);
-    const destination = target ? { x: target.x, y: target.y } : { x, y };
-    this.sim.route = this.geometry.findPath({ x: this.sim.x, y: this.sim.y }, destination);
+  navigateTo(_x: number, _y: number): boolean {
+    this.sim.route = [];
     this.sim.routeIndex = 0;
-    return this.sim.route.length > 0;
+    return false;
   }
 
   interactNow(): void {
@@ -152,7 +148,7 @@ export class TrainingScene extends Phaser.Scene implements StationControllableSc
     this.tryInteract();
   }
 
-  transitionThroughBlack(onCovered: () => void): void {
+  transitionThroughBlack(onCovered: () => void, onFinished?: () => void): void {
     if (!this.ready) {
       throw new Error('Training scene is not ready for a transition');
     }
@@ -166,6 +162,7 @@ export class TrainingScene extends Phaser.Scene implements StationControllableSc
       onCovered,
       () => {
         this.transitionActive = false;
+        onFinished?.();
       },
     );
   }
@@ -285,15 +282,6 @@ export class TrainingScene extends Phaser.Scene implements StationControllableSc
     const axisX = Number(keys.D?.isDown || keys.RIGHT?.isDown) - Number(keys.A?.isDown || keys.LEFT?.isDown);
     const axisY = Number(keys.S?.isDown || keys.DOWN?.isDown) - Number(keys.W?.isDown || keys.UP?.isDown);
     return { axisX, axisY, moveRequest: null };
-  }
-
-  private handlePointer(pointer: Phaser.Input.Pointer): void {
-    if (this.state.frozen || !this.geometry) return;
-    const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-    const target = this.nearestInteraction(world.x, world.y, 130);
-    const destination = target ? { x: target.x, y: target.y } : { x: world.x, y: world.y };
-    this.sim.route = this.geometry.findPath({ x: this.sim.x, y: this.sim.y }, destination);
-    this.sim.routeIndex = 0;
   }
 
   private updateCamera(x: number, y: number, delta: number): void {

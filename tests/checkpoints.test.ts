@@ -49,6 +49,7 @@ describe('shift checkpoints', () => {
     const checkpoint = captureCheckpoint(mission, 'before-major-event', 1000);
     const save = defaultSave();
     save.tutorialComplete = true;
+    save.seenCommanderBriefings = ['landing', 'tasks', 'FLR', 'SEP', 'FLR'];
     save.seenMinigames = ['rainbow', 'wiring'];
     save.medals = 2;
     save.activeTrial = {
@@ -56,9 +57,15 @@ describe('shift checkpoints', () => {
       tasks: ['inspect', 'med-pipes', 'align-engine'],
     };
     expect(parseImportedSaveJson(exportSaveJson(save))).toMatchObject({
-      tutorialComplete: true, seenMinigames: ['rainbow', 'wiring'], medals: 2,
+      tutorialComplete: true, seenCommanderBriefings: ['landing', 'tasks', 'FLR', 'SEP'],
+      seenMinigames: ['rainbow', 'wiring'], medals: 2,
       activeTrial: { checkpoint, pendingDisaster: true },
     });
+  });
+
+  it('lets older saves encounter each Commander briefing independently', () => {
+    const { seenCommanderBriefings: _, ...legacy } = defaultSave();
+    expect(parseImportedSaveJson(JSON.stringify(legacy))?.seenCommanderBriefings).toEqual([]);
   });
 });
 
@@ -67,23 +74,33 @@ describe('assignments and disaster exchanges', () => {
     expect(specialistBonus('repairman', 'power')).toBe(3);
     expect(specialistBonus('farmer', 'farm')).toBe(3);
     expect(specialistBonus('researcher', 'research')).toBe(3);
-    expect(specialistBonus('traveller', 'life')).toBe(3);
-    expect(specialistBonus('traveller', 'research')).toBe(0);
+    expect(specialistBonus('researcher', 'power')).toBe(0);
     expect(applyDailyOperations(statuses, 'farmer').life).toBeGreaterThan(applyDailyOperations(statuses).life);
     expect(applyDailyOperations(statuses, 'repairman').power).toBeGreaterThan(applyDailyOperations(statuses).power);
-    const lights = TASKS.find(task => task.kind === 'rainbow')!;
+    const lights = TASKS.find(task => task.kind === 'grow-plant')!;
     expect(taskExchange(lights, 'farmer', 'cadet')).toEqual({ farm: 17, power: -2 });
     expect(taskExchange(lights, 'farmer', 'crew')).toEqual({ farm: 15, power: -4 });
     expect(taskExchange(lights, 'farmer', 'veteran')).toEqual({ farm: 13, power: -6 });
   });
 
-  it.each(['FLR', 'CME', 'SEP', 'GST'] as const)('offers exactly one matching repair tool for %s', (type) => {
+  it.each([
+    ['med-pipes', 'life', 'power'], ['upload-admin', 'research', 'power'], ['grow-light-balance', 'farm', 'power'],
+    ['wiring-electrical', 'power', 'research'], ['power-switches', 'power', 'life'],
+  ] as const)('applies the advertised tradeoff for %s', (id, gain, cost) => {
+    const task = TASKS.find(item => item.id === id)!;
+    const role = gain === 'research' ? 'farmer' : 'researcher';
+    expect(taskExchange(task, role, 'crew')).toEqual({ [gain]: 12, [cost]: -4 });
+  });
+
+  it.each([
+    ['FLR', 'power'], ['CME', 'life'], ['SEP', 'research'], ['GST', 'farm'],
+  ] as const)('offers exactly one matching repair tool for %s', (type, matchingTool) => {
     const repair = DISASTER_REPAIRS[type];
     const options = disasterTools(type);
-    expect(new Set(options).size).toBe(3);
+    expect(options).toEqual(type === 'GST' ? ['power', 'research', 'farm'] : ['power', 'life', 'research']);
     for (const tool of options) {
       const result = resolveDisaster({ type, difficulty: 'crew', severity: 'moderate' }, statuses, tool, 'researcher');
-      if (tool !== repair.system) expect(result).toBeNull();
+      if (tool !== matchingTool) expect(result).toBeNull();
       else {
         expect(result?.[repair.system]).toBeGreaterThan(statuses[repair.system]);
         expect(result?.[repair.cost]).toBe(46);

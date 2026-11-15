@@ -1,6 +1,7 @@
 import { CORRIDORS, PLAYER_SPAWN, ROOMS, STATION_TASKS, WORLD_HEIGHT, WORLD_WIDTH } from '../model';
 import type { MapDefinition } from './mapTypes';
 import type { DestinationId } from '../model';
+import { REACTOR_POWER_SWITCH } from './missionOpening';
 
 /* The surface habitat is the lunar mission map backed by spudnaut-station.tmj
    and the illustrated station floorplan. Keep room/corridor bounds and task
@@ -43,24 +44,20 @@ export const SURFACE_HABITAT: MapDefinition = {
     { id: 'pad-seats', kind: 'console', x: 1375, y: 1315, w: 170, h: 200, solid: true, tint: 0x739ac2 },
     { id: 'pod-shelf', kind: 'crate', x: 1760, y: 1350, w: 200, h: 160, solid: true, tint: 0xb29875 },
   ],
-  interactions: STATION_TASKS.map(task => ({
+  interactions: [...STATION_TASKS.map(task => ({
     id: task.id,
     name: task.name,
-    kind: 'task',
+    kind: 'task' as const,
     taskKind: task.kind,
     x: task.x,
     y: task.y,
     roomId: task.roomId,
     icon: task.isEmergency ? 'warning' : 'hammer',
     accent: task.isEmergency ? '#ff5a5f' : '#f5c451',
-  })),
+  })), {
+    ...REACTOR_POWER_SWITCH, name: 'Restore Station Power', kind: 'task', roomId: 'reactor', icon: 'lightning', accent: '#f5c451',
+  }],
   crew: [
-    {
-      id: 'russet', name: 'Cmdr. Russet', role: 'Mission Commander', art: '/assets/potato-repairman.png',
-      x: 992, y: 864, facing: 1, accent: '#f2b544', roomId: 'admin',
-      patrolBounds: { x: 782, y: 740, width: 342, height: 392 },
-      lines: ['Welcome, Spudnaut! Every job helps keep our Moon home running.'],
-    },
     {
       id: 'pip', name: 'Pip', role: 'Farmer', art: '/assets/potato-farmer.png',
       x: 480, y: 864, facing: -1, accent: '#9bd15a', roomId: 'cafeteria',

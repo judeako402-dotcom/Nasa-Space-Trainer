@@ -7,6 +7,7 @@ import type {
 } from '../model';
 import { DAY } from '../data/balance';
 import type { MapDefinition } from '../data/mapTypes';
+import { REACTOR_POWER_SWITCH } from '../data/missionOpening';
 import { surfaceHabitatFor } from '../data/surfaceHabitat';
 import { TRAINING_DECK } from '../data/trainingDeck';
 import type { createStationGame, GameEvent, MapId, SceneGameState } from '../game';
@@ -130,7 +131,7 @@ export function activeMap(): MapDefinition {
 }
 
 export function movementSpeed(): number {
-  return session.lobby.specialist === 'traveller' ? 1.18 : 1;
+  return 1;
 }
 
 export function missionDayNumber(): number {
@@ -147,7 +148,7 @@ export function trialDayLabel(trial: Pick<SavedTrial, 'day' | 'penaltyDay' | 'ma
 export function isMissionActive(): boolean {
   return session.currentScreen === 'mission'
     && session.mission.phase === 'playing'
-    && session.mission.tasks.length > 0;
+    && (session.mission.tasks.length > 0 || session.mission.opening === 'blackout');
 }
 
 export function dayDurationMs(penaltyDay = session.mission.penaltyDay): number {
@@ -194,6 +195,8 @@ export function saveTrialProgress(): void {
     donkiReport: mission.eventCard?.source,
     majorEventRun: mission.majorEventRun,
     pendingDisaster: mission.pendingDisaster,
+    opening: mission.opening,
+    hudBriefing: mission.hudBriefing,
     checkpoint: mission.checkpoint,
     eventChoiceId: selectedEventChoice || undefined,
     position: { x: mission.playerX, y: mission.playerY },
@@ -375,6 +378,8 @@ export function trainingSceneState(): SceneGameState {
 }
 
 export function missionSceneState(): SceneGameState {
+  const { mission } = session;
+  const blackout = mission.opening === 'blackout';
   return {
     mapId: 'surface',
     destination: session.lobby.destination,
@@ -387,7 +392,11 @@ export function missionSceneState(): SceneGameState {
     speed: movementSpeed(),
     frozen: !isMissionActive() || session.mission.modalOpen || session.rewinding,
     visionEnabled: session.save.options.lineOfSight,
-    activeInteractions: session.mission.tasks,
+    blackout,
+    spotlightGuide: mission.spotlightGuide,
+    restAtBunk: mission.opening === 'first-shift' && mission.tasks.length > 0
+      && mission.tasks.length === mission.completed.length,
+    activeInteractions: blackout ? [REACTOR_POWER_SWITCH.id] : mission.tasks,
     completedInteractions: session.mission.completed,
     objective: session.mission.eventCard?.name ?? 'HABITAT SHIFT',
   };
@@ -434,7 +443,7 @@ export function walkStationTo(x: number, y: number, label?: string): void {
     cachedGameMod = mod;
     if (activeGame === session.game && session.currentScreen === screen) {
       const routed = mod.navigateStationTo(activeGame, x, y);
-      if (label) showToast(routed ? `Auto-piloting to ${label}...` : `No route to ${label}.`);
+      if (label) showToast(routed ? `Follow the route line to ${label}.` : `No route to ${label}.`);
     }
   });
 }

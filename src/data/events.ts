@@ -68,8 +68,8 @@ export const EVENT_CARDS: EventCard[] = [
   },
   {
     id: 'commander-visit', name: 'Commander Russet Briefs', kind: 'crew',
-    description: 'A direct Earth relay briefing tightens team coordination for the shift.',
-    effect: 'Life and Research climb after reviewing priority checklists.',
+    description: 'Commander Russet calls from Earth. “Moon crew, let’s check our air, water, and science gear together!”',
+    effect: 'Working together gives Life and Research a boost.',
     deltas: { life: 4, research: 3 },
   },
 ];

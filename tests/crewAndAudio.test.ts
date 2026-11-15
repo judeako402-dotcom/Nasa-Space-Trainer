@@ -30,7 +30,7 @@ describe('EVA helmet & exterior explorer staging', () => {
     expect(isExteriorApron({ x: rover!.x, y: rover!.y })).toBe(false);
 
     const interiorCrew = SURFACE_HABITAT.crew.filter((c) => c.id !== 'rover');
-    expect(interiorCrew.map((c) => c.id).sort()).toEqual(['chip', 'pip', 'russet', 'tater']);
+    expect(interiorCrew.map((c) => c.id).sort()).toEqual(['chip', 'pip', 'tater']);
     for (const member of interiorCrew) {
       expect(member.exteriorOnly).not.toBe(true);
       expect(member.roomId).toBeTruthy();

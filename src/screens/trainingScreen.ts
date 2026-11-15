@@ -1,4 +1,4 @@
-import { stopMusic } from '../audio/music';
+import { startGameplayOst, stopMusic } from '../audio/music';
 import { scheduleIdlePrewarm, scheduleSurfacePrewarm } from '../app/prewarm';
 import { routes } from '../app/router';
 import {
@@ -123,6 +123,7 @@ export function showTraining(): void {
   session.splashCleanup = null;
   session.currentScreen = 'training';
   stopMusic();
+  startGameplayOst('ambient');
   stopLoop();
   window.clearTimeout(session.splashTimer);
   overlayRoot.replaceChildren();
@@ -223,8 +224,8 @@ export function handleTrainingInteract(interactionId: string): void {
         art: '/assets/potato-repairman.png',
         accent: '#f2b544',
         lines: [
-          `Not yet, recruit. ${remaining.length} system checkpoint${remaining.length === 1 ? ' is' : 's are'} still cold.`,
-          'Life support, power, research, and farm. Walk the deck and use every console.',
+          `You’re getting closer, Spudnaut! You still have ${remaining.length} console${remaining.length === 1 ? '' : 's'} to check.`,
+          'Look for Life, Power, Research, and Farm as you explore the deck.',
         ],
       });
     }

@@ -7,6 +7,7 @@ afterEach(() => {
 
 describe('NASA DONKI reports', () => {
   it('normalizes the newest report across supported types and maps it to the solar event', async () => {
+    const sourceUrl = 'https://ccmc.gsfc.nasa.gov/DONKI/view/SEP/49352/-1';
     const fetcher = vi.fn(async (input: string | URL | Request) => {
       const type = new URL(String(input)).pathname.split('/').pop();
       const payload = type === 'FLR'
@@ -14,16 +15,22 @@ describe('NASA DONKI reports', () => {
         : type === 'CME'
           ? [{ activityID: 'cme-1', startTime: '2026-11-14T03:00:00Z', link: 'https://example.test/cme' }]
           : type === 'SEP'
-            ? [{ sepID: 'sep-1', eventTime: '2026-11-14T08:00:00Z', note: 'Particle activity reported.' }]
-            : [{ gstID: 'gst-1', startTime: 'not-a-date' }];
+            ? [
+                { sepID: 'sep-1', eventTime: '2026-11-14T08:00:00Z', note: 'Particle activity reported.', link: sourceUrl },
+                { sepID: 'invalid', eventTime: 'not-a-date' },
+              ]
+            : [];
       return new Response(JSON.stringify(payload), { status: 200 });
     });
 
     const { fetchDonkiReports, fetchLatestDonkiReport, solarEventFromDonkiReport } = await import('../src/data/donki');
     const report = await fetchLatestDonkiReport(Date.parse('2026-11-14T12:00:00Z'), fetcher);
 
-    expect(report).toMatchObject({ id: 'sep-1', type: 'SEP', date: '2026-11-14T08:00:00.000Z' });
-    expect(fetcher).toHaveBeenCalledTimes(4);
+    expect(report).toMatchObject({ id: 'sep-1', type: 'SEP', date: '2026-11-14T08:00:00.000Z', url: sourceUrl });
+    expect(fetcher.mock.calls.map(([input]) => {
+      const url = new URL(String(input));
+      return url.origin + url.pathname;
+    })).toEqual(['FLR', 'CME', 'SEP'].map(type => `https://ccmc.gsfc.nasa.gov/DONKI-API/get/${type}`));
     const event = solarEventFromDonkiReport(report!, 'cadet');
     expect(event.id).toBe('solar-flare');
     expect(event.source).toEqual(report);
@@ -34,7 +41,7 @@ describe('NASA DONKI reports', () => {
     expect(event.description).toContain('2026-11-14');
     await expect(fetchLatestDonkiReport(Date.parse('2026-11-14T12:01:00Z'), fetcher)).resolves.toEqual(report);
     await expect(fetchDonkiReports(Date.parse('2026-11-14T12:01:00Z'), fetcher)).resolves.toHaveLength(3);
-    expect(fetcher).toHaveBeenCalledTimes(4);
+    expect(fetcher).toHaveBeenCalledTimes(3);
   });
 
   it('does not expose a non-NASA report link', async () => {
@@ -47,7 +54,7 @@ describe('NASA DONKI reports', () => {
       summary: 'Solar activity recorded.',
     }, 'cadet');
 
-    expect(event.source?.url).toBe('https://api.nasa.gov/DONKI/FLR');
+    expect(event.source?.url).toBe('https://ccmc.gsfc.nasa.gov/DONKI/events');
   });
 
   it('caches an empty result and preserves the deterministic fallback on failures', async () => {
@@ -57,11 +64,12 @@ describe('NASA DONKI reports', () => {
 
     await expect(fetchLatestDonkiReport(now, fetcher)).resolves.toBeNull();
     await expect(fetchLatestDonkiReport(now + 1000, fetcher)).resolves.toBeNull();
-    expect(fetcher).toHaveBeenCalledTimes(4);
+    expect(fetcher).toHaveBeenCalledTimes(3);
   });
 
   it('prefers configured VITE_DONKI_PROXY_URL and falls back to api.nasa.gov on proxy error', async () => {
     vi.stubEnv('VITE_DONKI_PROXY_URL', 'https://proxy.example.test/api/donki/');
+    vi.stubEnv('VITE_NASA_API_KEY', 'test-key');
     const calls: string[] = [];
     const fetcher = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);

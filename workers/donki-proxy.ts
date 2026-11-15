@@ -11,7 +11,7 @@ interface WorkerEnv {
   ALLOWED_ORIGIN?: string;
 }
 
-const VALID_TYPES = new Set(['FLR', 'CME', 'SEP', 'GST']);
+const VALID_TYPES = new Set(['FLR', 'CME', 'SEP']);
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const CACHE_TTL_SECONDS = 900;
 

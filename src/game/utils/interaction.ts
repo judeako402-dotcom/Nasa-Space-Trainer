@@ -15,6 +15,7 @@ export interface InteractableLike {
   bounds?: RectBounds;
   interactionRadius: number;
   enabled: boolean;
+  priority?: number;
 }
 
 /**
@@ -52,15 +53,19 @@ export function findNearestInteractable<T extends InteractableLike>(
 ): T | null {
   let best: T | null = null;
   let bestDist = Infinity;
+  let bestPriority = -Infinity;
 
   for (const item of items) {
     if (!item.enabled) {
       continue;
     }
     const d = distanceToInteractableSq(subjectPos, item);
-    if (d <= item.interactionRadius * item.interactionRadius && d < bestDist) {
+    const priority = item.priority ?? 0;
+    if (d <= item.interactionRadius * item.interactionRadius
+      && (priority > bestPriority || (priority === bestPriority && d < bestDist))) {
       best = item;
       bestDist = d;
+      bestPriority = priority;
     }
   }
 

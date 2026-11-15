@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="rimGold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fde047" />
+      <stop offset="100%" stop-color="#f97316" />
+    </linearGradient>
+    <radialGradient id="dialCyan" cx="40%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#e0f7ff" />
+      <stop offset="100%" stop-color="#58b9ff" />
+    </radialGradient>
+  </defs>
+  <rect x="26" y="5" width="12" height="7" rx="3" fill="url(#rimGold)" stroke="#13152c" stroke-width="3.5" />
+  <line x1="47" y1="14" x2="51" y2="10" stroke="#13152c" stroke-width="5" stroke-linecap="round" />
+  <circle cx="32" cy="35" r="22" fill="url(#rimGold)" stroke="#13152c" stroke-width="4" />
+  <circle cx="32" cy="35" r="16" fill="url(#dialCyan)" stroke="#13152c" stroke-width="3.2" />
+  <polyline points="32,23 32,35 41,40" fill="none" stroke="#13152c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="32" cy="35" r="3" fill="#ff5522" />
+</svg>

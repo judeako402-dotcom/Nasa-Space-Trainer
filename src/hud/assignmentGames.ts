@@ -1,13 +1,13 @@
 import { shuffle, type TaskKind } from '../model';
 import { sfx } from '../sfx';
+import { STATION_GAME_TIPS } from './stationMissionGames';
 
-type AssignmentGame = 'rainbow' | 'harvest' | 'scrub' | 'pipes' | 'solar' | 'crystals' | 'signal';
+type AssignmentGame = 'rainbow' | 'harvest' | 'scrub' | 'solar' | 'crystals' | 'signal';
 
 const INSTRUCTIONS: Record<AssignmentGame | 'wiring', string> = {
   rainbow: 'Slide each colored light until it reaches its mark. Match all three to wake the sprouts!',
   harvest: 'Tap the golden potatoes to toss them into the crate. Leave the weeds alone!',
   scrub: 'Swipe over the dust to wipe it away. Tap the bubbles to pop them.',
-  pipes: 'Tap each bent pipe to turn it. Match the little arrow, then latch it shut.',
   solar: 'Slide the mirror to aim at each sunbeam. Catch beams until the battery is full!',
   crystals: 'Sweep the scanner over the rocks to find all the hidden crystals. You can tap rocks too.',
   signal: 'Watch the four flashes, then tap the dishes in that order. The pattern plays again if you miss.',
@@ -15,7 +15,7 @@ const INSTRUCTIONS: Record<AssignmentGame | 'wiring', string> = {
 };
 
 export function assignmentGameTip(kind: TaskKind): string | undefined {
-  return Object.hasOwn(INSTRUCTIONS, kind) ? INSTRUCTIONS[kind as keyof typeof INSTRUCTIONS] : undefined;
+  return STATION_GAME_TIPS[kind] ?? (Object.hasOwn(INSTRUCTIONS, kind) ? INSTRUCTIONS[kind as keyof typeof INSTRUCTIONS] : undefined);
 }
 
 const ROUND_SIZE = 9;
@@ -23,7 +23,7 @@ const ROUND_SIZE = 9;
 export function mountAssignmentGame(
   kind: TaskKind, host: HTMLElement, complete: () => void, cleanups: (() => void)[],
 ): boolean {
-  if (kind === 'wiring' || !assignmentGameTip(kind)) return false;
+  if (kind === 'wiring' || !Object.hasOwn(INSTRUCTIONS, kind)) return false;
   host.classList.add('assignment-game');
   const controls = document.createElement('div');
   const status = document.createElement('p');
@@ -93,37 +93,6 @@ export function mountAssignmentGame(
       status.textContent = '⚡ Battery 0%';
       makeSlider(targets[0]!, 'Solar mirror', tones[1]!);
     }
-    return true;
-  }
-
-  if (kind === 'pipes') {
-    controls.className = 'assignment-grid pipes-grid';
-    let latched = 0;
-    const arrows = ['↑', '→', '↓', '←'];
-    const directions = ['up', 'right', 'down', 'left'];
-    shuffle([0, 1, 2, 3, 1, 2]).forEach((target, index) => {
-      const cell = document.createElement('div');
-      let turn = (target + 1 + index % 2) % 4;
-      const latch = button('Latch', () => {
-        turner.disabled = latch.disabled = true;
-        cell.classList.add('is-done');
-        latched += 1;
-        progress(`${latched} of 6 pipes sealed`);
-        if (latched === 6) complete();
-      }, cell);
-      const update = (): void => {
-        turner.textContent = `┗ ${arrows[turn]} · ${arrows[target]}`;
-        turner.setAttribute('aria-label', `Pipe ${index + 1} points ${directions[turn]}. Match ${directions[target]}.`);
-        latch.disabled = turn !== target;
-      };
-      const turner = button('', () => {
-        turn = (turn + 1) % 4;
-        update();
-      }, cell);
-      cell.prepend(turner);
-      update();
-      controls.append(cell);
-    });
     return true;
   }
 

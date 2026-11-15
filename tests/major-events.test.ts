@@ -19,7 +19,7 @@ const report = (id: string, type: DonkiReport['type'], date: string): DonkiRepor
 });
 
 const datedReports = [
-  report('oldest', 'GST', '2026-11-11T00:00:00.000Z'),
+  report('oldest', 'FLR', '2026-11-11T00:00:00.000Z'),
   report('newest', 'SEP', '2026-11-14T00:00:00.000Z'),
   report('middle', 'CME', '2026-11-12T00:00:00.000Z'),
 ];
@@ -36,24 +36,27 @@ describe('difficulty-based major events', () => {
       .toEqual([0.15, 0.3, 0.5]);
   });
 
-  it('guarantees at least 1, 2, and 3 emergency events for cadet, crew, and veteran difficulties', () => {
+  it('guarantees at least 1, 3, and 5 emergency events for cadet, crew, and veteran difficulties', () => {
     const pool = [
       report('r1', 'FLR', '2026-11-14T00:00:00.000Z'),
       report('r2', 'CME', '2026-11-13T00:00:00.000Z'),
       report('r3', 'SEP', '2026-11-12T00:00:00.000Z'),
-      report('r4', 'GST', '2026-11-11T00:00:00.000Z'),
+      report('r4', 'FLR', '2026-11-11T00:00:00.000Z'),
+      report('r5', 'CME', '2026-11-10T00:00:00.000Z'),
+      report('r6', 'GST', '2026-11-09T00:00:00.000Z'),
     ];
     for (const [difficulty, minCount] of [
-      ['cadet', 1], ['crew', 2], ['veteran', 3],
+      ['cadet', 1], ['crew', 3], ['veteran', 5],
     ] as const) {
       for (let seed = 0; seed < 100; seed += 1) {
         const run = storeMajorEventReports(createMajorEventRun(seed, difficulty), pool);
         const triggered = run.candidates.filter(item => item.triggered).length;
+        expect(run.candidates.map(item => item.report.type)).toEqual(['FLR', 'CME', 'SEP', 'FLR', 'CME']);
         expect(triggered).toBeGreaterThanOrEqual(minCount);
       }
     }
 
-    const multiReportRun = storeMajorEventReports(createMajorEventRun(3, 'veteran'), datedReports);
+    const multiReportRun = storeMajorEventReports(createMajorEventRun(3, 'crew'), datedReports);
     expect(multiReportRun.candidates).toHaveLength(3);
     expect(multiReportRun.candidates.map(item => item.report.id)).toEqual(['newest', 'middle', 'oldest']);
     expect(multiReportRun.candidates.filter(item => item.triggered)).toHaveLength(3);
@@ -62,7 +65,7 @@ describe('difficulty-based major events', () => {
   it('plays triggered reports newest-first and never reuses a report', () => {
     let run: ReturnType<typeof createMajorEventRun> | undefined;
     for (let seed = 0; seed < 100; seed += 1) {
-      const candidate = storeMajorEventReports(createMajorEventRun(seed, 'veteran'), datedReports);
+      const candidate = storeMajorEventReports(createMajorEventRun(seed, 'crew'), datedReports);
       if (candidate.candidates.every(item => item.triggered)) {
         run = candidate;
         break;
@@ -73,7 +76,7 @@ describe('difficulty-based major events', () => {
     for (let index = 0; index < datedReports.length; index += 1) {
       const next = takeNextMajorEvent(run!);
       run = next.run;
-      expect(next.event?.majorEvent?.difficulty).toBe('veteran');
+      expect(next.event?.majorEvent?.difficulty).toBe('crew');
       played.push(next.reportId!);
     }
     expect(played).toEqual(['newest', 'middle', 'oldest']);
@@ -87,7 +90,6 @@ describe('difficulty-based major events', () => {
       { type: 'FLR', metric: 'power' },
       { type: 'CME', metric: 'life' },
       { type: 'SEP', metric: 'life' },
-      { type: 'GST', metric: 'farm' },
     ];
     for (const item of cases) {
       const source = report(`type-${item.type}`, item.type, '2026-11-14T00:00:00.000Z');
@@ -104,7 +106,7 @@ describe('difficulty-based major events', () => {
   it('rolls deterministic Space Apps practice alerts when no DONKI reports are available', () => {
     const run = storeMajorEventReports(createMajorEventRun(0, 'crew'), []);
     expect(run.reportsLoaded).toBe(true);
-    expect(run.candidates).toHaveLength(4);
+    expect(run.candidates.map(item => item.report.type)).toEqual(['FLR', 'CME', 'SEP', 'FLR', 'CME']);
     expect(takeNextMajorEvent(run).event?.source?.simulated).toBe(true);
     expect(storeMajorEventReports(createMajorEventRun(0, 'crew'), [])).toEqual(run);
     expect(eventForDay(createRng(17), 'moon', 2).id).not.toBe('solar-flare');
@@ -132,6 +134,8 @@ describe('difficulty-based major events', () => {
       }
       expect(run).toBeDefined();
       const first = takeNextMajorEvent(run!);
+      const legacyReport = report('legacy-storm', 'GST', '2026-11-13T00:00:00.000Z');
+      first.run.candidates.splice(first.run.nextCandidateIndex, 0, { report: legacyReport, triggered: true });
       const saved = defaultSave();
       saved.options = { ...DEFAULT_OPTIONS, difficulty: 'crew' };
       saved.activeTrial = {
@@ -147,8 +151,10 @@ describe('difficulty-based major events', () => {
       const resumed = loadSave().activeTrial!;
       expect(resumed.majorEventRun).toEqual(first.run);
       expect(majorEventForReport(resumed.majorEventRun!, first.reportId)?.source?.id).toBe(first.reportId);
+      expect(majorEventForReport(resumed.majorEventRun!, legacyReport.id)?.majorEvent?.type).toBe('GST');
       const next = takeNextMajorEvent(resumed.majorEventRun!);
       expect(next.reportId).not.toBe(first.reportId);
+      expect(next.reportId).not.toBe(legacyReport.id);
       expect(next.run.nextCandidateIndex).toBeGreaterThan(first.run.nextCandidateIndex);
     } finally {
       if (previousStorage) Object.defineProperty(globalThis, 'localStorage', previousStorage);

@@ -21,6 +21,7 @@ export function mountAppFrame(): DomRefs {
       <main class="screen-root" id="screen-root"></main>
       <div class="scene-shell" id="scene-shell" hidden>
         <div id="game-canvas" class="game-canvas"></div>
+        <div id="station-blackout" class="station-blackout" aria-hidden="true" hidden></div>
         <div class="scene-loading" id="scene-loading" role="status" aria-live="polite" hidden>
           <div class="scene-loading-card">
             <div class="scene-loading-stage" aria-hidden="true">
@@ -38,6 +39,14 @@ export function mountAppFrame(): DomRefs {
         <div class="scene-fallback" id="scene-fallback" role="alert" hidden></div>
         <div class="scene-vignette" aria-hidden="true"></div>
         <div class="hud mission-hud" id="hud" hidden>
+          <div class="hud-special-alert" id="hud-special-alert" role="alert" hidden>
+            <svg class="hud-special-alert-triangle" viewBox="0 0 64 56" width="54" height="48" aria-hidden="true">
+              <path d="M32 4 60 52H4Z" fill="rgba(185, 12, 24, 0.3)" stroke="#ff2938" stroke-width="4.5" stroke-linejoin="round" />
+              <rect x="29.5" y="19" width="5" height="17" rx="2.5" fill="#ff2938" />
+              <circle cx="32" cy="43" r="3.2" fill="#ff2938" />
+            </svg>
+            <strong class="hud-special-alert-text" id="hud-special-alert-text"></strong>
+          </div>
           <div class="hud-top-left">
             <span class="hud-eva-warning" id="hud-eva-warning" role="alert" hidden>VACUUM HAZARD · SEAL EVA (G)</span>
             <nav class="hud-left-rail" aria-label="Mission panels">

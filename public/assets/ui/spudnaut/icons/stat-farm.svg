@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="leafLight" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#86ff6b" />
+      <stop offset="100%" stop-color="#1cb533" />
+    </linearGradient>
+    <linearGradient id="soilGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#8c5433" />
+      <stop offset="100%" stop-color="#4d2b16" />
+    </linearGradient>
+  </defs>
+  <!-- Stem -->
+  <path d="M32 48 V26" stroke="#15803d" stroke-width="6" stroke-linecap="round" />
+  <!-- Left leaf -->
+  <path d="M32 32 C24 14 9 16 11 29 C13 38 25 38 32 32Z"
+    fill="url(#leafLight)" stroke="#13152c" stroke-width="3.8" stroke-linejoin="round" />
+  <!-- Right taller leaf -->
+  <path d="M32 28 C37 10 55 11 53 26 C51 35 39 36 32 28Z"
+    fill="url(#leafLight)" stroke="#13152c" stroke-width="3.8" stroke-linejoin="round" />
+  <!-- Soil mound -->
+  <path d="M13 54 C15 44 23 41 32 41 C41 41 49 44 51 54 Z"
+    fill="url(#soilGrad)" stroke="#13152c" stroke-width="4" stroke-linejoin="round" />
+</svg>

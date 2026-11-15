@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <radialGradient id="moonGrad" cx="38%" cy="32%" r="68%">
+      <stop offset="0%" stop-color="#fff8dc" />
+      <stop offset="55%" stop-color="#e5d7b5" />
+      <stop offset="100%" stop-color="#a59676" />
+    </radialGradient>
+  </defs>
+  <circle cx="32" cy="32" r="23" fill="url(#moonGrad)" stroke="#13152c" stroke-width="4.2" />
+  <circle cx="24" cy="23" r="5" fill="#c2b28f" stroke="#786b4e" stroke-width="2" />
+  <circle cx="40" cy="36" r="6.5" fill="#b8a885" stroke="#786b4e" stroke-width="2" />
+  <circle cx="23" cy="40" r="3.4" fill="#c2b28f" stroke="#786b4e" stroke-width="1.6" />
+  <circle cx="38" cy="19" r="2.6" fill="#c2b28f" />
+  <path d="M18 17 A17 17 0 0 1 38 14" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" stroke-opacity="0.7" />
+</svg>

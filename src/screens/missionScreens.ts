@@ -1,19 +1,20 @@
 import {
-  DIFFICULTY_INFO, PLAYER_SPAWN, TASKS,
-  destinationById, getColor, getRoomName, persistSave,
+  DEFAULT_OPTIONS, DIFFICULTY_INFO, PLAYER_SPAWN, STATION_MISSIONS, TASKS,
+  destinationById, getColor, getRoomName, isDifficultyUnlocked, persistSave,
   specialistById, taskById, trialMaxDays,
-  type EarthProgressReport, type MissionCheckpoint, type MissionMetric, type MissionMetrics, type SavedTrial,
+  type CommanderBriefing, type EarthProgressReport, type MissionCheckpoint, type MissionMetric, type MissionMetrics, type SavedTrial,
 } from '../model';
 import { DAILY_OPERATIONS_DRIFT, DAY, PASS_THRESHOLDS } from '../data/balance';
 import { fetchDonkiReports } from '../data/donki';
 import { EVENT_CARDS } from '../data/events';
-import { stopMusic } from '../audio/music';
+import { BLACKOUT_EVENT, COMMANDER_ART, LANDING_PAD_SPAWN } from '../data/missionOpening';
+import { startGameplayOst, stopMusic } from '../audio/music';
 import { playHomecoming } from '../game/ending';
 import { WALK_SPEED } from '../game/constants';
-import { routes } from '../app/router';
+import { routes, type DialogueOptions } from '../app/router';
 import {
   applyOptions, configureScene, dayDurationMs, dom, ensureStationGame, escapeHtml, pauseMissionForModal,
-  isMissionActive, missionDayNumber, movementSpeed, saveTrialProgress, session,
+  isMissionActive, missionDayNumber, movementSpeed, resumeMissionAfterModal, saveTrialProgress, session,
   setSceneLoadingState, showToast, stopLoop, wakeStationGame,
 } from '../app/session';
 import { createMissionState } from '../app/state';
@@ -23,7 +24,7 @@ import {
   storeMajorEventReports, takeNextMajorEvent,
 } from '../sim/majorEvents';
 import {
-  applyDailyOperations, applyEvent, applyMissedDay, applyTaskCompletion,
+  applyDailyOperations, applyEvent, applyLiveOperationsDrain, applyMetricExchange, applyMissedDay, applyTaskCompletion,
   assignmentOffer, createMetrics, evaluateMission, eventForDay, metricDeltas, offersForDay, systemHealth, taskExchange,
 } from '../sim/mission';
 import { createRng, seedFor } from '../sim/rng';
@@ -31,7 +32,7 @@ import { metricChips, setHudDrawer, statusBarsMarkup, syncEvaHazardState, update
 import {
   METRIC_LABELS, renderCharacterSpriteThumb, renderConstellationAction, renderConstellationTitle,
 } from '../ui/icons';
-import { clearActiveModals } from '../ui/modalController';
+import { clearActiveModals, mountCustomModal } from '../ui/modalController';
 import { showDisaster } from '../hud/disasterModal';
 import { criticalStatus, captureCheckpoint, restoreCheckpoint } from '../sim/checkpoints';
 import { DISASTER_REPAIRS, DISASTER_TOOLS, resolveDisaster } from '../sim/disasters';
@@ -80,12 +81,18 @@ function renderProjectedGaugesMarkup(): string {
   return keys.map((key) => {
     const before = Math.round(session.mission.metrics[key]);
     const after = Math.round(projected[key]);
-    const label = METRIC_LABELS[key].toUpperCase();
+    const label = METRIC_LABELS[key];
     return `
-      <div class="shift-gauge">
-        <span>${label}</span>
-        <div class="spud-stat-track" aria-hidden="true"><div class="spud-stat-fill" style="width:${after}%"></div></div>
-        <b class="${after > before ? 'is-gain' : ''}">${before} → ${after}</b>
+      <div class="shift-gauge" data-metric="${key}">
+        <span class="shift-gauge-icon-wrap" aria-hidden="true">
+          <img class="shift-gauge-icon" src="/assets/ui/spudnaut/icons/stat-${key}.svg" alt="" draggable="false" />
+        </span>
+        <div class="spud-stat-track shift-gauge-pill" aria-hidden="true">
+          <div class="spud-stat-fill shift-gauge-fill is-${key}" style="height:${after}%"></div>
+          <span class="shift-gauge-pct">${after}%</span>
+        </div>
+        <span class="shift-gauge-name">${label}</span>
+        <b class="${after > before ? 'is-gain' : ''}" aria-label="${label} ${before} to ${after}%">${before} → ${after}</b>
       </div>
     `;
   }).join('');
@@ -130,14 +137,17 @@ function refreshPlanningWithDonki(dayStartedAt: number): void {
 function commitAssignments(): void {
   const { overlayRoot } = dom();
   const { mission } = session;
-  const emergencyTaskId = mission.eventCard?.majorEvent
-    ? `emergency-${mission.eventCard.majorEvent.type.toLowerCase()}`
-    : null;
-  const hasEmergencyTask = Boolean(emergencyTaskId && taskById(emergencyTaskId));
-  mission.tasks = hasEmergencyTask && emergencyTaskId
-    ? [...mission.selected, emergencyTaskId]
+  const disaster = mission.eventCard?.majorEvent;
+  const emergencyTask = disaster && taskById(`emergency-${disaster.type.toLowerCase()}`);
+  const alreadyRepaired = mission.opening === 'second-shift' && Boolean(emergencyTask);
+  mission.tasks = emergencyTask
+    ? [...mission.selected, emergencyTask.id]
     : [...mission.selected];
   mission.totalAssigned += mission.tasks.length;
+  if (alreadyRepaired && emergencyTask) {
+    mission.completed = [emergencyTask.id];
+    mission.totalCompleted += 1;
+  }
   mission.phase = 'playing';
   mission.dayStartedAt = Date.now();
   mission.shiftDurationMs = dayDurationMs();
@@ -146,21 +156,26 @@ function commitAssignments(): void {
   mission.modalOpen = false;
   session.evaDrainTicks = 0;
   overlayRoot.replaceChildren();
-  mission.pendingDisaster = hasEmergencyTask;
+  mission.pendingDisaster = Boolean(emergencyTask) && !alreadyRepaired;
   configureScene({ respawn: true });
   updateHUD();
   const failed = criticalStatus(mission.metrics);
   if (failed && session.planningEventBase) mission.metrics = { ...session.planningEventBase };
+  if (!failed && mission.opening === 'first-shift') mission.hudBriefing = 'tasks';
   saveCheckpoint(mission.pendingDisaster ? 'before-major-event' : 'shift-start');
   if (failed) {
-    rewindMission(`${METRIC_LABELS[failed]} ran out. Let's try again!`, failed);
+    failMissionToCheckpoint(failed, `${METRIC_LABELS[failed]} reached 0%. Your mission ended and rolled back to your last major save point.`);
+  } else if (mission.hudBriefing) {
+    briefAssignmentControls();
   } else {
     startLoop();
-    if (hasEmergencyTask && emergencyTaskId) {
-      const emergencyTask = taskById(emergencyTaskId);
-      const room = emergencyTask ? getRoomName(emergencyTask.roomId) : 'the station';
-      showToast(`⚠ EMERGENCY: Go to the damaged area in ${room} to repair it! Check Tasks or Map.`, 5500);
+    if (mission.pendingDisaster && disaster && emergencyTask) {
+      sfx.alarm();
+      startGameplayOst('alert');
+      const room = getRoomName(emergencyTask.roomId);
+      showToast(`Follow the red line to ${room}.`, 5500);
     } else {
+      startGameplayOst('ambient');
       showToast('Shift started! Tap a task to walk there.');
     }
   }
@@ -169,6 +184,112 @@ function commitAssignments(): void {
 export function saveCheckpoint(reason: MissionCheckpoint['reason']): void {
   session.mission.checkpoint = captureCheckpoint(session.mission, reason, Date.now());
   saveTrialProgress();
+}
+
+export function failMissionToCheckpoint(failedStatus: MissionMetric, reason: string): void {
+  const { overlayRoot, modalRoot } = dom();
+  const { mission, save, lobby } = session;
+  stopLoop();
+  sfx.systemFailure();
+  lastLiveDrainAt = 0;
+  session.rewinding = false;
+  session.manualHelmetOverride = null;
+  session.evaDrainTicks = 0;
+  mission.modalOpen = false;
+  clearActiveModals(modalRoot, { restoreFocus: false });
+
+  if (mission.checkpoint) {
+    restoreCheckpoint(mission, mission.checkpoint, Date.now(), failedStatus);
+  } else {
+    mission.metrics = { ...(session.planningEventBase ?? createMetrics()) };
+    mission.tasks = [];
+    mission.completed = [];
+  }
+  mission.phase = 'playing';
+
+  save.games += 1;
+  save.losses += 1;
+  saveTrialProgress();
+  persistSave(save);
+  configureScene({ respawn: true });
+  updateHUD();
+
+  const checkpointLabel = mission.checkpoint?.reason === 'after-task'
+    ? 'After Last Completed Task'
+    : mission.checkpoint?.reason === 'before-major-event'
+      ? 'Before Major Emergency'
+      : 'Start of Shift';
+  const metricOrder: (keyof MissionMetrics)[] = ['life', 'power', 'research', 'farm'];
+
+  const renderFailureSummary = (): void => {
+    overlayRoot.innerHTML = `
+      <section class="spud-canvas-overlay mission-end ${save.options.reducedMotion ? 'reduce-motion' : ''}" aria-labelledby="mission-failed-title">
+        <div class="spud-canvas-inner">
+          ${renderConstellationTitle(
+            `${METRIC_LABELS[failedStatus].toUpperCase()} DEPLETED · GAME OVER`,
+            'mission-failed-title',
+            `DAY ${String(missionDayNumber()).padStart(2, '0')} · ${destinationById(lobby.destination).name.toUpperCase()} · MAJOR SAVE POINT RESTORED`,
+          )}
+          <div class="spud-copy-stack">
+            <div class="spud-copy-block">
+              <h2>CRITICAL SYSTEM FAILURE</h2>
+              <p>${escapeHtml(reason)}</p>
+              <small class="spud-constellation-kicker" style="margin-top:6px;">SAVED CHECKPOINT: ${escapeHtml(checkpointLabel.toUpperCase())} · COMPLETED ${mission.completed.length} / ${mission.tasks.length}</small>
+            </div>
+            <div class="spud-telemetry-grid is-four">
+              ${metricOrder.map((key) => `
+                <div class="spud-telemetry-cell">
+                  <span>${escapeHtml(METRIC_LABELS[key].toUpperCase())}</span>
+                  <strong>${Math.round(mission.metrics[key])}%</strong>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          <footer class="spud-constellation-actions">
+            ${renderConstellationAction({ icon: 'back', label: 'MAIN MENU', attrs: 'data-failure-menu' })}
+            ${renderConstellationAction({ icon: 'launch', label: 'LOAD MAJOR SAVE POINT', attrs: 'data-failure-resume', variant: 'primary' })}
+          </footer>
+        </div>
+      </section>
+    `;
+
+    overlayRoot.querySelector('[data-failure-menu]')?.addEventListener('click', () => {
+      sfx.click();
+      overlayRoot.replaceChildren();
+      routes.showMenu();
+    });
+    overlayRoot.querySelector('[data-failure-resume]')?.addEventListener('click', () => {
+      sfx.launch();
+      overlayRoot.replaceChildren();
+      if (session.save.activeTrial) {
+        resumeTrial();
+      } else {
+        startDay();
+      }
+    });
+  };
+
+  const stings: Record<MissionMetric, { icon: string; title: string; line: string }> = {
+    power: { icon: '🥔🔥', title: 'BAKED POTATO', line: 'Power hit 0%. The solar surge turned the crew into foil-wrapped spuds.' },
+    life: { icon: '🧊🥔', title: 'VACUUM-SEALED SPUD', line: 'Life Support hit 0%. Freeze-dried in the lunar vacuum.' },
+    farm: { icon: '🥀🌱', title: 'FAMINE ON THE MOON', line: 'Farm reserves hit 0%. Not a single sprout survived.' },
+    research: { icon: '📡✖️', title: 'MISSION SCRUBBED', line: 'Research hit 0%. NASA HQ pulled the plug on the lunar trial.' },
+  };
+  const sting = stings[failedStatus];
+  overlayRoot.innerHTML = `
+    <div class="cooked-spud-sting" role="alert">
+      <div class="cooked-spud-sting-card">
+        <span class="cooked-spud-sting-icon" aria-hidden="true">${sting.icon}</span>
+        <h2>${sting.title}</h2>
+        <p>${escapeHtml(sting.line)}</p>
+      </div>
+    </div>
+  `;
+  window.setTimeout(() => {
+    if (session.mission === mission && session.currentScreen === 'mission') {
+      renderFailureSummary();
+    }
+  }, save.options.reducedMotion ? 500 : 1800);
 }
 
 export function rewindMission(message: string, failedStatus?: MissionMetric): void {
@@ -200,32 +321,48 @@ export function rewindMission(message: string, failedStatus?: MissionMetric): vo
     session.rewinding = false;
     configureScene({ respawn: true });
     updateHUD();
-    if (restored) showToast('Commander Russet: I topped up your low bars to 35%. You’ve got this!');
+    if (restored) showToast('I gave your low bars a boost to 35%. You’ve got this, Spudnaut!');
     else if (mission.pendingDisaster) showToast('⚠ Emergency repair still needed! Go to the highlighted damaged area.');
     startLoop();
   }, 2000);
 }
 
-export function handleEmergencyRepair(taskId: string, rescued = false): void {
+export function handleEmergencyRepair(taskId: string): void {
   const { mission, lobby } = session;
   const event = mission.eventCard;
-  if (!event?.majorEvent) return;
+  if (!event?.majorEvent || !mission.pendingDisaster || taskId !== `emergency-${event.majorEvent.type.toLowerCase()}`) {
+    resumeMissionAfterModal();
+    return;
+  }
   const hazard = event.majorEvent;
-  showDisaster(event, lobby.specialist, tool => {
+  const repair = DISASTER_REPAIRS[hazard.type];
+  const guided = mission.opening === 'guided-emergency';
+  const showTools = (feedback?: string): void => showDisaster(event, tool => {
     const result = resolveDisaster(hazard, mission.metrics, tool, lobby.specialist);
     if (!result) {
-      const { part } = DISASTER_REPAIRS[hazard.type];
-      rewindMission(`${DISASTER_TOOLS[tool].name} can’t fix the ${part}. Try another tool!`);
+      const message = `${DISASTER_TOOLS[tool].name} didn’t fix it. Read the cards and try another tool.`;
+      if (guided) showTools(message);
+      else rewindMission(message);
       return;
     }
     const failed = criticalStatus(result);
     if (failed) {
-      rewindMission(`The repair used up your ${METRIC_LABELS[failed]}. Let’s try again!`, failed);
+      failMissionToCheckpoint(failed, `The repair depleted your ${METRIC_LABELS[failed]} to 0%. Your mission ended and rolled back to your last major save point.`);
       return;
     }
     mission.metrics = result;
     mission.pendingDisaster = false;
-    mission.modalOpen = false;
+    sfx.repair();
+    startGameplayOst('ambient');
+    if (guided) {
+      mission.opening = 'second-shift';
+      mission.tasks = [];
+      configureScene();
+      updateHUD();
+      saveTrialProgress();
+      showCommanderOnce('first-repair', 'You did it, Moon hero! You fixed it. Let’s get ready for the next shift!', () => startDay());
+      return;
+    }
     if (!mission.completed.includes(taskId)) {
       mission.completed = [...mission.completed, taskId];
       mission.totalCompleted += 1;
@@ -238,17 +375,45 @@ export function handleEmergencyRepair(taskId: string, rescued = false): void {
       return;
     }
     startLoop();
-    showToast('Great tool choice! Damaged area repaired.');
-  }, rescued);
+    showToast('You fixed it! The warning is gone.');
+  }, feedback);
+  showCommanderOnce(hazard.type, repair.briefing, () => showTools());
 }
 
+let lastLiveDrainAt = 0;
+
 function tickClock(): void {
-  const { mission } = session;
-  if (!isMissionActive()) return;
-  if (mission.modalOpen || session.rewinding) return;
+  const { mission, lobby } = session;
+  if (!isMissionActive() || mission.opening === 'blackout' || mission.opening === 'guided-emergency'
+    || (mission.opening === 'first-shift' && mission.completed.length === mission.tasks.length)) {
+    lastLiveDrainAt = 0;
+    return;
+  }
+  if (mission.modalOpen || session.rewinding) {
+    lastLiveDrainAt = 0;
+    return;
+  }
+  const now = Date.now();
+  const elapsedSeconds = lastLiveDrainAt > 0 ? Math.min(2, Math.max(0, (now - lastLiveDrainAt) / 1000)) : 0;
+  lastLiveDrainAt = now;
+  if (elapsedSeconds > 0) {
+    const before = mission.metrics;
+    const emergencySystem = mission.pendingDisaster && mission.eventCard?.majorEvent
+      ? DISASTER_REPAIRS[mission.eventCard.majorEvent.type].system
+      : undefined;
+    const next = applyLiveOperationsDrain(before, elapsedSeconds, lobby.specialist, emergencySystem);
+    mission.metrics = next;
+    const integerChanged = (['life', 'power', 'research', 'farm'] as const).some(
+      (k) => Math.round(before[k]) !== Math.round(next[k]),
+    );
+    if (integerChanged) {
+      updateHUD();
+      saveTrialProgress();
+    }
+  }
   const failed = criticalStatus(mission.metrics);
   if (failed) {
-    rewindMission(`Your ${METRIC_LABELS[failed]} bar ran out. Let’s try again!`, failed);
+    failMissionToCheckpoint(failed, `${METRIC_LABELS[failed]} dropped to 0%. Your mission ended and rolled back to your last major save point.`);
     return;
   }
 
@@ -257,7 +422,7 @@ function tickClock(): void {
     if (session.evaDrainTicks % 3 === 0) {
       mission.metrics.life = Math.max(0, mission.metrics.life - 1);
       if (criticalStatus(mission.metrics)) {
-        rewindMission('Your suit ran out of air. Seal your helmet before going outside!', 'life');
+        failMissionToCheckpoint('life', 'Your suit ran out of air (Life reached 0%). Your mission ended and rolled back to your last major save point.');
         return;
       }
       updateHUD();
@@ -276,6 +441,7 @@ export function showMissionShell(): void {
   session.currentScreen = 'mission';
   session.evaDrainTicks = 0;
   stopMusic();
+  startGameplayOst(session.mission.pendingDisaster ? 'alert' : 'ambient');
   stopLoop();
   window.clearTimeout(session.splashTimer);
   overlayRoot.replaceChildren();
@@ -303,21 +469,165 @@ export function showMissionShell(): void {
 
 export function beginMission(): void {
   const { lobby, save } = session;
+  const chosenDifficulty = isDifficultyUnlocked(save.options.difficulty, save)
+    ? save.options.difficulty
+    : DEFAULT_OPTIONS.difficulty;
   save.name = lobby.playerName.trim() || 'Spudnaut';
   save.colorId = lobby.colorId;
   save.specialist = lobby.specialist;
   save.destination = lobby.destination;
+  save.options.difficulty = chosenDifficulty;
   save.trialDay = 1;
   save.activeTrial = null;
-  session.mission = createMissionState(save.options.difficulty);
+  save.seenCommanderBriefings = [];
+  persistSave(save);
+  session.mission = createMissionState(chosenDifficulty);
   session.mission.phase = 'playing';
   session.mission.day = 1;
+  session.mission.opening = 'blackout';
+  session.mission.playerX = LANDING_PAD_SPAWN.x;
+  session.mission.playerY = LANDING_PAD_SPAWN.y;
+  session.mission.room = 'Landing Pad';
+  session.mission.eventCard = BLACKOUT_EVENT;
+  session.planningEventBase = null;
+  session.selectedEventChoice = '';
   showMissionShell();
-  startDay();
+  saveTrialProgress();
+  beginBlackoutBriefing();
+}
+
+function showCommander(line: string, onClose?: () => void, presentation?: Pick<DialogueOptions, 'spotlight' | 'advanceKey'>): void {
+  const { mission } = session;
+  routes.showDialogue({
+    speaker: 'Commander Russet', role: 'Mission Commander', accent: '#f2b544', art: COMMANDER_ART,
+    lines: [line], ...presentation,
+    onClose: () => {
+      if (session.mission === mission && session.currentScreen === 'mission') onClose?.();
+    },
+  });
+}
+
+function showCommanderOnce(
+  id: CommanderBriefing, line: string, onClose?: () => void,
+  presentation?: Pick<DialogueOptions, 'spotlight' | 'advanceKey'>,
+): void {
+  const { save } = session;
+  if (save.seenCommanderBriefings.includes(id)) {
+    onClose?.();
+    return;
+  }
+  const remember = (): void => {
+    save.seenCommanderBriefings.push(id);
+    persistSave(save);
+  };
+  // The keyboard walkthrough counts once the player actually uses the highlighted control.
+  if (!presentation?.advanceKey) remember();
+  showCommander(line, () => {
+    if (presentation?.advanceKey) remember();
+    onClose?.();
+  }, presentation);
+}
+
+function beginBlackoutBriefing(): void {
+  void fetchDonkiReports();
+  showCommanderOnce('landing', `Ready, ${session.save.name}? The Moon base lost power. Use W, A, S, and D to walk. Find the power switch in the Reactor Dome and press E.`);
+}
+
+function briefFirstShift(): void {
+  showCommanderOnce('power-restored', 'The lights are back! Pick three jobs, then look for them in Tasks.', () => startDay(), { spotlight: 'tasks' });
+}
+
+function briefAssignmentControls(): void {
+  const { mission } = session;
+  const advance = (step: NonNullable<SavedTrial['hudBriefing']>): void => {
+    mission.hudBriefing = step;
+    saveTrialProgress();
+    briefAssignmentControls();
+  };
+  if (mission.hudBriefing === 'tasks') {
+    showCommanderOnce('tasks', 'Press T to open Tasks. Pick a job to see the path. Press M to open the map.',
+      () => advance('status'), { spotlight: 'tasks', advanceKey: 'T' });
+  } else if (mission.hudBriefing === 'status') {
+    setHudDrawer('tasks');
+    showCommanderOnce('status', 'Press V to see how the base is doing. Each job helps one bar and uses a little of another.',
+      () => advance('status-review'), { spotlight: 'task-drawer', advanceKey: 'V' });
+  } else if (mission.hudBriefing === 'status-review') {
+    setHudDrawer('status');
+    showCommanderOnce('status-review', 'These bars show Life, Power, Research, and Farm. If a bar gets low, pick a job that helps it.', () => {
+      mission.hudBriefing = undefined;
+      saveTrialProgress();
+      startLoop();
+      document.querySelector<HTMLButtonElement>('[data-drawer-view="status"] [data-drawer-close]')?.focus();
+    }, { spotlight: 'status-drawer' });
+  }
+}
+
+export function restoreStationPower(): void {
+  const { mission } = session;
+  if (mission.opening !== 'blackout' || mission.modalOpen) return;
+  mission.opening = 'first-shift';
+  sfx.repair();
+  configureScene();
+  updateHUD();
+  saveTrialProgress();
+  briefFirstShift();
+}
+
+function briefGuidedRoute(): void {
+  session.mission.spotlightGuide = true;
+  configureScene();
+  updateHUD();
+  showCommanderOnce('red-route', 'Something broke! Follow the red line to see what needs fixing.', () => {
+    session.mission.spotlightGuide = false;
+    configureScene();
+    updateHUD();
+  }, { spotlight: 'guide' });
+}
+
+async function startGuidedEmergency(): Promise<void> {
+  const { mission } = session;
+  mission.opening = 'guided-emergency';
+  mission.phase = 'playing';
+  mission.report = null;
+  mission.tasks = [];
+  mission.completed = [];
+  mission.eventCard = null;
+  mission.pendingDisaster = false;
+  mission.checkpoint = undefined;
+  session.planningEventBase = null;
+  session.selectedEventChoice = '';
+  dom().overlayRoot.replaceChildren();
+  configureScene();
+  saveTrialProgress();
+  const reports = await fetchDonkiReports();
+  if (session.mission !== mission || session.currentScreen !== 'mission') return;
+  // Reserve a second DONKI emergency so even Cadet has an event after the guided repair.
+  const run = storeMajorEventReports(mission.majorEventRun, reports, 2);
+  const next = takeNextMajorEvent(run);
+  if (!next.event?.majorEvent) {
+    mission.opening = undefined;
+    startDay();
+    return;
+  }
+  mission.majorEventRun = next.run;
+  mission.eventCard = next.event;
+  mission.tasks = [`emergency-${next.event.majorEvent.type.toLowerCase()}`];
+  mission.pendingDisaster = true;
+  mission.dayStartedAt = Date.now();
+  mission.shiftDurationMs = dayDurationMs();
+  mission.pausedDuration = 0;
+  mission.pauseStartedAt = 0;
+  mission.modalOpen = false;
+  configureScene();
+  updateHUD();
+  saveCheckpoint('before-major-event');
+  sfx.alarm();
+  briefGuidedRoute();
 }
 
 export function startDay(draft?: SavedTrial['planning']): void {
   const { mission, lobby } = session;
+  const guidedEvent = mission.opening === 'second-shift' ? mission.eventCard : null;
   stopLoop();
   mission.phase = 'playing';
   mission.completed = [];
@@ -326,6 +636,7 @@ export function startDay(draft?: SavedTrial['planning']): void {
   mission.offers = [];
   mission.report = null;
   mission.pendingDisaster = false;
+  mission.hudBriefing = undefined;
   mission.checkpoint = undefined;
   mission.dayStartedAt = Date.now();
   mission.shiftDurationMs = 0;
@@ -338,11 +649,11 @@ export function startDay(draft?: SavedTrial['planning']): void {
   const resumedMajorEvent = draft?.majorEventReportId
     ? majorEventForReport(mission.majorEventRun, draft.majorEventReportId)
     : null;
-  const nextMajorEvent = !draft && mission.penaltyDay === 0 && mission.majorEventRun.reportsLoaded
+  const nextMajorEvent = !draft && !mission.opening && mission.penaltyDay === 0 && mission.majorEventRun.reportsLoaded
     ? takeNextMajorEvent(mission.majorEventRun)
     : null;
   if (nextMajorEvent) mission.majorEventRun = nextMajorEvent.run;
-  mission.eventCard = resumedMajorEvent ?? nextMajorEvent?.event
+  mission.eventCard = (mission.opening === 'first-shift' ? BLACKOUT_EVENT : guidedEvent) ?? resumedMajorEvent ?? nextMajorEvent?.event
     ?? eventForDay(rng, lobby.destination, mission.penaltyDay > 0 ? missionDayNumber() : mission.day, recentReports.map((report) => report.eventId ?? ''));
   session.planningEventBase = draft ? { ...draft.eventBase } : applyDailyOperations(mission.metrics, lobby.specialist);
   const responses = mission.eventCard.responses ?? [];
@@ -350,7 +661,11 @@ export function startDay(draft?: SavedTrial['planning']): void {
     ? session.selectedEventChoice
     : responses[0]?.id ?? 'default';
   applyPlanningEventChoice(session.selectedEventChoice);
-  mission.offers = offersForDay(TASKS, lobby.specialist, rng, mission.reports.slice(-2).flatMap((report) => report.tasks ?? []));
+  if (mission.opening === 'first-shift') {
+    mission.offers = rng.shuffle([...STATION_MISSIONS]).map(assignmentOffer);
+  } else {
+    mission.offers = offersForDay(TASKS, lobby.specialist, rng, mission.reports.slice(-2).flatMap((report) => report.tasks ?? []));
+  }
   if (draft) {
     const savedOffers = draft.offers?.flatMap(id => {
       const task = TASKS.find(item => item.id === id);
@@ -365,9 +680,14 @@ export function startDay(draft?: SavedTrial['planning']): void {
   updateHUD();
   startPlanning();
   saveTrialProgress();
-  if (mission.penaltyDay === 0 && mission.day === 1 && !mission.majorEventRun.reportsLoaded) {
+  if (needsPlanningReports()) {
     refreshPlanningWithDonki(mission.dayStartedAt);
   }
+}
+
+function needsPlanningReports(): boolean {
+  const { mission } = session;
+  return !mission.opening && mission.penaltyDay === 0 && mission.day === 1 && !mission.majorEventRun.reportsLoaded;
 }
 
 const PLANNING_SELECTION_SECONDS = 45;
@@ -402,8 +722,9 @@ export function startPlanning(): void {
       <div class="spud-canvas-inner">
         ${renderConstellationTitle('SHIFT PLANNING', 'shift-planning-title', `${goal} · DAY ${String(day).padStart(2, '0')} · ${levelLabel} · ${destinationById(lobby.destination).name.toUpperCase()}`)}
 
-        <section class="spud-copy-stack spud-planning-hazard-card" aria-labelledby="shift-event-title">
+        <section class="spud-copy-stack spud-planning-hazard-card" data-event-kind="${escapeHtml(event?.kind ?? 'routine')}" aria-labelledby="shift-event-title">
           <div class="spud-copy-block">
+            <span class="hud-event-kicker">${escapeHtml((event?.kind ?? 'routine').toUpperCase())} SHIFT EVENT</span>
             <h2 id="shift-event-title">${escapeHtml((event?.kind ?? 'routine').toUpperCase())} · ${escapeHtml((event?.name ?? 'Routine Shift').toUpperCase())}</h2>
             <p>${escapeHtml(event?.description ?? 'The habitat is quiet. Keep the systems steady.')}</p>
             ${event?.source ? `<small class="spud-constellation-kicker" style="margin:0;">NASA DONKI · ${event.source.type} · ${escapeHtml(event.source.date.slice(0, 10))} · <a href="${escapeHtml(event.source.url)}" target="_blank" rel="noopener noreferrer">SOURCE</a></small>` : ''}
@@ -510,8 +831,7 @@ export function startPlanning(): void {
     instruction.textContent = remaining === 0
       ? 'Ready. Press START SHIFT to begin.'
       : `Select ${remaining} more ${remaining === 1 ? 'assignment' : 'assignments'}.`;
-    const waitingOnMajorEvent = mission.penaltyDay === 0 && mission.day === 1
-      && !mission.majorEventRun.reportsLoaded;
+    const waitingOnMajorEvent = needsPlanningReports();
     confirm.disabled = remaining !== 0 || waitingOnMajorEvent;
     if (waitingOnMajorEvent && remaining === 0) instruction.textContent = 'Checking recent NASA space-weather reports before this level starts.';
     gauges.innerHTML = renderProjectedGaugesMarkup();
@@ -532,7 +852,7 @@ export function startPlanning(): void {
         instruction.textContent = 'Plan full. Deselect an assignment to make a swap.';
         return;
       }
-      sfx.click();
+      sfx.cardPick();
       refreshPlanning();
       saveTrialProgress();
     });
@@ -575,8 +895,7 @@ export function startPlanning(): void {
       timerEl.style.color = secondsLeft <= 10 ? '#ff5a5f' : 'var(--spud-amber-bright)';
     }
     if (secondsLeft > 0) return;
-    const waitingOnMajorEvent = mission.penaltyDay === 0 && mission.day === 1
-      && !mission.majorEventRun.reportsLoaded;
+    const waitingOnMajorEvent = needsPlanningReports();
     if (waitingOnMajorEvent) return;
     window.clearInterval(planningCountdownTimer);
     for (const offer of mission.offers) {
@@ -597,14 +916,134 @@ export function startLoop(): void {
   if (isMissionActive()) session.loopTimer = window.setInterval(tickClock, 400);
 }
 
-export function finishDay(reason: string): void {
+export function openBedSkipModal(): void {
+  const { mission } = session;
+  const { modalRoot } = dom();
+  if (!isMissionActive() || mission.modalOpen || session.rewinding) return;
+  if (mission.opening === 'blackout' || mission.opening === 'guided-emergency') return;
+  if (mission.pendingDisaster) {
+    showToast('Fix the broken part before going to sleep.');
+    return;
+  }
+  if (mission.opening === 'first-shift') {
+    if (mission.completed.length < mission.tasks.length) {
+      showToast('Finish your three assignments before resting.');
+      return;
+    }
+    restUntilDayTwo();
+    return;
+  }
+  setHudDrawer(null);
+  pauseMissionForModal();
+
+  const keys: MissionMetric[] = ['life', 'power', 'research', 'farm'];
+  const preview = applyMetricExchange(mission.metrics, { life: -20, power: -20, research: -20, farm: -20 });
+
+  mountCustomModal({
+    modalRoot,
+    markup: `
+      <div class="modal-shade">
+        <section class="spud-modal-frame disaster-card" role="alertdialog" aria-modal="true" aria-labelledby="bed-skip-title">
+          <header class="disaster-warning">
+            <span aria-hidden="true">🛏️</span>
+            <div>
+              <h2 id="bed-skip-title">CREW BUNK · SKIP SHIFT</h2>
+              <p>Sleep through the rest of Day ${String(missionDayNumber()).padStart(2, '0')}?</p>
+              <small>RESTING SKIPS TO THE SHIFT REPORT, BUT DRAINS 20 FROM ALL FOUR SYSTEMS</small>
+            </div>
+          </header>
+          <div class="spud-telemetry-grid is-four" style="margin:12px 0;">
+            ${keys.map((key) => `
+              <div class="spud-telemetry-cell">
+                <span>${escapeHtml(METRIC_LABELS[key].toUpperCase())}</span>
+                <strong>${Math.round(mission.metrics[key])}% → ${Math.round(preview[key])}%</strong>
+              </div>
+            `).join('')}
+          </div>
+          <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+            <button type="button" class="spud-text-toggle" data-bed-cancel>CANCEL</button>
+            <button type="button" class="spud-text-toggle is-danger-outline" data-bed-confirm>SLEEP &amp; SKIP DAY (-20 ALL)</button>
+          </div>
+        </section>
+      </div>
+    `,
+    focusSelector: '[data-bed-cancel]',
+  });
+
+  const close = (): void => {
+    clearActiveModals(modalRoot, { restoreFocus: false });
+    resumeMissionAfterModal();
+  };
+
+  modalRoot.querySelector('[data-bed-cancel]')?.addEventListener('click', () => {
+    sfx.click();
+    close();
+  });
+  modalRoot.querySelector('[data-bed-confirm]')?.addEventListener('click', () => {
+    sfx.skipDay();
+    clearActiveModals(modalRoot, { restoreFocus: false });
+    const next = applyMetricExchange(mission.metrics, { life: -20, power: -20, research: -20, farm: -20 });
+    mission.metrics = next;
+    const failed = criticalStatus(next);
+    if (failed) {
+      failMissionToCheckpoint(failed, `Sleeping in the Crew Bunk dropped ${METRIC_LABELS[failed]} to 0%. Your mission ended and rolled back to your last major save point.`);
+      return;
+    }
+    mission.pendingDisaster = false;
+    mission.modalOpen = false;
+    finishDay('Slept in Crew Quarters to skip the rest of the shift (-20 all systems).', true);
+  });
+}
+
+function restUntilDayTwo(): void {
+  const { modalRoot } = dom();
+  const { mission } = session;
+  setHudDrawer(null);
+  pauseMissionForModal();
+  mountCustomModal({
+    modalRoot,
+    markup: `<div class="modal-shade">
+      <section class="spud-modal-frame disaster-card" role="dialog" aria-modal="true" aria-labelledby="bed-rest-title">
+        <h2 id="bed-rest-title">Rest Until Day 2</h2>
+        <p>Your three assignments are complete. Sleep at the Crew Bunk to start the next shift.</p>
+        <div class="spud-constellation-actions">
+          ${renderConstellationAction({ icon: 'back', label: 'CANCEL', attrs: 'data-bed-cancel' })}
+          ${renderConstellationAction({ icon: 'forward', label: 'SLEEP', attrs: 'data-bed-confirm', variant: 'primary' })}
+        </div>
+      </section>
+    </div>`,
+    focusSelector: '[data-bed-confirm]',
+  });
+  modalRoot.querySelector('[data-bed-cancel]')?.addEventListener('click', () => {
+    clearActiveModals(modalRoot);
+    resumeMissionAfterModal();
+  });
+  modalRoot.querySelector('[data-bed-confirm]')?.addEventListener('click', () => {
+    clearActiveModals(modalRoot, { restoreFocus: false });
+    sfx.skipDay();
+    const wake = (): void => {
+      if (session.mission !== mission || session.currentScreen !== 'mission') return;
+      resumeMissionAfterModal();
+      finishDay('Rested after the Day 1 assignments.');
+      advanceAfterReport();
+    };
+    const game = session.game;
+    if (!game) wake();
+    else void import('../game').then(({ transitionStationThroughBlack }) => {
+      if (session.game !== game || session.currentScreen !== 'mission') return;
+      transitionStationThroughBlack(game, () => {}, wake);
+    }).catch(wake);
+  });
+}
+
+export function finishDay(reason: string, skipMissedPenalty = false): void {
   const { mission, lobby } = session;
   if (mission.phase !== 'playing') return;
   stopLoop();
   mission.phase = 'report';
   const assigned = mission.tasks.length;
   const completed = mission.completed.length;
-  if (completed < assigned) {
+  if (!skipMissedPenalty && completed < assigned) {
     mission.metrics = applyMissedDay(mission.metrics, lobby.specialist);
     mission.missedDays += 1;
   }
@@ -625,16 +1064,16 @@ export function finishDay(reason: string): void {
   updateHUD();
   saveTrialProgress();
   renderReport(reason);
-  if (assigned > 0 && completed === assigned) {
+  if (mission.opening !== 'first-shift' && assigned > 0 && completed === assigned) {
     const accomplishments = mission.completed.map(id => taskById(id)?.name ?? id);
     routes.showDialogue({
       speaker: 'Commander Russet',
       role: 'Mission Commander',
-      art: '/assets/potato-repairman.png',
+      art: COMMANDER_ART,
       accent: '#f2b544',
       lines: [
-        `Fantastic flying, ${session.save.name}! You finished all three jobs this shift!`,
-        `From ${accomplishments[0]} to ${accomplishments.at(-1)}, you made a real difference. Three cheers for our Spudnaut!`,
+        `Three cheers for ${session.save.name}! You finished every job this shift and helped the whole crew.`,
+        `From ${accomplishments[0]} to ${accomplishments.at(-1)}, you kept our Moon base going. Way to go, Spudnaut!`,
       ],
     });
   }
@@ -759,6 +1198,11 @@ export function advanceAfterReport(): void {
     return;
   }
   mission.day += 1;
+  if (mission.opening === 'first-shift') {
+    void startGuidedEmergency();
+    return;
+  }
+  if (mission.opening === 'second-shift') mission.opening = undefined;
   startDay();
 }
 
@@ -766,7 +1210,8 @@ export function completeMission(): void {
   const { overlayRoot } = dom();
   const { mission, save } = session;
   if (mission.phase === 'complete') return;
-  const maxDays = trialMaxDays(mission.majorEventRun.difficulty);
+  const difficulty = mission.majorEventRun.difficulty;
+  const maxDays = trialMaxDays(difficulty);
   stopLoop();
   mission.phase = 'complete';
   const verdict = evaluateMission(mission.metrics, mission.totalAssigned, mission.totalCompleted);
@@ -775,13 +1220,17 @@ export function completeMission(): void {
   save.medals += 1;
   if (passed) save.wins += 1;
   else save.losses += 1;
+  const justUnlockedVeteran = difficulty === 'cadet' && !save.completedDifficulties.includes('cadet');
+  if (!save.completedDifficulties.includes(difficulty)) {
+    save.completedDifficulties = [...save.completedDifficulties, difficulty];
+  }
   save.activeTrial = null;
   save.trialDay = 1;
   persistSave(save);
-  playHomecoming(overlayRoot, save.options.reducedMotion, () => renderMissionEnd(passed, maxDays));
+  playHomecoming(overlayRoot, save.options.reducedMotion, () => renderMissionEnd(passed, maxDays, justUnlockedVeteran));
 }
 
-function renderMissionEnd(passed: boolean, maxDays: number): void {
+function renderMissionEnd(passed: boolean, maxDays: number, justUnlockedVeteran = false): void {
   const { overlayRoot } = dom();
   const { mission, save, lobby } = session;
   const verdict = evaluateMission(mission.metrics, mission.totalAssigned, mission.totalCompleted);
@@ -811,6 +1260,7 @@ function renderMissionEnd(passed: boolean, maxDays: number): void {
                 ${passed
                   ? `${escapeHtml(save.name)} and the crew held all four pillars together for ${maxDays + mission.penaltyDay} days on ${escapeHtml(destination.name)}. Earth approves the habitat design.`
                   : `${escapeHtml(save.name)} completed the trial on ${escapeHtml(destination.name)}, and brought home a Golden Potato Medal. The final checklist shows what to try on your next trip.`}
+                ${justUnlockedVeteran ? ' Veteran difficulty (14 days · 5 dangerous events) is now unlocked in Launch Loadout!' : ''}
               </p>
             </div>
             <div class="spud-telemetry-grid is-four">
@@ -882,7 +1332,8 @@ export function resumeTrial(): void {
     specialist: save.specialist,
     destination: save.destination,
   };
-  const savedEvent = saved.eventId ? EVENT_CARDS.find((event) => event.id === saved.eventId) ?? null : null;
+  const savedEvent = saved.eventId === BLACKOUT_EVENT.id ? BLACKOUT_EVENT
+    : saved.eventId ? EVENT_CARDS.find((event) => event.id === saved.eventId) ?? null : null;
   const restoredEvent = saved.donkiReport && saved.penaltyDay === 0
     ? majorEventForReport(saved.majorEventRun ?? createMajorEventRun(undefined, save.options.difficulty), saved.donkiReport.id) ?? savedEvent
     : savedEvent;
@@ -920,10 +1371,28 @@ export function resumeTrial(): void {
     return;
   }
   session.mission.phase = 'playing';
+  if (saved.opening === 'blackout') {
+    beginBlackoutBriefing();
+    return;
+  }
+  if (saved.opening === 'guided-emergency') {
+    if (session.mission.pendingDisaster && session.mission.tasks.length > 0) briefGuidedRoute();
+    else void startGuidedEmergency();
+    return;
+  }
+  if (saved.opening === 'first-shift' && !saved.tasks.length && !saved.planning) {
+    briefFirstShift();
+    return;
+  }
   if (session.mission.tasks.length > 0) {
     if (!session.mission.checkpoint) saveCheckpoint(session.mission.pendingDisaster ? 'before-major-event' : 'shift-start');
+    if (saved.hudBriefing) {
+      briefAssignmentControls();
+      return;
+    }
     if (session.mission.completed.length === session.mission.tasks.length) {
-      finishDay('All daily assignments completed. Crew systems stable.');
+      if (saved.opening === 'first-shift') showToast('Go to the Crew Bunk in Crew Quarters and rest until Day 2.');
+      else finishDay('All daily assignments completed. Crew systems stable.');
       return;
     }
     startLoop();

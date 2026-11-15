@@ -55,12 +55,6 @@ export const SPECIALIST_STATS: Record<SpecialistId, { label: string; value: numb
     { label: 'RESEARCH', value: 74 },
     { label: 'FARM', value: 96 },
   ],
-  traveller: [
-    { label: 'LIFE', value: 72 },
-    { label: 'POWER', value: 82 },
-    { label: 'RESEARCH', value: 80 },
-    { label: 'FARM', value: 68 },
-  ],
   researcher: [
     { label: 'LIFE', value: 70 },
     { label: 'POWER', value: 72 },

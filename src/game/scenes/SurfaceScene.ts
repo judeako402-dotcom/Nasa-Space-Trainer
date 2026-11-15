@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+﻿import Phaser from 'phaser';
 import { isExteriorApron } from '../../app/state';
 import { CAMERA } from '../../data/balance';
 import type { MapDefinition } from '../../data/mapTypes';
@@ -70,8 +70,13 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
   private airlockOutline?: Phaser.GameObjects.Graphics;
   private airlockDoorOutline?: Phaser.GameObjects.Graphics;
   private airlockDoorTag?: Phaser.GameObjects.Text;
-  private tiledRoute: { x: number; y: number }[] = [];
-  private routeProgress?: { x: number; y: number; stalledMs: number };
+  private guideLine?: Phaser.GameObjects.Graphics;
+  private guideShade?: Phaser.GameObjects.Graphics;
+  private blackoutElement: HTMLElement | null = null;
+  private lightAngle = 0;
+  private guideTarget?: { x: number; y: number; color: number; manual?: boolean };
+  private guidePath: { x: number; y: number }[] = [];
+  private lastGuideOrigin?: { x: number; y: number };
   private transitionActive = false;
 
   constructor(coordinator: StationCoordinator) {
@@ -140,12 +145,12 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
     try {
       createPlaceholderTextures(this);
       registerCharacterAnimations(this);
+      this.blackoutElement = document.querySelector('#station-blackout');
 
       this.cameras.main.setZoom(CAMERA.zoom);
       this.cameras.main.setBackgroundColor('#080d18');
 
       this.tiledInput = new InputSystem(this);
-      this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => this.handlePointer(pointer));
       this.tiledInteraction.onSelectionChanged(() => this.emitPrompt(true));
 
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -192,7 +197,7 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
   }
 
   navigateTo(x: number, y: number): boolean {
-    if (!this.ready || this.state.frozen) return false;
+    if (!this.ready || this.state.frozen || this.state.blackout) return false;
     return this.routeTo(x, y);
   }
 
@@ -202,7 +207,7 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
     this.tiledInteraction.interact();
   }
 
-  transitionThroughBlack(onCovered: () => void): void {
+  transitionThroughBlack(onCovered: () => void, onFinished?: () => void): void {
     if (!this.ready) {
       throw new Error('Surface scene is not ready for a transition');
     }
@@ -216,6 +221,7 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
       onCovered,
       () => {
         this.transitionActive = false;
+        onFinished?.();
       },
     );
   }
@@ -233,6 +239,14 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
         helmeted: Boolean(this.state.helmet),
       },
       crew: this.tiledCrew.map((npc) => npc.getTelemetry()),
+      guide: this.guideTarget
+        ? {
+            x: this.guideTarget.x,
+            y: this.guideTarget.y,
+            path: this.guidePath.map((pt) => ({ x: pt.x, y: pt.y })),
+            isEmergency: this.guideTarget.color === 0xff2e3d,
+          }
+        : null,
     };
   }
 
@@ -242,6 +256,7 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
 
   private applyState(next: SceneGameState, respawn: boolean): void {
     const destinationChanged = next.destination !== this.state.destination;
+    const guideBriefingStarted = next.spotlightGuide && !this.state.spotlightGuide;
     const prevActiveKey = [...this.state.activeInteractions].sort().join(',');
     const nextActiveKey = [...next.activeInteractions].sort().join(',');
     const prevDoneKey = [...this.state.completedInteractions].sort().join(',');
@@ -250,9 +265,10 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
     this.state = next;
     this.map = this.resolveMapDef(next);
 
-    if (destinationChanged || !this.tiledMap || !this.tiledPlayer || !this.tiledGrid) {
+    const rebuilt = destinationChanged || !this.tiledMap || !this.tiledPlayer || !this.tiledGrid;
+    if (rebuilt) {
       this.buildSurface();
-    } else {
+    } else if (this.tiledPlayer) {
       const playerTexKey = ensureColoredCharacterTextures(
         this,
         textureKeyForArt(next.playerArt),
@@ -267,7 +283,6 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
         member.setFrozen(next.frozen);
       }
       if (respawn) {
-        this.tiledRoute = [];
         this.tiledPlayer.stop();
         const position = this.safePosition(next.x, next.y);
         this.tiledPlayer.setPosition(position.x, position.y);
@@ -275,9 +290,11 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
       }
     }
 
-    if (prevActiveKey !== nextActiveKey || prevDoneKey !== nextDoneKey || destinationChanged) {
+    if (guideBriefingStarted) this.guideTarget = undefined;
+    if (prevActiveKey !== nextActiveKey || prevDoneKey !== nextDoneKey || rebuilt || guideBriefingStarted) {
       this.syncStations();
     }
+    this.paintBlackout();
     this.emitPrompt(true);
     this.emitRoom(true);
   }
@@ -293,7 +310,7 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
 
     this.tiledInput.update();
     const move = this.tiledInput.getMoveVector();
-    const freeCam = this.tiledInput.isShiftDown() && !this.state.frozen;
+    const freeCam = this.tiledInput.isShiftDown() && !this.state.frozen && !this.state.blackout;
 
     if (this.tiledInput.justPressed('interact') && !this.state.frozen) {
       this.interactNow();
@@ -301,7 +318,7 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
     if (this.tiledInput.justPressed('snapCamera')) {
       this.followerCamera.snap();
     }
-    if (this.tiledInput.justPressed('demoPan') && !this.state.frozen) {
+    if (this.tiledInput.justPressed('demoPan') && !this.state.frozen && !this.state.blackout) {
       this.followerCamera.panTo(
         this.tiledMap.bounds.width / 2,
         this.tiledMap.bounds.height / 2,
@@ -310,59 +327,29 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
     }
 
     if (this.state.frozen) {
-      this.tiledRoute = [];
       this.tiledPlayer.stop();
     } else if (freeCam) {
-      this.tiledRoute = [];
       this.tiledPlayer.stop();
       const step = DEBUG_PAN_SPEED * (deltaMs / 1000);
       this.followerCamera.debugPanBy(move.x * step, move.y * step);
     } else if (move.x !== 0 || move.y !== 0) {
-      this.tiledRoute = [];
+      if (this.state.blackout) this.lightAngle = Math.atan2(move.x, -move.y) * 180 / Math.PI;
       if (this.followerCamera.isPanning()) {
         this.followerCamera.cancelPan();
       }
       this.tiledPlayer.applyInput(move);
-    } else if (this.tiledRoute.length > 0) {
-      const next = this.tiledRoute[0];
-      const { x, y } = this.tiledPlayer.position;
-      const dx = next.x - x;
-      const dy = next.y - y;
-      // A waypoint snap must also clear the corner swept by the feet.
-      if (Math.hypot(dx, dy) <= 6 && hasTileClearance(
-        this.tiledGrid!,
-        this.tiledMap.minimap.tileSize,
-        { x: x + dx / 2, y: y + dy / 2 + PLAYER_FEET.offsetY },
-        PLAYER_FEET.width + Math.abs(dx),
-        PLAYER_FEET.height + Math.abs(dy),
-      )) {
-        this.tiledRoute.shift();
-        this.routeProgress = undefined;
-        this.tiledPlayer.setPosition(next.x, next.y);
-        this.tiledPlayer.stop();
-      } else {
-        const previous = this.routeProgress;
-        const stalledMs = previous && Math.hypot(x - previous.x, y - previous.y) < 0.1
-          ? previous.stalledMs + deltaMs : 0;
-        this.routeProgress = { x, y, stalledMs };
-        if (stalledMs >= 750) {
-          this.tiledRoute = [];
-          this.tiledPlayer.stop();
-          this.coordinator.onEvent({ type: 'route-blocked' });
-        } else {
-          this.tiledPlayer.applyInput({ x: dx, y: dy });
-        }
-      }
     } else {
       this.tiledPlayer.stop();
     }
 
+    this.updateGuideLine(now);
     this.tiledInteraction.update(this.tiledPlayer.position);
     this.tiledPlayer.preUpdate(deltaMs);
 
     if (!freeCam) {
       this.followerCamera.update(deltaMs);
     }
+    this.paintBlackout();
 
     for (const member of this.tiledCrew) {
       member.preUpdate();
@@ -370,6 +357,20 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
 
     this.emitRoom(false, now);
     this.emitPrompt(false);
+  }
+
+  private paintBlackout(): void {
+    const light = this.blackoutElement;
+    if (!light || !this.tiledPlayer) return;
+    light.hidden = !this.state.blackout;
+    if (light.hidden) return;
+    const camera = this.cameras.main;
+    const { x, y } = this.tiledPlayer.position;
+    const screenX = (x - camera.scrollX - camera.width / 2) * camera.zoom + camera.width / 2;
+    const screenY = (y - camera.scrollY - camera.height / 2) * camera.zoom + camera.height / 2;
+    light.style.setProperty('--light-x', `${100 * screenX / camera.width}%`);
+    light.style.setProperty('--light-y', `${100 * screenY / camera.height}%`);
+    light.style.setProperty('--light-angle', `${this.lightAngle}deg`);
   }
 
   private buildSurface(): void {
@@ -421,6 +422,9 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
   }
 
   private teardown(): void {
+    if (this.blackoutElement) this.blackoutElement.hidden = true;
+    this.guideShade?.destroy();
+    this.guideShade = undefined;
     this.wallCollider?.destroy();
     this.wallCollider = undefined;
     this.tiledPlayer?.destroy();
@@ -432,6 +436,11 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
     this.airlockDoorOutline = undefined;
     this.airlockDoorTag?.destroy();
     this.airlockDoorTag = undefined;
+    this.guideLine?.destroy();
+    this.guideLine = undefined;
+    this.guideTarget = undefined;
+    this.guidePath = [];
+    this.lastGuideOrigin = undefined;
     for (const st of this.tiledStations) st.destroy();
     this.tiledStations.length = 0;
     for (const npc of this.tiledCrew) npc.destroy();
@@ -447,7 +456,6 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
       this.tiledMap = undefined;
     }
     this.tiledGrid = undefined;
-    this.tiledRoute = [];
     this.tiledInteraction.clear();
   }
 
@@ -473,6 +481,39 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
       this.tiledInteraction.register(station);
     }
     this.spawnAirlockWallAndExit();
+    this.spawnCrewBedInteractable();
+  }
+
+  private spawnCrewBedInteractable(): void {
+    const scene = this;
+    const bedOutline = this.add.graphics().setDepth(DEPTH_FLOOR + 3);
+    const drawOutline = (highlighted: boolean): void => {
+      bedOutline.clear();
+      if (!highlighted) return;
+      bedOutline.fillStyle(0x6fd4e6, 0.14);
+      bedOutline.fillRoundedRect(130, 1518, 256, 164, 8);
+      bedOutline.lineStyle(3, 0x9af1ff, 0.95);
+      bedOutline.strokeRoundedRect(130, 1518, 256, 164, 8);
+    };
+
+    const crewBed: Interactable = {
+      id: 'crew-bed',
+      kind: 'bed',
+      roomName: 'Crew Quarters',
+      position: { x: 258, y: 1600 },
+      bounds: { x: 130, y: 1518, width: 256, height: 164 },
+      interactionRadius: 140,
+      get promptText() {
+        return scene.state.restAtBunk ? 'Crew Bunk · Rest Until Day 2' : 'Crew Bunk · Sleep & Skip Day (-20 All)';
+      },
+      enabled: true,
+      onInteract: () => {
+        if (this.state.frozen) return;
+        this.coordinator.onEvent({ type: 'interact', interactionId: 'crew-bed', kind: 'bed' });
+      },
+      setHighlighted: drawOutline,
+    };
+    this.tiledInteraction.register(crewBed);
   }
 
   /**
@@ -517,7 +558,7 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
     this.airlockDoorOutline = doorGfx;
 
     this.airlockDoorTag = this.add
-      .text(1694, 1614, 'EVA EXIT · OUTER MISSIONS', {
+      .text(1694, 1614, 'EVA EXIT Â· OUTER MISSIONS', {
         fontFamily: 'Consolas, monospace',
         fontSize: '11px',
         fontStyle: 'bold',
@@ -535,11 +576,10 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
       position: { x: 1696, y: 1712 },
       bounds: { x: 1584, y: 1624, width: 224, height: 148 },
       interactionRadius: 124,
-      promptText: 'Airlock Exit · Go Outside (EVA Missions)',
+      promptText: 'Airlock Exit Â· Go Outside (EVA Missions)',
       enabled: true,
       onInteract: () => {
         if (this.state.frozen) return;
-        this.tiledRoute = [];
         this.coordinator.onEvent({ type: 'interact', interactionId: 'airlock-exit', kind: 'exit' });
       },
       setHighlighted: (highlighted) => {
@@ -584,6 +624,20 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
     const doneSet = new Set(this.state.completedInteractions);
     for (const station of this.tiledStations) {
       station.setState(activeSet.has(station.id), doneSet.has(station.id));
+    }
+    const emergency = this.map.interactions.find(
+      (item) => item.id.startsWith('emergency-') && activeSet.has(item.id) && !doneSet.has(item.id),
+    );
+    if (emergency && !this.state.blackout) {
+      if (!this.guideTarget?.manual) {
+        this.guideTarget = { x: emergency.x, y: emergency.y, color: 0xff2e3d, manual: false };
+        this.lastGuideOrigin = undefined;
+      }
+    } else if (this.guideTarget && !this.guideTarget.manual) {
+      this.guideTarget = undefined;
+      this.guidePath = [];
+      this.lastGuideOrigin = undefined;
+      this.guideLine?.clear();
     }
   }
 
@@ -658,7 +712,6 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
 
   private handleTaskInteract(taskId: string): void {
     if (this.state.frozen) return;
-    this.tiledRoute = [];
     this.coordinator.onEvent({ type: 'interact', interactionId: taskId, kind: 'task' });
   }
 
@@ -695,16 +748,117 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
 
   private routeTo(x: number, y: number): boolean {
     if (!this.tiledPlayer) return false;
-    this.tiledRoute = this.findPath(this.tiledPlayer.position, { x, y }, PLAYER_FEET.offsetY) ?? [];
-    this.routeProgress = undefined;
-    this.tiledPlayer.stop();
-    return this.tiledRoute.length > 0;
+    const isEmergencyTarget = this.map.interactions.some(
+      (item) =>
+        item.id.startsWith('emergency-') &&
+        this.state.activeInteractions.includes(item.id) &&
+        !this.state.completedInteractions.includes(item.id) &&
+        Math.hypot(item.x - x, item.y - y) < 80,
+    );
+    const path = this.findPath(this.tiledPlayer.position, { x, y }, PLAYER_FEET.offsetY) ?? [];
+    if (path.length === 0) return false;
+    this.guideTarget = {
+      x,
+      y,
+      color: isEmergencyTarget ? 0xff2e3d : 0xf5c451,
+      manual: !isEmergencyTarget,
+    };
+    this.guidePath = path;
+    this.lastGuideOrigin = { ...this.tiledPlayer.position };
+    this.updateGuideLine(performance.now());
+    return true;
   }
 
-  private handlePointer(pointer: Phaser.Input.Pointer): void {
-    if (this.state.frozen) return;
-    const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-    this.routeTo(world.x, world.y);
+  private updateGuideLine(now: number): void {
+    if (!this.tiledPlayer) return;
+    const spotlight = Boolean(this.state.spotlightGuide && this.guideTarget);
+    if (spotlight && !this.guideShade) {
+      this.guideShade = this.add.graphics().setDepth(84_999);
+      this.guideShade.fillStyle(0x030510, 0.86);
+      this.guideShade.fillRect(-2000, -2000, this.map.width + 4000, this.map.height + 4000);
+    }
+    this.guideShade?.setVisible(spotlight);
+    if (!this.guideTarget) {
+      this.guideLine?.clear();
+      return;
+    }
+
+    const pos = this.tiledPlayer.position;
+    if (this.guideTarget.manual && Math.hypot(pos.x - this.guideTarget.x, pos.y - this.guideTarget.y) <= 28) {
+      this.guideTarget = undefined;
+      this.guidePath = [];
+      this.lastGuideOrigin = undefined;
+      this.syncStations();
+      if (!this.guideTarget) {
+        this.guideLine?.clear();
+        return;
+      }
+    }
+
+    if (
+      !this.lastGuideOrigin ||
+      Math.hypot(pos.x - this.lastGuideOrigin.x, pos.y - this.lastGuideOrigin.y) >= 14
+    ) {
+      this.guidePath = this.findPath(pos, this.guideTarget, PLAYER_FEET.offsetY) ?? [];
+      this.lastGuideOrigin = { x: pos.x, y: pos.y };
+    }
+
+    if (!this.guideLine) {
+      this.guideLine = this.add.graphics();
+    }
+    this.guideLine.setDepth(spotlight ? 85_000 : DEPTH_FLOOR + 5);
+    this.guideLine.clear();
+    if (this.guidePath.length === 0) return;
+
+    const points = [{ x: pos.x, y: pos.y + PLAYER_FEET.offsetY }, ...this.guidePath.map((pt) => ({
+      x: pt.x,
+      y: pt.y + PLAYER_FEET.offsetY,
+    }))];
+    const color = this.guideTarget.color;
+    const pulse = this.coordinator.reducedMotion ? 0.9 : 0.65 + 0.35 * Math.sin(now * 0.008);
+
+    // Soft outer glow along the path
+    this.guideLine.lineStyle(10, color, 0.22 * pulse);
+    this.guideLine.strokePoints(points, false, false);
+
+    // Crisp dashed line marching toward the target
+    const dashLen = 14;
+    const gapLen = 10;
+    const period = dashLen + gapLen;
+    const dashOffset = this.coordinator.reducedMotion ? 0 : (now * 0.045) % period;
+    this.guideLine.lineStyle(4, color, 0.95);
+    let stepStart = dashOffset - period;
+    for (let i = 0; i < points.length - 1; i += 1) {
+      const a = points[i];
+      const b = points[i + 1];
+      const segLen = Math.hypot(b.x - a.x, b.y - a.y);
+      if (segLen < 1) continue;
+      const ux = (b.x - a.x) / segLen;
+      const uy = (b.y - a.y) / segLen;
+      let dashStart = stepStart;
+      while (dashStart < segLen) {
+        const from = Math.max(0, dashStart);
+        const to = Math.min(segLen, dashStart + dashLen);
+        if (to > from + 0.5) {
+          this.guideLine.lineBetween(
+            a.x + ux * from,
+            a.y + uy * from,
+            a.x + ux * to,
+            a.y + uy * to,
+          );
+        }
+        dashStart += period;
+      }
+      stepStart = ((stepStart - segLen) % period + period) % period - period;
+    }
+
+    // Target beacon ring at destination
+    const end = points[points.length - 1];
+    const ringRadius = this.coordinator.reducedMotion ? 16 : 14 + 5 * Math.sin(now * 0.01);
+    this.guideLine.lineStyle(3, color, 0.95);
+    this.guideLine.strokeCircle(end.x, end.y, ringRadius);
+    this.guideLine.fillStyle(color, 0.3);
+    this.guideLine.fillCircle(end.x, end.y, 7);
   }
 
   private surfaceRoomName(x: number, y: number): string {

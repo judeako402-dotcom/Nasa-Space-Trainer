@@ -6,6 +6,67 @@
   --station-ui-map-rim: url('/assets/ui/spudnaut/ingame/map-rim.webp');
 }
 
+.station-blackout {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background: #020309;
+  --light-origin: var(--light-x, 50%) var(--light-y, 50%);
+  mask-image:
+    radial-gradient(circle at var(--light-origin), transparent 24px, #000 93px),
+    conic-gradient(from calc(var(--light-angle, 0deg) - 41deg) at var(--light-origin),
+      transparent 0deg 82deg, #000 90deg 352deg, transparent 360deg),
+    radial-gradient(circle at var(--light-origin), transparent 125px, #000 clamp(185px, 31vw, 370px));
+  mask-composite: intersect, add;
+}
+
+.mission-hud.is-blackout .hud-top-left { visibility: hidden; }
+.mission-hud.is-guide-briefing > :not(.hud-special-alert) { opacity: .16; }
+.mission-hud.is-red-alert.is-guide-briefing::before { animation: none; opacity: .16; }
+.modal-shade.spud-dialogue-backdrop.has-commander { background: #040610dd; backdrop-filter: none; }
+.modal-shade.spud-dialogue-backdrop:is(.is-task-spotlight, .is-guide-briefing) { background: transparent; }
+.modal-shade.spud-dialogue-backdrop:is(.is-guide-briefing, .is-drawer-spotlight, [data-dialogue-key]) { place-items: end; }
+.modal-shade.spud-dialogue-backdrop.is-guide-briefing { padding-bottom: clamp(28px, 8vh, 90px); }
+:is(.is-guide-briefing, .is-drawer-spotlight, [data-dialogue-key]) > .spud-dialogue-arcade { margin: 0; }
+.spud-dialogue-key-prompt { margin-inline-start: auto; color: #fff1b7; font-weight: 700; }
+.spud-dialogue-key-prompt kbd {
+  display: inline-block;
+  margin: 0 2px;
+  padding: 3px 8px;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+}
+.spud-dialogue-task-spotlight {
+  position: fixed;
+  left: var(--spotlight-x);
+  top: var(--spotlight-y);
+  width: var(--spotlight-width);
+  height: var(--spotlight-height);
+  border: 2px solid #ffe18b;
+  border-radius: 12px;
+  box-shadow: 0 0 0 150vmax #040610df;
+  pointer-events: none;
+}
+.spud-dialogue-arcade.has-commander { position: relative; padding-left: clamp(94px, 19vw, 202px); }
+.spud-commander-model {
+  position: absolute;
+  left: clamp(7px, 1.5vw, 18px);
+  top: 50%;
+  width: clamp(68px, 15vw, 165px);
+  aspect-ratio: 767 / 928;
+  transform: translateY(-50%);
+  overflow: hidden;
+  filter: drop-shadow(0 0 10px #ffc45655);
+}
+.spud-commander-model img {
+  position: absolute;
+  width: 281.62%;
+  max-width: none;
+  left: -96.87%;
+  top: -76.08%;
+}
+
 .mission-hud {
   --hud-glass: #202251f2;
   --hud-ice: #8cf5ed;
@@ -13,12 +74,16 @@
   --hud-ink: #f3f8ff;
   --hud-muted: #d4e5fb;
   --hud-edge: clamp(10px, 1.45vw, 24px);
+  --hud-left: max(var(--hud-edge), env(safe-area-inset-left));
+  --hud-top: max(var(--hud-edge), env(safe-area-inset-top));
   --hud-bottom: max(var(--hud-edge), env(safe-area-inset-bottom));
+  --hud-rail-width: clamp(72px, 11vw, 122px);
+  --hud-drawer-left: calc(var(--hud-left) + var(--hud-rail-width) + 12px);
 }
 
 .mission-hud .hud-top-left {
-  top: max(var(--hud-edge), env(safe-area-inset-top));
-  left: max(var(--hud-edge), env(safe-area-inset-left));
+  top: var(--hud-top);
+  left: var(--hud-left);
   z-index: 12;
   width: auto;
   max-width: min(260px, 60vw);
@@ -53,7 +118,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: clamp(92px, 11vw, 122px);
+  width: var(--hud-rail-width);
   aspect-ratio: auto;
   padding: 0;
   background: none;
@@ -327,11 +392,11 @@
 
 .mission-hud .hud-drawer-backdrop { z-index: 10; background: rgba(10, 14, 34, 0.22); }
 .mission-hud .hud-drawer-panel {
-  left: max(var(--hud-edge), env(safe-area-inset-left));
-  top: calc(max(var(--hud-edge), env(safe-area-inset-top)) + 166px);
+  left: var(--hud-drawer-left);
+  top: var(--hud-top);
   translate: 0 0;
-  width: calc(100vw - 2 * var(--hud-edge));
-  max-height: calc(100dvh - 240px);
+  width: min(460px, calc(100vw - var(--hud-drawer-left) - max(var(--hud-edge), env(safe-area-inset-right))));
+  max-height: calc(100dvh - var(--hud-top) - var(--hud-bottom));
   overflow-y: auto;
   z-index: 11;
   padding: 12px;
@@ -439,21 +504,6 @@
 .mission-hud .hud-status-card .hud-status-card-detail { color: #c8d9f1; overflow-wrap: anywhere; }
 
 @media (min-width: 640px) and (min-height: 461px) {
-  .mission-hud .hud-drawer-panel {
-    left: calc(max(var(--hud-edge), env(safe-area-inset-left)) + clamp(104px, 12vw, 134px));
-    top: max(var(--hud-edge), env(safe-area-inset-top));
-    translate: 0 0;
-    width: min(460px, calc(100vw - clamp(260px, 28vw, 400px)));
-    max-height: calc(100dvh - 2 * var(--hud-edge));
-    aspect-ratio: auto;
-    padding: 12px;
-    overflow-y: auto;
-    border: 3px solid var(--station-ui-blue);
-    border-top-color: #8c83db;
-    border-radius: 10px;
-    background: repeating-linear-gradient(90deg, #b0bfd4 0 40px, #a5b5cc 40px 43px);
-    box-shadow: 0 5px #100e54, 0 16px 38px #10112d88;
-  }
   .mission-hud .hud-status-content { grid-template-columns: 1fr; }
   .mission-hud .hud-status-monitor { display: none; }
   .mission-hud .hud-systems.hud-status-grid {
@@ -636,7 +686,7 @@ dialog.game-menu-dialog.station-map-dialog {
 
 @media (max-height: 460px) {
   .mission-hud .hud-top-left { gap: 4px; }
-  .mission-hud .hud-left-rail { width: 88px; gap: 5px; }
+  .mission-hud .hud-left-rail { gap: 5px; }
   .mission-hud .hud-drawer-tab { min-height: 46px; padding: 4px; }
   .mission-hud .hud-radar { width: 76px; }
   .mission-hud .hud-status-content { grid-template-columns: minmax(76px, 120px) 1fr; }
@@ -649,4 +699,681 @@ dialog.game-menu-dialog.station-map-dialog {
   .ingame-options-screen .spud-volume-list { gap: 4px; }
   .ingame-options-screen .spud-arcade-range { height: 17px; }
   .ingame-options-screen .spud-settings-resume-btn.spud-arcade-btn { width: 130px; min-width: 0; }
+}
+
+.mission-hud.is-red-alert::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(255, 22, 38, 0.08) 18%, rgba(165, 10, 22, 0.45) 56%, rgba(235, 16, 32, 0.82) 100%);
+  box-shadow: inset 0 0 96px rgba(255, 24, 38, 0.78);
+  animation: spud-red-alert-pulse 1.4s ease-in-out infinite;
+}
+
+.hud-special-alert {
+  position: fixed;
+  left: 50%;
+  top: clamp(72px, 24vh, 210px);
+  transform: translateX(-50%);
+  z-index: 6;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  max-width: min(92vw, 560px);
+}
+
+.hud-special-alert[hidden] {
+  display: none;
+}
+
+.hud-special-alert-triangle {
+  display: block;
+  filter: drop-shadow(0 0 14px rgba(255, 32, 46, 0.95)) drop-shadow(0 3px 6px rgba(0, 0, 0, 0.9));
+}
+
+.hud-special-alert-text {
+  display: block;
+  font-family: var(--spud-wide-font, system-ui, sans-serif);
+  font-weight: 900;
+  font-size: clamp(0.95rem, 2.2vw, 1.45rem);
+  letter-spacing: 0.14em;
+  line-height: 1.15;
+  text-transform: uppercase;
+  color: #ff2e3d;
+  animation: spud-special-alert-blink 1.4s ease-in-out infinite;
+  text-shadow:
+    0 0 16px rgba(255, 22, 38, 0.98),
+    0 2px 6px rgba(0, 0, 0, 0.96),
+    0 0 2px #000;
+}
+
+.reduce-motion .mission-hud.is-red-alert::before,
+.mission-hud.is-red-alert.reduce-motion::before,
+.reduce-motion .hud-special-alert-text,
+.mission-hud.reduce-motion .hud-special-alert-text {
+  animation: none;
+  opacity: 1;
+}
+
+@keyframes spud-red-alert-pulse {
+  0%, 100% { opacity: 0.14; }
+  50% { opacity: 1; }
+}
+
+@keyframes spud-special-alert-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mission-hud.is-red-alert::before, .hud-special-alert-text { animation: none; }
+}
+
+/* ==========================================================================
+   STATION HUD THEME: TASK MINIGAME PANELS, RESULT CARD & EVENT CARDS
+   Matches ingame brushed steel-blue chassis (#292483 ink outline, amber
+   hardware corners, aqua-mint tactile controls, slate-indigo slots).
+   ========================================================================== */
+
+dialog:modal,
+dialog::backdrop,
+.modal-shade {
+  overscroll-behavior: contain;
+}
+
+.spud-console-tablet,
+.task-result-card,
+.disaster-card,
+.spud-planning-hazard-card {
+  --hud-steel-seam: repeating-linear-gradient(90deg, #b6c6db 0 44px, #aabbd2 44px 47px);
+  background:
+    linear-gradient(135deg, #ffb327 0 18px, #292483 18px 20.5px, transparent 20.5px) top left / 28px 28px no-repeat,
+    linear-gradient(225deg, #ffb327 0 18px, #292483 18px 20.5px, transparent 20.5px) top right / 28px 28px no-repeat,
+    linear-gradient(45deg, #ff9211 0 18px, #292483 18px 20.5px, transparent 20.5px) bottom left / 28px 28px no-repeat,
+    linear-gradient(315deg, #ff9211 0 18px, #292483 18px 20.5px, transparent 20.5px) bottom right / 28px 28px no-repeat,
+    linear-gradient(180deg, #eef6ff 0, #eef6ff 4px, transparent 4px) 0 0 / 100% 100% no-repeat,
+    repeating-linear-gradient(90deg, #b6c6db 0 44px, #aabbd2 44px 47px);
+  border: 3px solid var(--station-ui-blue);
+  border-radius: 18px;
+  color: var(--station-ui-ink);
+  box-shadow: 0 6px #100e54, 0 22px 48px rgba(10, 12, 42, 0.72), inset 0 -2px 0 #7b8fb0;
+  padding: clamp(18px, 3.2vw, 28px) clamp(20px, 4.2vw, 36px);
+  overflow-x: hidden;
+}
+
+.spud-console-tablet:focus-visible,
+.task-result-card:focus-visible,
+.disaster-card:focus-visible {
+  outline: 3px solid #ffb327;
+  outline-offset: 3px;
+}
+
+.spud-console-tablet :where(button, a, input, [tabindex]):focus-visible,
+.task-result-card :where(button, a, [tabindex]):focus-visible,
+.disaster-card :where(button, a, [tabindex]):focus-visible,
+.spud-planning-hazard-card :where(button, a, [tabindex]):focus-visible,
+.spud-diff-choice:focus-visible {
+  outline: 3px solid #ffb327;
+  outline-offset: 2px;
+}
+
+/* ---- Task Minigame Header & Telemetry Bar ---- */
+.spud-console-tablet .spud-modal-top,
+.task-result-card .spud-modal-top {
+  border-bottom: 2px solid rgba(41, 36, 131, 0.24);
+  padding-bottom: 12px;
+  margin-bottom: 10px;
+  gap: 12px;
+  align-items: center;
+}
+
+.spud-console-head-copy {
+  display: grid;
+  gap: 3px;
+  min-inline-size: 0;
+}
+
+.spud-console-badge,
+.hud-event-kicker {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 7px;
+  background: linear-gradient(180deg, #ffd15c 0%, #ff991f 100%);
+  border: 2px solid var(--station-ui-blue);
+  box-shadow: 0 2px #131345;
+  color: var(--station-ui-ink);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.spud-console-badge.is-complete {
+  background: linear-gradient(180deg, #9ce6df 0%, #6ec5c9 100%);
+}
+
+.hud-event-kicker.is-emergency {
+  background: linear-gradient(180deg, #ff6c72 0%, #cf2834 100%);
+  border-color: #2c0b16;
+  color: #ffffff;
+  margin-bottom: 10px;
+}
+
+.spud-console-tablet .spud-constellation-kicker,
+.task-result-card .spud-constellation-kicker {
+  color: #292483;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.spud-console-tablet .spud-comic-heading.is-sub,
+.task-result-card .spud-comic-heading.is-sub {
+  color: #121744;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.spud-console-tablet [data-close] {
+  min-height: 44px;
+  min-width: 92px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 2px solid var(--station-ui-blue);
+  background: linear-gradient(180deg, #eef6ff 0%, #b5c6dc 100%);
+  box-shadow: 0 3px #131345, inset 0 2px #ffffff;
+  color: var(--station-ui-ink);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.spud-console-tablet [data-close]:hover {
+  background: linear-gradient(180deg, #ecfffa 0%, #a2f3e8 100%);
+}
+
+.spud-console-tablet [data-close]:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px #131345;
+}
+
+.spud-console-meta-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.spud-console-tablet .spud-console-pill {
+  background: linear-gradient(152deg, #3d4770 40%, #303958 41%);
+  border: 2px solid var(--station-ui-blue);
+  color: #eef6ff;
+  box-shadow: 0 2px #131345;
+  font-weight: 700;
+}
+
+.spud-console-tablet .spud-console-pill.is-pillar {
+  background: linear-gradient(180deg, #9ce6df 0%, #6ec5c9 100%);
+  color: var(--station-ui-ink);
+}
+
+.spud-console-tablet .spud-console-pill.is-perk {
+  color: #ffe28a;
+}
+
+.spud-console-tablet .spud-console-alert {
+  background: linear-gradient(152deg, #6b2434 40%, #491a27 41%);
+  border: 2px solid #ff5a5f;
+  color: #ffd4d6;
+  box-shadow: 0 2px #2a0a14;
+}
+
+.spud-console-tablet .station-task-exchange {
+  background: linear-gradient(152deg, #3d4770 40%, #303958 41%);
+  border: 2px solid var(--station-ui-blue);
+  border-radius: 12px;
+  box-shadow: 0 3px #131345;
+  color: #eef6ff;
+  padding: 9px 14px;
+  margin-bottom: 10px;
+}
+
+.spud-console-tablet .station-task-exchange > span:first-child {
+  color: #91f4eb;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.spud-console-tablet .minigame-tutorial {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.spud-console-tablet .minigame-tutorial button {
+  min-height: 36px;
+  min-width: 36px;
+  padding: 5px 12px;
+  border-radius: 9px;
+  border: 2px solid var(--station-ui-blue);
+  background: linear-gradient(180deg, #9ce6df 0%, #6ec5c9 100%);
+  box-shadow: 0 3px #131345, inset 0 2px #effffc;
+  color: var(--station-ui-ink);
+  font-weight: 800;
+}
+
+.spud-console-tablet .minigame-tutorial button:hover {
+  background: linear-gradient(180deg, #ecfffa 0%, #a2f3e8 100%);
+}
+
+.spud-console-tablet #minigame-tip {
+  flex: 1 1 260px;
+  background: linear-gradient(152deg, #3d4770 40%, #303958 41%);
+  border: 2px solid var(--station-ui-blue);
+  border-radius: 11px;
+  padding: 9px 12px;
+  color: #eef6ff;
+  box-shadow: 0 3px #131345;
+}
+
+/* ---- Recessed Console Stage & Interactive Minigame Controls ---- */
+.spud-console-tablet .task-body.spud-console-stage {
+  background:
+    linear-gradient(180deg, rgba(16, 20, 48, 0.92), rgba(22, 29, 64, 0.96)),
+    #1c2348;
+  border: 3px solid var(--station-ui-blue);
+  border-radius: 14px;
+  box-shadow: inset 0 4px 12px rgba(8, 10, 28, 0.72), 0 3px #eef6ff;
+  color: #f4f8ff;
+  padding: clamp(12px, 2vw, 18px);
+}
+
+.spud-console-tablet .spud-console-banner {
+  background: linear-gradient(152deg, #3d4770 40%, #303958 41%);
+  border: 2px solid #5969b8;
+  border-radius: 11px;
+  color: #ffffff;
+}
+
+.spud-console-tablet .spud-console-board,
+.spud-console-tablet .station-mission-board,
+.spud-console-tablet .assignment-board {
+  background: linear-gradient(180deg, #273056 0%, #1d2444 100%);
+  border: 2px solid #48589e;
+  border-radius: 12px;
+  color: #eef6ff;
+}
+
+.spud-console-tablet .station-mission-hint {
+  background: linear-gradient(152deg, #38436b 40%, #2a3354 41%);
+  border: 2px solid #5969b8;
+  border-radius: 10px;
+  color: #d7ecff;
+}
+
+.spud-console-tablet .assignment-control,
+.spud-console-tablet .spud-tool-btn,
+.spud-console-tablet .station-switch-bank button {
+  min-height: 44px;
+  background: linear-gradient(180deg, #9ce6df 0%, #6ec5c9 100%);
+  border: 2px solid var(--station-ui-blue);
+  border-radius: 10px;
+  box-shadow: 0 3px #131345, inset 0 2px #effffc;
+  color: var(--station-ui-ink);
+  font-weight: 800;
+}
+
+.spud-console-tablet .assignment-control:hover:not(:disabled),
+.spud-console-tablet .spud-tool-btn:hover:not(:disabled),
+.spud-console-tablet .station-switch-bank button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #ecfffa 0%, #a2f3e8 100%);
+}
+
+.spud-console-tablet .assignment-control:active:not(:disabled),
+.spud-console-tablet .spud-tool-btn:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: 0 1px #131345;
+}
+
+.spud-console-tablet .spud-tool-btn.is-active,
+.spud-console-tablet .station-switch-bank button.is-on {
+  background: linear-gradient(180deg, #ffe07d 0%, #ffb327 100%);
+  color: var(--station-ui-ink);
+}
+
+/* ---- Task Complete Result Card ---- */
+.task-result-card .spud-copy-block {
+  background: linear-gradient(152deg, #3d4770 40%, #303958 41%);
+  border: 2px solid var(--station-ui-blue);
+  border-radius: 12px;
+  box-shadow: 0 3px #131345;
+  color: #eef6ff;
+  padding: 12px 14px;
+}
+
+.task-result-card .spud-telemetry-grid {
+  background: linear-gradient(152deg, #323c61 40%, #273050 41%);
+  border: 2px solid var(--station-ui-blue);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.task-result-card [data-result-continue] {
+  min-height: 46px;
+  padding-inline: 22px;
+  border-radius: 11px;
+  border: 2px solid var(--station-ui-blue);
+  background: linear-gradient(180deg, #9ce6df 0%, #6ec5c9 100%);
+  box-shadow: 0 4px #131345, inset 0 2px #effffc;
+  color: var(--station-ui-ink);
+  font-weight: 800;
+}
+
+.task-result-card [data-result-continue]:hover {
+  background: linear-gradient(180deg, #ecfffa 0%, #a2f3e8 100%);
+}
+
+/* ---- Shift Planning Daily Event Card ---- */
+.shift-planner .spud-planning-hazard-card {
+  gap: 12px;
+  color: var(--station-ui-ink);
+}
+
+.shift-planner .spud-planning-hazard-card .spud-copy-block {
+  background: linear-gradient(152deg, #3d4770 40%, #303958 41%);
+  border: 2px solid var(--station-ui-blue);
+  border-radius: 12px;
+  box-shadow: 0 3px #131345;
+  color: #ffffff;
+  padding: 13px 16px;
+}
+
+.shift-planner .spud-planning-hazard-card #shift-event-title {
+  color: #ffffff;
+  margin-top: 6px;
+}
+
+.shift-planner .spud-planning-hazard-card .spud-copy-block p {
+  color: #dce9fa;
+}
+
+.shift-planner .spud-planning-hazard-card .spud-copy-block a {
+  color: #91f4eb;
+}
+
+.shift-planner .spud-planning-hazard-card > .spud-constellation-kicker,
+.shift-planner .spud-planning-hazard-card .spud-constellation-kicker {
+  color: #1c2463;
+  font-weight: 800;
+}
+
+.shift-planner .spud-planning-hazard-card .spud-copy-block .spud-constellation-kicker {
+  color: #ffd15c;
+}
+
+.shift-planner .spud-planning-hazard-card .event-response {
+  min-height: 48px;
+  background: linear-gradient(152deg, #3d4770 40%, #303958 41%);
+  border: 2px solid var(--station-ui-blue);
+  border-radius: 12px;
+  box-shadow: 0 3px #131345;
+  color: #ffffff;
+  text-align: left;
+  padding: 10px 14px;
+  transition: transform 120ms ease, filter 120ms ease, border-color 120ms ease;
+}
+
+.shift-planner .spud-planning-hazard-card .event-response strong {
+  color: #ffffff;
+}
+
+.shift-planner .spud-planning-hazard-card .event-response small {
+  color: #c5d9f4;
+}
+
+.shift-planner .spud-planning-hazard-card .event-response:hover {
+  filter: brightness(1.08);
+  border-color: #91f4eb;
+}
+
+.shift-planner .spud-planning-hazard-card .event-response[aria-pressed="true"] {
+  background: linear-gradient(152deg, #385873 40%, #254059 41%);
+  border-color: #ffb327;
+  box-shadow: 0 0 0 2px #ffb327, 0 4px #131345;
+}
+
+.shift-planner .spud-planning-hazard-card .event-response[aria-pressed="true"] strong {
+  color: #91f4eb;
+}
+
+.shift-planner .spud-planning-hazard-card[data-event-kind="solar"] .hud-event-kicker,
+.shift-planner .spud-planning-hazard-card[data-event-kind="hazard"] .hud-event-kicker {
+  background: linear-gradient(180deg, #ff7076 0%, #d42f3b 100%);
+  color: #ffffff;
+}
+
+/* ---- Emergency Major Event / Disaster Cards & Neutral Crew Bunk Dialogs ---- */
+.disaster-card .disaster-warning {
+  background: linear-gradient(152deg, #3d4770 40%, #303958 41%);
+  border: 2px solid var(--station-ui-blue);
+  border-radius: 13px;
+  box-shadow: 0 3px #131345;
+  color: #ffffff;
+  padding: 14px 16px;
+}
+
+.disaster-card.is-emergency-event {
+  border-color: #ff4754;
+  box-shadow: 0 6px #420c19, 0 22px 48px rgba(45, 6, 16, 0.78), inset 0 -2px 0 #7b8fb0;
+}
+
+.disaster-card.is-emergency-event .disaster-warning {
+  background: linear-gradient(152deg, #6b2434 40%, #491a27 41%);
+  border-color: #ff5a5f;
+  box-shadow: 0 4px #2a0a14;
+}
+
+.disaster-card .disaster-warning h2,
+.disaster-card .disaster-warning p {
+  color: #ffffff;
+}
+
+.disaster-card .disaster-warning small {
+  color: #dce9fa;
+}
+
+.disaster-card .disaster-warning a {
+  color: #91f4eb;
+  font-weight: 700;
+}
+
+.disaster-card .disaster-prompt {
+  color: var(--station-ui-ink);
+  font-weight: 700;
+}
+
+.disaster-card .disaster-clue {
+  background: linear-gradient(152deg, #6b2434 40%, #491a27 41%);
+  border: 2px solid #ff5a5f;
+  border-radius: 10px;
+  color: #ffd8db;
+  font-weight: 700;
+  padding: 9px 12px;
+}
+
+.disaster-card .disaster-tools button {
+  min-height: 54px;
+  background: linear-gradient(152deg, #3d4770 40%, #303958 41%);
+  border: 2px solid var(--station-ui-blue);
+  border-radius: 12px;
+  box-shadow: 0 3px #131345;
+  color: #ffffff;
+  text-align: left;
+  padding: 10px 14px;
+  transition: transform 120ms ease, filter 120ms ease, border-color 120ms ease;
+}
+
+.disaster-card .disaster-tools button strong {
+  color: #91f4eb;
+}
+
+.disaster-card .disaster-tools button small {
+  color: #dce9fa;
+}
+
+.disaster-card .disaster-tools button:hover {
+  background: linear-gradient(152deg, #4b5788 40%, #394469 41%);
+  border-color: #ffb327;
+}
+
+.disaster-card .disaster-tools button:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px #131345;
+}
+
+/* ---- Metric Chips & Crew Bunk Dialog Contrast on Steel Chassis ---- */
+.spud-planning-hazard-card .spud-metric-chip,
+.task-result-card .spud-metric-chip,
+.spud-console-tablet .spud-metric-chip {
+  background: #232b4f;
+  border: 1.5px solid #4d5ea8;
+  border-radius: 8px;
+  padding: 4px 10px;
+  color: #eef6ff;
+}
+
+.spud-planning-hazard-card #event-deltas .spud-metric-chip b.is-gain,
+.task-result-card .spud-metric-chip b.is-gain,
+.spud-console-tablet .spud-metric-chip b.is-gain {
+  color: #84ffbf;
+}
+
+.spud-planning-hazard-card #event-deltas .spud-metric-chip b.is-loss,
+.task-result-card .spud-metric-chip b.is-loss,
+.spud-console-tablet .spud-metric-chip b.is-loss {
+  color: #ff989c;
+}
+
+.disaster-card > h2,
+.disaster-card > p {
+  color: var(--station-ui-ink);
+}
+
+.disaster-card .spud-telemetry-cell {
+  background: linear-gradient(152deg, #3d4770 40%, #303958 41%);
+  border: 2px solid var(--station-ui-blue);
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: #eef6ff;
+}
+
+.disaster-card .spud-telemetry-cell span {
+  color: #91f4eb;
+}
+
+.disaster-card .spud-telemetry-cell strong {
+  color: #ffffff;
+}
+
+.disaster-card .spud-text-toggle,
+.disaster-card .spud-constellation-action {
+  min-height: 44px;
+  background: linear-gradient(180deg, #eef6ff 0%, #c1d0e4 100%);
+  border: 2px solid var(--station-ui-blue);
+  border-radius: 10px;
+  box-shadow: 0 3px #131345;
+  color: var(--station-ui-ink);
+  font-weight: 800;
+}
+
+.disaster-card .spud-text-toggle.is-danger-outline {
+  background: linear-gradient(180deg, #ff8f94 0%, #e0414d 100%);
+  color: #ffffff;
+  border-color: #292483;
+}
+
+.disaster-card .spud-constellation-action.is-primary {
+  background: linear-gradient(180deg, #9ce6df 0%, #6ec5c9 100%);
+  color: var(--station-ui-ink);
+}
+
+.disaster-card .spud-text-toggle:hover,
+.disaster-card .spud-constellation-action:hover {
+  filter: brightness(1.06);
+}
+
+/* ---- Loadout Difficulty Progression & Lock Readout ---- */
+.design-loadout .spud-diff-choice {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 2px;
+}
+
+.spud-diff-meta {
+  display: block;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #a9e6ff;
+  line-height: 1.2;
+}
+
+.spud-diff-choice[aria-pressed="true"] .spud-diff-meta {
+  color: #ffd97d;
+}
+
+.spud-diff-choice.is-locked {
+  opacity: 0.62;
+  border-style: dashed;
+  border-color: rgba(160, 178, 224, 0.35);
+  cursor: not-allowed;
+}
+
+.spud-diff-choice.is-locked:hover {
+  background: rgba(15, 23, 66, 0.72);
+  color: var(--spud-ink-muted);
+}
+
+.spud-diff-choice.is-locked .spud-diff-meta {
+  color: #ffb09c;
+}
+
+.spud-diff-summary {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #cbe2ff;
+  text-align: center;
+}
+
+.spud-diff-summary.is-locked-note {
+  color: #ffd089;
+  font-weight: 700;
+}
+
+@media (max-width: 720px) {
+  .spud-console-tablet,
+  .task-result-card,
+  .disaster-card,
+  .spud-planning-hazard-card {
+    padding: 16px 14px;
+    border-radius: 14px;
+  }
+
+  .spud-console-tablet [data-close] {
+    min-width: 72px;
+    padding: 0 10px;
+  }
 }

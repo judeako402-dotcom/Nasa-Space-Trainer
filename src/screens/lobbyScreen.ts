@@ -1,10 +1,11 @@
 import {
-  DIFFICULTY_INFO, PLAYER_COLORS, SPECIALISTS,
-  destinationById, getColor, persistSave, specialistById, trialMaxDays,
+  DEFAULT_OPTIONS, DIFFICULTY_INFO, PLAYER_COLORS, SPECIALISTS,
+  destinationById, getColor, isDifficultyUnlocked, persistSave, specialistById, trialMaxDays,
   type DifficultyId, type MissionMetrics, type PlayerColorId, type SpecialistId,
 } from '../model';
 import { scheduleSurfacePrewarm } from '../app/prewarm';
 import { routes } from '../app/router';
+import { playCutsceneVideo } from './playIntroScreen';
 import {
   applyOptions, dom, escapeHtml, saveSettings, session, setScreen,
   syncLobbyFromSave, trialDayLabel,
@@ -61,21 +62,37 @@ function renderSuitColorNodes(selectedColorId: PlayerColorId, standardPalette = 
   `;
 }
 
+const DIFFICULTY_BADGE_META: Record<DifficultyId, string> = {
+  cadet: '7 DAYS · 1 EVENT',
+  crew: '9 DAYS · 3 EVENTS',
+  veteran: '14 DAYS · 5 EVENTS',
+};
+
 function renderDifficultyStrip(selectedDifficulty: DifficultyId): string {
+  const effectiveDifficulty = isDifficultyUnlocked(selectedDifficulty, session.save)
+    ? selectedDifficulty
+    : DEFAULT_OPTIONS.difficulty;
   return `
     <div class="spud-diff-strip" role="group" aria-labelledby="difficulty-heading">
-      ${(Object.keys(DIFFICULTY_INFO) as DifficultyId[]).map((diff) => `
-        <button
-          type="button"
-          class="spud-diff-choice"
-          data-difficulty="${diff}"
-          aria-pressed="${selectedDifficulty === diff}"
-        >
-          <strong>${escapeHtml(DIFFICULTY_INFO[diff].name)}</strong>
-          <small>${escapeHtml(DIFFICULTY_INFO[diff].description)}</small>
-        </button>
-      `).join('')}
+      ${(Object.keys(DIFFICULTY_INFO) as DifficultyId[]).map((diff) => {
+        const unlocked = isDifficultyUnlocked(diff, session.save);
+        const pressed = effectiveDifficulty === diff && unlocked;
+        return `
+          <button
+            type="button"
+            class="spud-diff-choice ${unlocked ? '' : 'is-locked'}"
+            data-difficulty="${diff}"
+            aria-pressed="${pressed}"
+            ${unlocked ? '' : 'aria-disabled="true"'}
+          >
+            <strong>${unlocked ? '' : '<span class="spud-diff-lock" aria-hidden="true">🔒 </span>'}${escapeHtml(DIFFICULTY_INFO[diff].name)}</strong>
+            <span class="spud-diff-meta">${unlocked ? DIFFICULTY_BADGE_META[diff] : '14D · 5 EV · BEAT CADET'}</span>
+            <small>${escapeHtml(DIFFICULTY_INFO[diff].description)}</small>
+          </button>
+        `;
+      }).join('')}
     </div>
+    <p class="spud-diff-summary" id="difficulty-summary" aria-live="polite">${escapeHtml(DIFFICULTY_INFO[effectiveDifficulty].description)}</p>
   `;
 }
 
@@ -124,11 +141,25 @@ function wireLoadoutAudioVisionToggles(root: HTMLElement, suffix: string): void 
 }
 
 function wireDifficultyButtons(root: HTMLElement): void {
+  const summaryEl = root.querySelector<HTMLElement>('#difficulty-summary');
   root.querySelectorAll<HTMLButtonElement>('[data-difficulty]').forEach((button) => button.addEventListener('click', () => {
-    session.save.options.difficulty = button.dataset.difficulty as DifficultyId;
+    const diff = button.dataset.difficulty as DifficultyId;
+    if (!isDifficultyUnlocked(diff, session.save) || button.getAttribute('aria-disabled') === 'true') {
+      if (summaryEl) {
+        summaryEl.textContent = '🔒 Finish Cadet (Level 1 · 7 days) to unlock Veteran.';
+        summaryEl.classList.add('is-locked-note');
+      }
+      sfx.warning();
+      return;
+    }
+    session.save.options.difficulty = diff;
     root.querySelectorAll<HTMLButtonElement>('[data-difficulty]').forEach((el) => {
       el.setAttribute('aria-pressed', String(el === button));
     });
+    if (summaryEl) {
+      summaryEl.textContent = DIFFICULTY_INFO[diff].description;
+      summaryEl.classList.remove('is-locked-note');
+    }
     applyOptions();
     saveSettings();
     sfx.click();
@@ -198,6 +229,9 @@ function renderLobbyInspectorDetails(showPortrait = true): string {
 export function showLobby(): void {
   const { screenRoot } = dom();
   const { lobby, save } = session;
+  if (!isDifficultyUnlocked(save.options.difficulty, save)) {
+    save.options.difficulty = DEFAULT_OPTIONS.difficulty;
+  }
   scheduleSurfacePrewarm();
   const spec = specialistById(lobby.specialist);
   const color = getColor(lobby.colorId);
@@ -633,56 +667,36 @@ export function showLaunch(): void {
       <h1 id="launch-title" class="spud-comic-heading" tabindex="-1">FINAL FLIGHT CHECK</h1>
     </header>
     <div class="spud-flight-check-showcase">
-      <div class="spud-flight-visual-card">
-        <img class="spud-flight-panel-art" src="/assets/ui/spudnaut/design/moonbase.webp" alt="" aria-hidden="true" draggable="false" />
-        <div class="spud-flight-visual-overlay">
-          <div class="spud-flight-crew-ring" style="--choice-accent:${color.css}">
-            ${renderCharacterSpriteThumb(specialist.art, true, lobby.colorId)}
-          </div>
-          <div class="spud-flight-crew-copy">
-            <span>CREW MANIFEST LOCKED · ${escapeHtml(color.name.toUpperCase())} SUIT</span>
-            <strong>${escapeHtml(name)} · ${escapeHtml(specialist.name)}</strong>
-            <small>${escapeHtml(specialist.perk)}</small>
-          </div>
+      <div class="spud-flight-visual-card" aria-label="${escapeHtml(name)} · ${escapeHtml(specialist.name)} · ${escapeHtml(color.name)} Suit">
+        <div class="spud-flight-crew-chamber" style="--choice-accent:${color.css}">
+          ${renderCharacterSpriteThumb(specialist.art, true, lobby.colorId)}
         </div>
       </div>
 
       <div class="spud-flight-details-card">
         <div class="spud-telemetry-grid">
-          <div class="spud-telemetry-cell">
-            <span class="spud-cell-head">${renderFigmaIcon('check-target', 'spud-cell-icon')}<span>TARGET</span></span>
+          <div class="spud-telemetry-cell is-moon">
+            <img class="spud-check-card-icon" src="/assets/ui/spudnaut/icons/check-moon.svg" alt="" aria-hidden="true" draggable="false" />
+            <span class="spud-cell-head"><span>Moon</span></span>
             <strong>${escapeHtml(destination.name)}</strong>
-            <small>SURFACE HABITAT</small>
+            <small>Surface Habitat</small>
           </div>
-          <div class="spud-telemetry-cell">
-            <span class="spud-cell-head">${renderFigmaIcon('check-gravity', 'spud-cell-icon')}<span>GRAVITY</span></span>
-            <strong>${escapeHtml(destination.gravity)}</strong>
-            <small>FIELD ENV</small>
-          </div>
-          <div class="spud-telemetry-cell">
-            <span class="spud-cell-head">${renderFigmaIcon('check-hazard', 'spud-cell-icon')}<span>HAZARD</span></span>
-            <strong>${escapeHtml(destination.hazard)}</strong>
-            <small>PRIMARY RISK</small>
-          </div>
-          <div class="spud-telemetry-cell">
-            <span class="spud-cell-head">${renderFigmaIcon('check-duration', 'spud-cell-icon')}<span>DURATION</span></span>
+          <div class="spud-telemetry-cell is-duration">
+            <img class="spud-check-card-icon" src="/assets/ui/spudnaut/icons/check-duration.svg" alt="" aria-hidden="true" draggable="false" />
+            <span class="spud-cell-head"><span>Duration</span></span>
             <strong>${trialMaxDays(save.options.difficulty)} SHIFTS</strong>
-            <small>YOUR TIME AT THE MOON BASE</small>
+            <small>${escapeHtml(DIFFICULTY_INFO[save.options.difficulty].name)} Rotation</small>
           </div>
-          <div class="spud-telemetry-cell">
-            <span class="spud-cell-head">${renderFigmaIcon('check-systems', 'spud-cell-icon')}<span>SYSTEMS</span></span>
-            <strong>4 CORE</strong>
-            <small>LIFE · POWER · RESEARCH · FARM</small>
-          </div>
-          <div class="spud-telemetry-cell">
-            <span class="spud-cell-head">${renderFigmaIcon('check-mode', 'spud-cell-icon')}<span>MODE</span></span>
+          <div class="spud-telemetry-cell is-difficulty">
+            <img class="spud-check-card-icon" src="/assets/ui/spudnaut/icons/check-difficulty.svg" alt="" aria-hidden="true" draggable="false" />
+            <span class="spud-cell-head"><span>Difficulty</span></span>
             <strong>${escapeHtml(DIFFICULTY_INFO[save.options.difficulty].name)}</strong>
-            <small>DIFFICULTY</small>
+            <small>${escapeHtml(DIFFICULTY_INFO[save.options.difficulty].description)}</small>
           </div>
         </div>
         <footer class="spud-flight-cta-row">
           ${renderArcadeButton({
-            label: 'BEGIN TRIAL · DAY 01',
+            label: 'BEGIN DAY ONE!',
             attrs: 'data-launch-begin',
             size: 'md',
             iconMarkup: renderFigmaIcon('confirm-launch', 'spud-action-figma-icon is-tight'),
@@ -717,11 +731,11 @@ export function showLaunch(): void {
         ? trialMaxDays(save.options.difficulty) + save.activeTrial.penaltyDay
         : save.activeTrial.day;
       confirmReplaceSavedTrial({
-        title: 'LAUNCH DAY 01 & REPLACE SAVED TRIAL?',
-        description: `Launching this new expedition will overwrite your saved Day ${String(savedDay).padStart(2, '0')} mission on ${destinationById(save.destination).name}.`,
-        confirmLabel: 'LAUNCH DAY 01',
+        title: 'RESTART?',
+        description: `Starting this new journey will replace your old Day ${String(savedDay).padStart(2, '0')} saved trial on ${destinationById(save.destination).name}, but it will be a fun new start on the Moon.`,
+        confirmLabel: 'LAUNCH DAY ONE',
         confirmIcon: 'launch',
-        variant: 'danger',
+        variant: 'primary',
         onConfirm: launchNew,
       });
       return;
@@ -733,7 +747,7 @@ export function showLaunch(): void {
 export function startLaunchSequence(): void {
   const { screenRoot } = dom();
   setScreen('launch', `
-    <section class="screen-splash launch-sequence" aria-label="Launch and landing cinematic">
+    <section class="screen-splash launch-sequence ${session.save.options.reducedMotion ? 'reduce-motion' : ''}" aria-label="Earth to Moon rocket launch">
       <div class="intro-canvas" id="launch-canvas" aria-hidden="true"></div>
       <div class="intro-accessibility">
         <span>SPUDNAUT SPACE AGENCY · FLIGHT DECK</span>
@@ -742,7 +756,22 @@ export function startLaunchSequence(): void {
     </section>
   `);
   let finished = false;
-  const finish = (): void => {
+  const playLandingVideo = (): void => {
+    if (finished || session.currentScreen !== 'launch') return;
+    finished = true;
+    session.launchGame?.destroy(true);
+    session.launchGame = null;
+    playCutsceneVideo({
+      screenId: 'launch',
+      ariaLabel: 'Moon landing cinematic',
+      src: '/assets/launch-sequence.mp4',
+      skipLabel: 'SKIP LANDING',
+      skipAriaLabel: 'Skip landing video',
+      footerLabel: 'SPUDNAUT SPACE AGENCY · LUNAR DESCENT',
+      onComplete: () => routes.beginMission(),
+    });
+  };
+  const skipAll = (): void => {
     if (finished || session.currentScreen !== 'launch') return;
     finished = true;
     session.launchGame?.destroy(true);
@@ -751,18 +780,18 @@ export function startLaunchSequence(): void {
   };
   const host = screenRoot.querySelector<HTMLDivElement>('#launch-canvas');
   if (!host) {
-    finish();
+    playLandingVideo();
     return;
   }
   void import('../game/launch').then(({ createLaunchSequence }) => {
-    if (session.currentScreen === 'launch') {
+    if (session.currentScreen === 'launch' && !finished) {
       session.launchGame = createLaunchSequence(host, {
         playerArt: specialistById(session.lobby.specialist).art,
         colorId: session.lobby.colorId,
         reducedMotion: session.save.options.reducedMotion,
-        onComplete: finish,
+        onComplete: playLandingVideo,
       });
     }
-  }).catch(finish);
-  screenRoot.querySelector('.intro-skip')?.addEventListener('click', finish);
+  }).catch(playLandingVideo);
+  screenRoot.querySelector('.intro-skip')?.addEventListener('click', skipAll);
 }

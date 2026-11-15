@@ -1,16 +1,21 @@
 import { EVENT_CARDS, type EventCard } from './events';
 import type { DifficultyId, DonkiReport } from '../model';
 
-export type DonkiEventType = 'FLR' | 'CME' | 'SEP' | 'GST';
-
-const EVENT_TYPES: DonkiEventType[] = ['FLR', 'CME', 'SEP', 'GST'];
+const EVENT_TYPES = ['FLR', 'CME', 'SEP'] as const;
+export type DonkiEventType = typeof EVENT_TYPES[number];
 const SUCCESS_CACHE_MS = 15 * 60 * 1000;
 const EMPTY_CACHE_MS = 2 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 2500;
 const DONKI_URL = 'https://api.nasa.gov/DONKI';
+const CCMC_API_URL = 'https://ccmc.gsfc.nasa.gov/DONKI-API/get';
+const DONKI_EVENTS_URL = 'https://ccmc.gsfc.nasa.gov/DONKI/events';
 
 let cached: { reports: DonkiReport[]; expiresAt: number } | null = null;
 let pending: Promise<DonkiReport[]> | null = null;
+
+export function isDonkiEmergencyType(type: DonkiReport['type']): type is DonkiEventType {
+  return EVENT_TYPES.some(eventType => eventType === type);
+}
 
 function configuredProxyBase(): string | null {
   const raw = import.meta.env.VITE_DONKI_PROXY_URL?.trim();
@@ -21,7 +26,7 @@ async function fetchEndpointReports(
   type: DonkiEventType,
   startDate: string,
   endDate: string,
-  apiKey: string,
+  apiKey: string | undefined,
   fetcher: typeof fetch,
 ): Promise<DonkiReport[]> {
   const proxyBase = configuredProxyBase();
@@ -39,8 +44,9 @@ async function fetchEndpointReports(
   }
 
   try {
-    const url = new URL(`${DONKI_URL}/${type}`);
-    url.search = new URLSearchParams({ startDate, endDate, api_key: apiKey }).toString();
+    const url = new URL(`${apiKey ? DONKI_URL : CCMC_API_URL}/${type}`);
+    url.search = new URLSearchParams({ startDate, endDate }).toString();
+    if (apiKey) url.searchParams.set('api_key', apiKey);
     const response = await fetcher(url.toString(), { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
     if (!response.ok) return [];
     const payload: unknown = await response.json();
@@ -59,7 +65,7 @@ export function fetchDonkiReports(
 
   const endDate = new Date(now).toISOString().slice(0, 10);
   const startDate = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const apiKey = import.meta.env.VITE_NASA_API_KEY?.trim() || 'DEMO_KEY';
+  const apiKey = import.meta.env.VITE_NASA_API_KEY?.trim();
 
   pending = Promise.all(
     EVENT_TYPES.map(type => fetchEndpointReports(type, startDate, endDate, apiKey, fetcher)),
@@ -123,7 +129,7 @@ export function solarEventFromDonkiReport(report: DonkiReport, difficulty: Diffi
     effect: `${severityLabel}-severity ${report.type} impacts habitat systems. Values are fictional game balance.`,
     deltas: addEffects(solarEvent.deltas),
     responses: solarEvent.responses?.map(response => ({ ...response, deltas: addEffects(response.deltas) })),
-    source: { ...report, url: safeDonkiUrl(report.url, report.type) },
+    source: { ...report, url: safeDonkiUrl(report.url) },
     majorEvent: { difficulty, severity, type: report.type },
   };
 }
@@ -134,13 +140,11 @@ function normalizeReports(value: unknown, type: DonkiEventType): DonkiReport[] {
     FLR: 'beginTime',
     CME: 'startTime',
     SEP: 'eventTime',
-    GST: 'startTime',
   };
   const idField: Record<DonkiEventType, string> = {
     FLR: 'flrID',
     CME: 'activityID',
     SEP: 'sepID',
-    GST: 'gstID',
   };
   return value.flatMap((item, index) => {
     if (!item || typeof item !== 'object') return [];
@@ -152,7 +156,7 @@ function normalizeReports(value: unknown, type: DonkiEventType): DonkiReport[] {
       id: String(record[idField[type]] ?? `${type}-${date}-${index}`),
       type,
       date,
-      url: safeDonkiUrl(typeof record.link === 'string' ? record.link : DONKI_URL, type),
+      url: typeof record.link === 'string' ? safeDonkiUrl(record.link) : DONKI_EVENTS_URL,
       summary: typeof record.note === 'string' && record.note.trim()
         ? record.note.trim()
         : `${type} activity recorded by NASA's space-weather database.`,
@@ -160,15 +164,15 @@ function normalizeReports(value: unknown, type: DonkiEventType): DonkiReport[] {
   });
 }
 
-function safeDonkiUrl(value: string, type: DonkiEventType): string {
+function safeDonkiUrl(value: string): string {
   try {
     const url = new URL(value);
     if (url.protocol === 'https:'
-      && (url.hostname === 'api.nasa.gov' || url.hostname === 'kauai.ccmc.gsfc.nasa.gov')) {
+      && (url.hostname === 'api.nasa.gov' || url.hostname === 'ccmc.gsfc.nasa.gov' || url.hostname === 'kauai.ccmc.gsfc.nasa.gov')) {
       return url.toString();
     }
   } catch {
-    // Use NASA's API landing page if the report has no valid NASA source link.
+    // Use NASA's event catalog if the report has no valid NASA source link.
   }
-  return `${DONKI_URL}/${type}`;
+  return DONKI_EVENTS_URL;
 }

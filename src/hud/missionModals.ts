@@ -2,7 +2,7 @@ import {
   destinationById, getColor, getRoomName, persistSave, specialistById, taskById,
   type MissionMetric, type MissionMetrics, type TaskDef, type TaskKind,
 } from '../model';
-import { routes } from '../app/router';
+import { routes, type DialogueOptions } from '../app/router';
 import {
   activeMap, configureScene, dom, effectivePlayerHelmet, escapeHtml, isMissionActive, missionDayNumber,
   pauseForModal, pauseMissionForModal, resumeFromModal, resumeMissionAfterModal,
@@ -13,9 +13,10 @@ import { StationMapUrls } from '../game/assets/AssetKeys';
 import { inferTaskSystem, renderTaskGame, SYSTEM_CONSOLE_META } from '../minigames';
 import { sfx } from '../sfx';
 import { assignmentGameTip } from './assignmentGames';
+import { COMMANDER_ART } from '../data/missionOpening';
 import { criticalStatus } from '../sim/checkpoints';
-import { handleEmergencyRepair, rewindMission, saveCheckpoint } from '../screens/missionScreens';
-import { applyTaskCompletion, clamp, metricDeltas } from '../sim/mission';
+import { failMissionToCheckpoint, handleEmergencyRepair, rewindMission, saveCheckpoint } from '../screens/missionScreens';
+import { applyTaskCompletion, clamp, metricDeltas, taskExchange } from '../sim/mission';
 import { METRIC_LABELS, renderArcadeButton, renderCharacterSpriteThumb, renderConstellationAction, renderConstellationIcon } from '../ui/icons';
 import { clearActiveModals, mountCustomModal } from '../ui/modalController';
 import { metricChips, setHudDrawer, syncHelmetButton, toggleHudDrawer, togglePlayerHelmet, updateHUD } from './hudController';
@@ -23,7 +24,6 @@ import { metricChips, setHudDrawer, syncHelmetButton, toggleHudDrawer, togglePla
 function resolveDialoguePortrait(speaker: string, art: string): string {
   const lowerSpeaker = speaker.toLowerCase();
   const lowerArt = art.toLowerCase();
-  if (lowerSpeaker.includes('russet')) return '/assets/ui/spudnaut/design/commander.webp';
   if (lowerSpeaker.includes('rover') || lowerArt.includes('traveller') || lowerArt.includes('explorer')) {
     return '/assets/ui/spudnaut/portrait-traveller.png';
   }
@@ -39,20 +39,41 @@ function resolveDialoguePortrait(speaker: string, art: string): string {
   return '/assets/ui/spudnaut/portrait-default.png';
 }
 
-export function showDialogue(options: {
-  speaker: string;
-  role: string;
-  art: string;
-  accent: string;
-  lines: string[];
-  onClose?: () => void;
-}): void {
+export function showDialogue(options: DialogueOptions): void {
   const { modalRoot } = dom();
   pauseForModal();
   let index = 0;
   let closed = false;
+  const commander = options.speaker.toLowerCase().includes('russet');
+  const { advanceKey, spotlight } = options;
+  const spotlightSelectors = {
+    tasks: '.hud-left-rail [data-action="tasks"]',
+    'task-drawer': '#hud-drawer-panel[data-mode="tasks"]',
+    'status-drawer': '#hud-drawer-panel[data-mode="status"]',
+    guide: undefined,
+  };
+  const spotlightSelector = spotlight && spotlightSelectors[spotlight];
   const shade = document.createElement('div');
   shade.className = 'modal-shade spud-dialogue-backdrop';
+  shade.classList.toggle('has-commander', commander);
+  shade.classList.toggle('is-task-spotlight', Boolean(spotlightSelector));
+  shade.classList.toggle('is-drawer-spotlight', spotlight === 'task-drawer' || spotlight === 'status-drawer');
+  shade.classList.toggle('is-guide-briefing', spotlight === 'guide');
+  if (advanceKey) shade.dataset.dialogueKey = advanceKey;
+  const spotlightTarget = spotlightSelector ? document.querySelector(spotlightSelector) : null;
+  const positionSpotlight = (): void => {
+    const rect = spotlightTarget?.getBoundingClientRect();
+    if (!rect) return;
+    shade.style.setProperty('--spotlight-x', `${rect.x - 5}px`);
+    shade.style.setProperty('--spotlight-y', `${rect.y - 5}px`);
+    shade.style.setProperty('--spotlight-width', `${rect.width + 10}px`);
+    shade.style.setProperty('--spotlight-height', `${rect.height + 10}px`);
+  };
+  if (spotlightTarget) {
+    positionSpotlight();
+    window.addEventListener('resize', positionSpotlight);
+    spotlightTarget.addEventListener('animationend', positionSpotlight);
+  }
   const finishClose = (): void => {
     if (closed) return;
     closed = true;
@@ -60,17 +81,34 @@ export function showDialogue(options: {
     resumeFromModal();
     options.onClose?.();
   };
+  const handleShortcut = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
+    if (!event.isTrusted || event.repeat || event.isComposing || event.altKey || event.ctrlKey || event.metaKey
+      || event.key.toUpperCase() !== advanceKey) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    sfx.click();
+    finishClose();
+  };
   mountCustomModal({
     modalRoot,
     node: shade,
     onCleanup: () => {
+      window.removeEventListener('resize', positionSpotlight);
+      spotlightTarget?.removeEventListener('animationend', positionSpotlight);
+      document.removeEventListener('keydown', handleShortcut, true);
       if (closed) return;
       closed = true;
       resumeFromModal();
-      options.onClose?.();
+      if (!advanceKey) options.onClose?.();
     },
   });
-  shade.addEventListener('click', (event) => {
+  if (advanceKey) document.addEventListener('keydown', handleShortcut, true);
+  else shade.addEventListener('click', (event) => {
     if (event.target === shade) finishClose();
   });
   const portraitSrc = resolveDialoguePortrait(options.speaker, options.art);
@@ -79,19 +117,20 @@ export function showDialogue(options: {
     const isLast = index >= options.lines.length - 1;
     const actionLabel = isLast ? 'CLOSE' : 'NEXT';
     shade.innerHTML = `
-      <section class="spud-dialogue-arcade" style="--accent:${options.accent}" role="dialog" aria-modal="true" aria-label="${escapeHtml(options.speaker)}">
-        <div class="spud-dialogue-badge is-portrait" aria-hidden="true">
-          <img src="${escapeHtml(portraitSrc)}" alt="" draggable="false" />
-        </div>
+      ${spotlightSelector ? '<div class="spud-dialogue-task-spotlight" aria-hidden="true"></div>' : ''}
+      <section class="spud-dialogue-arcade${commander ? ' has-commander' : ''}" style="--accent:${options.accent}" role="dialog" aria-modal="true" aria-label="${escapeHtml(options.speaker)}" aria-describedby="commander-dialogue-line" tabindex="-1">
+        ${commander
+          ? `<div class="spud-commander-model" aria-hidden="true"><img src="${COMMANDER_ART}" alt="" draggable="false" /></div>`
+          : `<div class="spud-dialogue-badge is-portrait" aria-hidden="true"><img src="${escapeHtml(portraitSrc)}" alt="" draggable="false" /></div>`}
         <header class="spud-dialogue-header">
           <span class="spud-dialogue-role">${escapeHtml(options.role)}</span>
           <h2 class="spud-dialogue-speaker">${escapeHtml(options.speaker)}</h2>
           <hr class="spud-dialogue-rule" />
         </header>
-        <p class="dialogue-line spud-dialogue-quote">${escapeHtml(line)}</p>
+        <p id="commander-dialogue-line" class="dialogue-line spud-dialogue-quote">${escapeHtml(line)}</p>
         <footer class="spud-dialogue-arcade-footer">
           <span class="spud-dialogue-pager">${options.lines.length > 1 ? `${index + 1} / ${options.lines.length}` : ''}</span>
-          ${renderArcadeButton({
+          ${advanceKey ? `<span class="spud-dialogue-key-prompt">Press <kbd>${advanceKey}</kbd> to continue</span>` : renderArcadeButton({
             label: actionLabel,
             attrs: 'data-dialogue-next',
             ariaLabel: isLast ? 'Close dialogue' : 'Next line',
@@ -101,6 +140,10 @@ export function showDialogue(options: {
         </footer>
       </section>
     `;
+    if (advanceKey) {
+      shade.querySelector<HTMLElement>('[role="dialog"]')?.focus();
+      return;
+    }
     const action = shade.querySelector<HTMLButtonElement>('[data-dialogue-next]')!;
     action.addEventListener('click', () => {
       sfx.click();
@@ -119,6 +162,7 @@ export function openMinigameModal(options: {
   title: string;
   kind: TaskKind;
   system?: MissionMetric;
+  effect?: Partial<MissionMetrics>;
   tip?: string;
   onClose: () => void;
   onComplete: () => void;
@@ -142,7 +186,8 @@ export function openMinigameModal(options: {
   box.setAttribute('aria-label', options.title);
   box.innerHTML = `
     <div class="spud-modal-top">
-      <div>
+      <div class="spud-console-head-copy">
+        <span class="spud-console-badge">TASK CONSOLE</span>
         <span class="spud-constellation-kicker" style="margin-bottom:2px;">${escapeHtml(options.eyebrow)}</span>
         <h2 class="spud-comic-heading is-sub">${escapeHtml(options.title)}</h2>
       </div>
@@ -157,6 +202,7 @@ export function openMinigameModal(options: {
       <span class="spud-console-pill is-perk">${escapeHtml(spec.role.toUpperCase())}</span>
       ${isCritical ? '<span class="spud-console-alert"><img src="/assets/ui/spudnaut/badge-override-alert.jpg" alt="" width="20" height="20" draggable="false" />CRITICAL &lt; 50</span>' : ''}
     </div>
+    ${options.effect ? `<div class="station-task-exchange"><span>When you finish</span>${metricChips(options.effect)}</div>` : ''}
     ${tip ? `<div class="minigame-tutorial">
       <button type="button" data-minigame-help aria-expanded="false" aria-controls="minigame-tip" aria-label="How to play">?</button>
       <p id="minigame-tip" hidden><strong>Commander Russet</strong> ${escapeHtml(tip)}
@@ -239,13 +285,14 @@ export function openMissionTask(taskId: string): void {
     title: task.name,
     kind: task.kind,
     system: task.system,
+    effect: taskExchange(task, lobby.specialist, mission.majorEventRun.difficulty),
     onClose: resumeMissionAfterModal,
     onComplete: () => {
       const beforeTask = { ...mission.metrics };
       const next = applyTaskCompletion(mission.metrics, task, lobby.specialist, mission.majorEventRun.difficulty);
       const failed = criticalStatus(next);
       if (failed) {
-        rewindMission(`That job used up your ${METRIC_LABELS[failed]}. Let’s give it another try!`, failed);
+        failMissionToCheckpoint(failed, `That assignment depleted your ${METRIC_LABELS[failed]} to 0%. Your mission ended and rolled back to your last major save point.`);
         return;
       }
       mission.completed = [...mission.completed, task.id];
@@ -264,6 +311,7 @@ export function showTaskResult(taskName: string, before: MissionMetrics): void {
   const { mission } = session;
   const changes = metricDeltas(before, mission.metrics);
   const lastTask = mission.completed.length >= mission.tasks.length;
+  const firstShiftComplete = lastTask && mission.opening === 'first-shift';
   let closed = false;
   mountCustomModal({
     modalRoot,
@@ -271,19 +319,20 @@ export function showTaskResult(taskName: string, before: MissionMetrics): void {
     <div class="modal-shade">
       <section class="spud-modal-frame task-result-card" role="dialog" aria-modal="true" aria-labelledby="task-result-title">
         <div class="spud-modal-top">
-          <div>
-            <span class="spud-constellation-kicker" style="margin-bottom:2px;">SYSTEMS REPORT · ${escapeHtml(mission.room)}</span>
+          <div class="spud-console-head-copy">
+            <span class="spud-console-badge is-complete">SYSTEMS REPORT</span>
+            <span class="spud-constellation-kicker" style="margin-bottom:2px;">${escapeHtml(mission.room)}</span>
             <h2 class="spud-comic-heading is-sub" id="task-result-title">${escapeHtml(taskName)} COMPLETE</h2>
           </div>
         </div>
         <div class="spud-copy-block">
-          <p>Great work! See how this job changed your bars.</p>
+          <p>Great work! See what your job helped and what it used.</p>
         </div>
         <div class="spud-telemetry-grid" style="display:flex;flex-wrap:wrap;gap:10px 18px;">${metricChips(changes)}</div>
         <footer class="spud-constellation-actions is-centered">
           ${renderConstellationAction({
             icon: lastTask ? 'cert' : 'forward',
-            label: lastTask ? 'SEND EARTH REPORT' : 'CONTINUE SHIFT',
+            label: lastTask && !firstShiftComplete ? 'SEND EARTH REPORT' : 'CONTINUE SHIFT',
             attrs: 'data-result-continue',
             variant: 'primary',
           })}
@@ -303,7 +352,10 @@ export function showTaskResult(taskName: string, before: MissionMetrics): void {
     clearActiveModals(modalRoot, { restoreFocus: true });
     resumeMissionAfterModal();
     updateHUD();
-    if (lastTask) routes.finishDay('All daily assignments completed. Crew systems stable.');
+    if (firstShiftComplete) {
+      configureScene();
+      showToast('All three assignments are complete. Go to the Crew Bunk in Crew Quarters and rest until Day 2.', 6500);
+    } else if (lastTask) routes.finishDay('All daily assignments completed. Crew systems stable.');
     else {
       showToast(`${mission.tasks.length - mission.completed.length} assignment${mission.tasks.length - mission.completed.length === 1 ? '' : 's'} remain today.`);
     }
@@ -342,12 +394,15 @@ export function openMap(): void {
   const { modalRoot } = dom();
   if (currentScreen !== 'training' && currentScreen !== 'mission') return;
   const map = activeMap();
+  const blackout = currentScreen === 'mission' && mission.opening === 'blackout';
+  const canRest = currentScreen === 'mission' && mission.opening === 'first-shift' && mission.tasks.length > 0
+    && mission.completed.length === mission.tasks.length;
   const activeTasks = currentScreen === 'mission' ? mission.tasks : map.interactions.map((item) => item.id);
   const completed = currentScreen === 'mission' ? mission.completed : training.completed;
   const scale = 680 / map.width;
   const height = Math.round(map.height * scale);
   const marker = (x: number, y: number, tone: string, label?: string): string => (
-    `<button type="button" class="spud-map-marker map-marker" data-map-walk-x="${Math.round(x)}" data-map-walk-y="${Math.round(y)}" data-map-walk-label="${escapeHtml(label ?? 'Waypoint')}" aria-label="${escapeHtml(`Walk to ${label ?? 'waypoint'}`)}" title="${escapeHtml(label ?? 'Waypoint')}" style="left:${(x / map.width) * 100}%;top:${(y / map.height) * 100}%;--marker-color:${tone};"></button>`
+    `<button type="button" class="spud-map-marker map-marker" ${blackout ? 'disabled' : ''} data-map-walk-x="${Math.round(x)}" data-map-walk-y="${Math.round(y)}" data-map-walk-label="${escapeHtml(label ?? 'Waypoint')}" aria-label="${escapeHtml(label ?? 'Waypoint')}" title="${escapeHtml(label ?? 'Waypoint')}" style="left:${(x / map.width) * 100}%;top:${(y / map.height) * 100}%;--marker-color:${tone};"></button>`
   );
 
   clearActiveModals(modalRoot, { restoreFocus: false });
@@ -364,11 +419,12 @@ export function openMap(): void {
         <div class="spud-map-blueprint map-canvas ${map.id === 'surface' ? 'is-surface' : ''}" style="${map.id === 'surface' ? '' : `height:${height}px;`}">
           ${map.id === 'surface' ? `<img class="spud-map-art" src="${StationMapUrls.overview}" alt="" aria-hidden="true" />` : ''}
           ${map.rooms.map((room) => `
-            <button type="button" class="spud-map-room map-room" data-map-walk-x="${Math.round(room.x + room.w / 2)}" data-map-walk-y="${Math.round(room.y + room.h / 2)}" data-map-walk-label="${escapeHtml(room.name)}" title="Click to walk to ${escapeHtml(room.name)}" style="left:${(room.x / map.width) * 100}%;top:${(room.y / map.height) * 100}%;width:${(room.w / map.width) * 100}%;height:${(room.h / map.height) * 100}%;--room-accent:${room.accent};">
+            <button type="button" class="spud-map-room map-room" ${blackout ? 'disabled' : ''} data-map-walk-x="${Math.round(room.x + room.w / 2)}" data-map-walk-y="${Math.round(room.y + room.h / 2)}" data-map-walk-label="${escapeHtml(room.name)}" title="${escapeHtml(blackout ? room.name : `Click to walk to ${room.name}`)}" style="left:${(room.x / map.width) * 100}%;top:${(room.y / map.height) * 100}%;width:${(room.w / map.width) * 100}%;height:${(room.h / map.height) * 100}%;--room-accent:${room.accent};">
               <span>${escapeHtml(room.name.toUpperCase())}</span>
             </button>
           `).join('')}
           ${map.interactions.filter((item) => activeTasks.includes(item.id)).map((item) => marker(item.x, item.y, completed.includes(item.id) ? '#8fe6a8' : item.id.startsWith('emergency-') ? '#ff5a5f' : (item.accent ?? '#f5c451'), item.name)).join('')}
+          ${canRest ? marker(416, 1584, '#8cf5ed', 'Crew Bunk') : ''}
           ${marker(currentScreen === 'training' ? training.x : mission.playerX, currentScreen === 'training' ? training.y : mission.playerY, getColor(save.colorId).css, 'Current Position')}
         </div>
         </div>
@@ -379,7 +435,7 @@ export function openMap(): void {
             <span style="color:#ff5a5f;">● DAMAGED AREA</span>
             <span style="color:#8fe6a8;">● COMPLETE</span>
           </div>
-          <span>CLICK ANY ROOM OR MARKER TO WALK THERE</span>
+          <span>${blackout ? 'USE THE MAP TO FIND THE REACTOR DOME' : 'CLICK ANY ROOM OR MARKER TO SHOW ROUTE LINE'}</span>
         </div>
       </section>
     </dialog>
@@ -511,7 +567,7 @@ export function openHelp(): void {
       <div class="spud-copy-stack">
         <div class="spud-copy-block">
           <h2>01 · MOVEMENT &amp; AUTO-PILOT</h2>
-          <p>Use <b>WASD</b> or the <b>arrow keys</b> to walk. Click or tap the deck, a room in <b>Map (M)</b>, or a destination in <b>Tasks (T)</b> to auto-pilot. Press <b>G</b> to toggle your EVA helmet.</p>
+          <p>Use <b>WASD</b> or the <b>arrow keys</b> to walk. Click a room in <b>Map (M)</b> or a task in <b>Tasks (T)</b> to show a route line to follow. Press <b>G</b> to toggle your EVA helmet.</p>
         </div>
         <div class="spud-constellation-divider" aria-hidden="true"></div>
         <div class="spud-copy-block">

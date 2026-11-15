@@ -26,16 +26,20 @@ export function openConstellationConfirmDialog(opts: {
     ? renderFigmaIcon('confirm-launch', 'spud-confirm-icon is-tight')
     : renderConstellationIcon(opts.confirmIcon, 'spud-confirm-icon');
   modalRoot.innerHTML = `
-    <dialog class="game-menu-dialog mission-abort-dialog spud-arcade-confirm${isDanger ? ' is-danger' : ''}" aria-labelledby="confirm-modal-title" aria-describedby="confirm-modal-description">
+    <dialog class="game-menu-dialog mission-abort-dialog spud-arcade-confirm${isDanger ? ' is-danger' : ' is-restart-mockup'}" aria-labelledby="confirm-modal-title" aria-describedby="confirm-modal-description">
+      ${isDanger ? '' : `
+        <img class="spud-confirm-mascot is-top-left" src="/assets/potato-default.png" alt="" aria-hidden="true" draggable="false" />
+        <img class="spud-confirm-mascot is-bottom-right" src="/assets/ui/spudnaut/portrait-cmdr-russet.png" alt="" aria-hidden="true" draggable="false" />
+      `}
       <section class="spud-copy-stack spud-confirm-shell">
         <div class="spud-confirm-hero">
-          <img class="spud-confirm-badge-art" src="/assets/ui/spudnaut/badge-override-alert.jpg" alt="" aria-hidden="true" draggable="false" />
+          ${isDanger ? `<img class="spud-confirm-badge-art" src="/assets/ui/spudnaut/badge-override-alert.jpg" alt="" aria-hidden="true" draggable="false" />` : ''}
           <div class="spud-confirm-heading-group">
-            <span class="spud-constellation-kicker">${escapeHtml(opts.kicker)}</span>
+            ${isDanger ? `<span class="spud-constellation-kicker">${escapeHtml(opts.kicker)}</span>` : ''}
             <h2 id="confirm-modal-title" class="spud-comic-heading is-sub">${escapeHtml(opts.title)}</h2>
           </div>
         </div>
-        <hr class="spud-dialogue-rule" />
+        ${isDanger ? '<hr class="spud-dialogue-rule" />' : ''}
         <div class="spud-copy-block spud-confirm-copy">
           <p id="confirm-modal-description">${escapeHtml(opts.description)}</p>
           ${opts.errorText ? `<p class="mission-abort-error" style="color:var(--spud-danger);" role="alert" hidden>${escapeHtml(opts.errorText)}</p>` : ''}

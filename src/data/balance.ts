@@ -41,7 +41,7 @@ export const DAY = {
   veteranMs: 135000,
   penaltyScale: 0.72,
   assignmentsPerDay: 3,
-  offerCount: 6,
+  offerCount: 5,
 } as const;
 
 export const TRAINING = {
@@ -72,13 +72,24 @@ export const DIFFICULTY_EXCHANGE = {
   veteran: { benefit: 10, cost: 6 },
 } as const;
 
-/* Simplified per-day game wear and consumables, not engineering limits or NASA telemetry. */
+/* Per-day habitat consumption rates scaled from NASA ECLSS (98% water recovery / O2 draw),
+ * Deep Space Habitation power budgets, OSDR payload calibration drift, and Veggie/PONDS food & nutrient draw. */
 export const DAILY_OPERATIONS_DRIFT = {
-  life: -1.5,
-  power: -1.5,
-  research: 0,
-  farm: -1,
+  life: -2,
+  power: -2.5,
+  research: -1,
+  farm: -1.5,
 } as const;
+
+/* Per-second live consumption during active shift gameplay (5x baseline, DAILY_OPERATIONS_DRIFT / 10s). */
+export const LIVE_DRAIN_PER_SECOND = {
+  life: -0.2,
+  power: -0.25,
+  research: -0.1,
+  farm: -0.15,
+} as const;
+
+export const EMERGENCY_DRAIN_MULTIPLIER = 3;
 
 export const METRIC_LIMITS = {
   min: 0,

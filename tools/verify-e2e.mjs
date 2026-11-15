@@ -334,6 +334,88 @@ async function pressKey(cdp, key, code, holdMs = 0) {
   await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: vk });
 }
 
+async function walkToOpeningPoint(cdp, x, y) {
+  for (const [axis, target, backward, forward] of [
+    ['x', x, 'a', 'd'], ['y', y, 'w', 's'],
+  ]) {
+    const pos = () => cdp.eval(`window.__spudTelemetry().player.${axis}`);
+    const start = await pos();
+    if (Math.abs(start - target) <= 5) continue;
+    const sign = Math.sign(target - start);
+    const key = sign < 0 ? backward : forward;
+    const code = `Key${key.toUpperCase()}`;
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key, code, windowsVirtualKeyCode: vkFor(key) });
+    try {
+      await waitFor(async () => (target - await pos()) * sign <= 5, `manual movement toward ${axis}=${target}`, 13000, 30);
+    } finally {
+      await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: vkFor(key) });
+    }
+  }
+}
+
+async function walkAlongGuide(cdp, checkExpr, label, timeoutMs = 24000) {
+  const deadline = Date.now() + timeoutMs;
+  const held = new Set();
+  const setKeys = async (want) => {
+    for (const k of [...held]) {
+      if (!want.includes(k)) {
+        await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code: k, windowsVirtualKeyCode: vkFor(k) });
+        held.delete(k);
+      }
+    }
+    for (const k of want) {
+      if (!held.has(k)) {
+        await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code: k, windowsVirtualKeyCode: vkFor(k) });
+        held.add(k);
+      }
+    }
+  };
+  let lastPos = null;
+  let stalledTicks = 0;
+  try {
+    while (Date.now() < deadline) {
+      const state = await cdp.eval(`(() => {
+        const done = (${checkExpr});
+        if (done) return { done };
+        const t = window.__spudTelemetry?.();
+        if (!t?.player || !t?.guide?.path?.length) return { nav: null };
+        const p = t.player;
+        const candidates = t.guide.path.length > 1 ? t.guide.path.slice(1) : t.guide.path;
+        const wp = candidates.find((pt) => Math.hypot(pt.x - p.x, pt.y - p.y) > 10) || candidates[candidates.length - 1];
+        return {
+          p,
+          center: t.guide.path[0],
+          nav: { dx: wp.x - p.x, dy: wp.y - p.y },
+        };
+      })()`);
+      if (state?.done) return state.done;
+      const nav = state?.nav;
+      if (nav && state?.p) {
+        if (lastPos && Math.hypot(state.p.x - lastPos.x, state.p.y - lastPos.y) < 1.5) stalledTicks += 1;
+        else stalledTicks = 0;
+        lastPos = state.p;
+        const targetVec = stalledTicks >= 2 && state.center
+          ? { dx: state.center.x - state.p.x, dy: state.center.y - state.p.y }
+          : nav;
+        const keys = [];
+        const threshold = stalledTicks >= 2 ? 0.5 : 3;
+        if (targetVec.dx < -threshold) keys.push('ArrowLeft');
+        else if (targetVec.dx > threshold) keys.push('ArrowRight');
+        if (targetVec.dy < -threshold) keys.push('ArrowUp');
+        else if (targetVec.dy > threshold) keys.push('ArrowDown');
+        await setKeys(keys);
+      } else {
+        await setKeys([]);
+      }
+      await sleep(200);
+    }
+    const diag = await cdp.eval(`(() => { const t = window.__spudTelemetry?.(); return { room: t?.room, player: t?.player, guide: t?.guide }; })()`);
+    throw new Error(`Timed out waiting for: ${label} (${JSON.stringify(diag)})`);
+  } finally {
+    await setKeys([]);
+  }
+}
+
 function assertErrorsClean(errors, passName) {
   assert(errors.consoleErrors.length === 0, `[${passName}] consoleErrors: ${errors.consoleErrors.join('; ')}`);
   assert(errors.pageErrors.length === 0, `[${passName}] pageErrors: ${errors.pageErrors.join('; ')}`);
@@ -515,8 +597,10 @@ async function runPass1() {
     await clickSelector(cdp, '[data-training-exit]');
     await waitFor(() => cdp.eval(`document.body.dataset.screen === 'menu'`), 'menu after training exit');
 
-    // Open Play -> Traveller loadout -> Cadet 3-shift check -> Habitat -> check Moon hero & Launch check.
+    // Open Play -> play-intro video -> Traveller loadout -> Cadet 3-shift check -> Habitat -> check Moon hero & Launch check.
     await clickSelector(cdp, '[data-menu="play"]');
+    await waitFor(() => cdp.eval(`document.body.dataset.screen === 'play-intro' && Boolean(document.querySelector('.intro-skip'))`), 'play intro video');
+    await clickSelector(cdp, '.intro-skip');
     await waitFor(() => cdp.eval(`document.body.dataset.screen === 'lobby' && Boolean(document.querySelector('[data-specialist="traveller"]'))`), 'lobby traveller specialist');
     const bannerWidths = [];
     for (const specialist of ['repairman', 'farmer', 'traveller', 'researcher']) {
@@ -581,6 +665,8 @@ async function enterMissionDay01(cdp, specialist = 'traveller', options = {}) {
     await waitFor(() => cdp.eval(`document.body.dataset.screen === 'menu'`), 'menu');
   }
   await clickSelector(cdp, '[data-menu="play"]');
+  await waitFor(() => cdp.eval(`document.body.dataset.screen === 'play-intro' && Boolean(document.querySelector('.intro-skip'))`), 'play intro video');
+  await clickSelector(cdp, '.intro-skip');
   await waitFor(() => cdp.eval(`document.body.dataset.screen === 'lobby' && Boolean(document.querySelector('[data-specialist]'))`), 'lobby');
   const specialistOrder = ['repairman', 'farmer', 'traveller', 'researcher'];
   const active = await cdp.eval(`document.querySelector('[data-specialist][aria-pressed=true]').dataset.specialist`);
@@ -596,6 +682,23 @@ async function enterMissionDay01(cdp, specialist = 'traveller', options = {}) {
   await clickSelector(cdp, '[data-launch-begin]');
   await waitFor(() => cdp.eval(`document.body.dataset.screen === 'launch' && Boolean(document.querySelector('.intro-skip'))`), 'launch flight deck');
   await clickSelector(cdp, '.intro-skip');
+  await waitFor(() => cdp.eval(`(() => {
+    const t = window.__spudTelemetry?.();
+    return t?.ready && t.room === 'Landing Pad' && t.frozen && !document.querySelector('#station-blackout').hidden
+      && document.querySelector('.spud-commander-model img')?.naturalWidth > 0;
+  })()`), 'Commander briefing and blackout at the Landing Pad', 20000);
+  assert(await cdp.eval(`window.__spudTelemetry().guide === null && document.querySelector('#hud-special-alert').hidden`),
+    'opening blackout has neither a path line nor an emergency warning');
+  await clickSelector(cdp, '.has-commander [data-dialogue-next]');
+  await waitFor(() => cdp.eval(`!window.__spudTelemetry?.()?.frozen`), 'blackout player movement enabled');
+  for (const [x, y] of [[1696, 906], [896, 906], [896, 400], [856, 400]]) {
+    await walkToOpeningPoint(cdp, x, y);
+  }
+  await waitFor(() => cdp.eval(`document.querySelector('[data-action="use"]')?.dataset.targetName.includes('Restore Station Power')`), 'reactor power switch in range');
+  await clickSelector(cdp, '[data-action="use"]');
+  await waitFor(() => cdp.eval(`document.querySelector('#station-blackout').hidden && Boolean(document.querySelector('.spud-dialogue-task-spotlight'))`),
+    'restored vision and spotlight on Tasks');
+  await clickSelector(cdp, '.has-commander [data-dialogue-next]');
   await waitFor(() => cdp.eval(`Boolean(document.querySelector('.shift-planner[open]:not([inert])'))`), 'day 01 shift planner');
   const layout = await cdp.eval(`(() => {
     const rect = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
@@ -624,7 +727,7 @@ async function enterMissionDay01(cdp, specialist = 'traveller', options = {}) {
     && document.querySelectorAll('#planning-status-bars meter').length === 4`), 'six offers and four preview meters');
   console.log('HUD layout, card selection timer, four gauges, and six assignment offers verified.');
 
-  await startPlannedShift(cdp, options);
+  await startPlannedShift(cdp, { ...options, expectHudBriefing: true });
 }
 
 async function startPlannedShift(cdp, options = {}) {
@@ -644,6 +747,40 @@ async function startPlannedShift(cdp, options = {}) {
     return c && !c.disabled;
   })()`), 'planning confirm enabled');
   await clickSelector(cdp, '[data-planning-confirm]');
+
+  if (options.expectHudBriefing) {
+    await waitFor(() => cdp.eval(`Boolean(document.querySelector('[data-dialogue-key="T"]'))`), 'Commander asks for T');
+    await pressKey(cdp, 'v', 'KeyV');
+    await pressKey(cdp, 'Escape', 'Escape');
+    await cdp.eval(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 't', code: 'KeyT', bubbles: true }))`);
+    assert(await cdp.eval(`Boolean(document.querySelector('[data-dialogue-key="T"]'))
+      && document.querySelector('#hud-drawer-panel').hidden`), 'wrong key, Escape, and synthetic T cannot advance the briefing');
+    await pressKey(cdp, 't', 'KeyT');
+    await waitFor(() => cdp.eval(`Boolean(document.querySelector('[data-dialogue-key="V"]'))
+      && Boolean(document.querySelector('#hud-drawer-panel[data-mode="tasks"]:not([hidden])'))
+      && document.querySelectorAll('#hud-tasks-list .hud-task-card-item').length === 3`), 'T opens the three chosen tasks');
+    await pressKey(cdp, 't', 'KeyT');
+    assert(await cdp.eval(`Boolean(document.querySelector('[data-dialogue-key="V"]'))`), 'pressing T again does not complete the Status step');
+    await cdp.eval(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', code: 'KeyV', bubbles: true }))`);
+    assert(await cdp.eval(`Boolean(document.querySelector('[data-dialogue-key="V"]'))
+      && Boolean(document.querySelector('#hud-drawer-panel[data-mode="tasks"]:not([hidden])'))`), 'synthetic V cannot open Status');
+    await pressKey(cdp, 'v', 'KeyV');
+    await waitFor(() => cdp.eval(`(() => {
+      const drawer = document.querySelector('#hud-drawer-panel[data-mode="status"]:not([hidden])');
+      const highlight = document.querySelector('#modal-root .spud-dialogue-task-spotlight');
+      const line = document.querySelector('.dialogue-line')?.textContent;
+      if (!drawer || !highlight || !line?.includes('Life, Power, Research, and Farm')
+        || document.querySelector('[data-dialogue-key]') || drawer.querySelectorAll('.hud-status-card').length !== 4) return false;
+      const panel = drawer.getBoundingClientRect();
+      const spot = highlight.getBoundingClientRect();
+      return spot.left <= panel.left && spot.right >= panel.right && spot.top <= panel.top && spot.bottom >= panel.bottom;
+    })()`), 'V reveals the final line and highlights all four Status readings');
+    await clickSelector(cdp, '#modal-root [data-dialogue-next]');
+    await pressKey(cdp, 'Escape', 'Escape');
+    await pressKey(cdp, 'm', 'KeyM');
+    await waitFor(() => cdp.eval(`Boolean(document.querySelector('.station-map-dialog[open]'))`), 'M opens the map after the briefing');
+    await pressKey(cdp, 'Escape', 'Escape');
+  }
 
   await waitFor(() => cdp.eval(`(() => {
     const t = window.__spudTelemetry?.();
@@ -666,18 +803,33 @@ async function solveActiveMinigame(cdp) {
     const host = document.querySelector('#task-body');
     if (host.querySelector('.wiring-board')) return 'wiring';
     if (host.querySelector('.signal-grid')) return 'signal';
-    if (host.querySelector('.pipes-grid')) return 'pipes';
+    if (host.querySelector('[data-pipe-piece]')) return 'pipes';
+    if (host.querySelector('[data-load-folder]')) return 'folders';
+    if (host.querySelector('[data-grow-light]')) return 'grow-plant';
+    if (host.querySelector('[data-circuit-slider]')) return 'circuit-slider';
+    if (host.querySelector('[data-power-switch]')) return 'power-switches';
     if (host.querySelector('input[type=range]')) return 'slider';
     if (host.querySelector('.assignment-grid')) return 'tiles';
     return 'unknown';
   })()`);
 
   if (kindInfo === 'pipes') {
-    await cdp.eval(`document.querySelectorAll('.pipes-grid > div').forEach(cell => {
-      const [turn, latch] = cell.querySelectorAll('button');
-      while (latch.disabled) turn.click();
-      latch.click();
-    });`);
+    await cdp.eval(`document.querySelectorAll('[data-pipe-piece]').forEach(button => {
+      for (let i = 0; i < 4 && !button.classList.contains('is-aligned'); i++) button.click();
+    }); document.querySelector('[data-run-water]').click();`);
+  } else if (kindInfo === 'folders') {
+    await cdp.eval(`document.querySelectorAll('[data-load-folder]').forEach(button => button.click()); document.querySelector('[data-send-folders]').click();`);
+  } else if (kindInfo === 'grow-plant') {
+    await clickSelector(cdp, '[data-grow-light]');
+  } else if (kindInfo === 'circuit-slider') {
+    await cdp.eval(`(() => {
+      const slider = document.querySelector('[data-circuit-slider]');
+      slider.value = slider.getAttribute('aria-label').match(/\\d+/)[0];
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
+      document.querySelector('[data-lock-slider]').click();
+    })()`);
+  } else if (kindInfo === 'power-switches') {
+    await cdp.eval(`document.querySelectorAll('[data-power-switch]:not(.is-matched)').forEach(button => button.click()); document.querySelector('[data-reset-switches]').click();`);
   } else if (kindInfo === 'slider') {
     await cdp.eval(`for (let turn = 0; turn < 6; turn += 1) {
       const slider = document.querySelector('#task-body input[type=range]:not(:disabled)');
@@ -724,7 +876,7 @@ async function solveActiveMinigame(cdp) {
   await clickSelector(cdp, '.task-result-card [data-result-continue]');
 }
 
-async function finishAssignedTasks(cdp) {
+async function finishAssignedTasks(cdp, { waitForBunk = false } = {}) {
   for (let taskIdx = 0; taskIdx < 6; taskIdx += 1) {
     if (await cdp.eval(`Boolean(document.querySelector('.earth-report-full'))`)) break;
     const isTasksOpen = await cdp.eval(`document.querySelector('[data-action="tasks"]')?.getAttribute('aria-expanded') === 'true'`);
@@ -742,7 +894,7 @@ async function finishAssignedTasks(cdp) {
     if (!nextTask) break;
     await clickSelector(cdp, `#hud-tasks-list [data-drawer-walk-task="${nextTask.id}"]`);
 
-    await waitFor(() => cdp.eval(`((expected) => {
+    await walkAlongGuide(cdp, `((expected) => {
       const btn = document.querySelector('[data-action="use"]');
       if (!btn || btn.disabled) return null;
       const targetName = (btn.dataset.targetName || '').toUpperCase();
@@ -751,7 +903,7 @@ async function finishAssignedTasks(cdp) {
       }
       if (expected.title && !targetName.includes(expected.title.toUpperCase())) return null;
       return btn.dataset.targetName || 'ready';
-    })(${JSON.stringify(nextTask)})`), `arrived at task ${nextTask.id} (${nextTask.title})`, 22000)
+    })(${JSON.stringify(nextTask)})`, `arrived at task ${nextTask.id} (${nextTask.title})`, 32000)
       .catch(async error => {
         console.error(await cdp.eval(`({ player: window.__spudTelemetry?.()?.player, targetName: document.querySelector('[data-action="use"]')?.dataset.targetName,
           toast: document.querySelector('#toast')?.textContent, drawer: document.querySelector('[data-action=tasks]')?.getAttribute('aria-expanded') })`));
@@ -760,15 +912,49 @@ async function finishAssignedTasks(cdp) {
 
     await clickSelector(cdp, '[data-action="use"]');
     if (nextTask.id.startsWith('emergency-')) {
+      assert(await cdp.eval(`document.querySelector('#hud')?.classList.contains('is-red-alert')`), 'red-alert blackout active during emergency');
+      await waitFor(() => cdp.eval(`document.querySelector('.dialogue-line')?.textContent.includes('huge cloud came from the Sun')`),
+        'Commander explains the Sun Cloud on first arrival at the airlock');
+      assert(await cdp.eval(`(() => {
+        const t = window.__spudTelemetry();
+        return t.room === 'Landing Pad' && document.querySelector('#hud-special-alert-text').textContent === 'Sun Cloud'
+          && !document.querySelector('[data-disaster-tool]');
+      })()`), 'only the airlock has the Sun Cloud repair and Commander speaks before the cards');
+      await clickSelector(cdp, '.has-commander [data-dialogue-next]');
       await waitFor(() => cdp.eval(`Boolean(document.querySelector('.disaster-card'))`), 'damaged area repair modal');
-      const types = { FLR: 'power', CME: 'life', SEP: 'research', GST: 'farm' };
-      const type = await cdp.eval(`JSON.parse(localStorage.getItem('spudnaut-cooperative-trial-save-v8')).activeTrial.donkiReport.type`);
-      await clickSelector(cdp, `[data-disaster-tool="${types[type]}"]`);
-      console.log(`Repaired damaged area for ${type} (${nextTask.id}).`);
+      const { type, id } = await cdp.eval(`JSON.parse(localStorage.getItem('spudnaut-cooperative-trial-save-v8')).activeTrial.donkiReport`);
+      assert(type === 'CME' && id === 'e2e-cme', 'later shift has a separate DONKI emergency');
+      assert(await cdp.eval(`Array.from(document.querySelectorAll('[data-disaster-tool] strong'), card => card.textContent).join(',') === 'Power Wrench,Shield Patch,Sensor Fixer'`),
+        'emergency panel offers the three kid-friendly repair cards');
+      await clickSelector(cdp, '[data-disaster-tool="power"]');
+      await waitFor(() => cdp.eval(`Boolean(document.querySelector('.emergency-rewind'))`), 'wrong card rewinds a later emergency');
+      await waitFor(() => cdp.eval(`!document.querySelector('.emergency-rewind') && window.__spudTelemetry()?.guide?.isEmergency`), 'red route returns after rewind');
+      await walkAlongGuide(cdp, `document.querySelector('[data-action="use"]:enabled')?.dataset.targetName.includes('Airlock Shield')`, 'revisit the airlock repair', 32000);
+      await clickSelector(cdp, '[data-action="use"]');
+      await waitFor(() => cdp.eval(`Boolean(document.querySelector('[data-disaster-tool="life"]'))
+        && !document.querySelector('.has-commander')`), 'revisited repair goes straight to the cards');
+      await clickSelector(cdp, '[data-disaster-tool="life"]');
+      await waitFor(() => cdp.eval(`!document.querySelector('#hud')?.classList.contains('is-red-alert')`), 'red-alert clears after repair');
+      const repair = await cdp.eval(`(() => {
+        const trial = JSON.parse(localStorage.getItem('spudnaut-cooperative-trial-save-v8')).activeTrial;
+        return { pending: trial.pendingDisaster, completed: trial.completed, accusation: Boolean(document.querySelector('[data-culprit-guess]')) };
+      })()`);
+      assert(!repair.pending && repair.completed.includes(nextTask.id) && !repair.accusation,
+        `expected repair to be completed and saved immediately: ${JSON.stringify(repair)}`);
+      console.log(`Repaired ${type} space-weather damage (${nextTask.id}).`);
     } else {
       await solveActiveMinigame(cdp);
       console.log(`Completed ${nextTask.title}.`);
     }
+  }
+
+  if (waitForBunk) {
+    assert(await cdp.eval(`(() => {
+      const trial = JSON.parse(localStorage.getItem('spudnaut-cooperative-trial-save-v8')).activeTrial;
+      return trial.completed.length === 3 && trial.phase === 'playing' && trial.eventId === 'station-blackout';
+    })()`), 'Day 1 ends only after the Crew Bunk interaction');
+    await pressKey(cdp, 'Escape', 'Escape');
+    return;
   }
 
   const reportReached = await waitFor(() => cdp.eval(`(() => {
@@ -788,6 +974,36 @@ async function finishAssignedTasks(cdp) {
   }
 }
 
+async function playGuidedEmergency(cdp) {
+  await clickSelector(cdp, '[data-action="map"]');
+  await waitFor(() => cdp.eval(`Boolean(document.querySelector('.station-map-dialog[open] [data-map-walk-label="Crew Bunk"]'))`), 'crew bunk marker');
+  await clickSelector(cdp, '[data-map-walk-label="Crew Bunk"]');
+  await walkAlongGuide(cdp, `document.querySelector('[data-action="use"]')?.dataset.targetName.includes('Rest Until Day 2')`, 'crew bunk', 32000);
+  await clickSelector(cdp, '[data-action="use"]');
+  await waitFor(() => cdp.eval(`Boolean(document.querySelector('[data-bed-confirm]'))`), 'Crew Bunk rest confirmation');
+  await clickSelector(cdp, '[data-bed-confirm]');
+  await waitFor(() => cdp.eval(`document.querySelector('.spud-dialogue-backdrop.is-guide-briefing')
+    && window.__spudTelemetry()?.guide?.isEmergency && window.__spudTelemetry().guide.path.length > 0
+    && !document.querySelector('#hud-special-alert').hidden
+    && document.querySelector('#hud-special-alert-text').textContent === 'Sun Flash'
+    && !document.querySelector('[data-disaster-tool]')`),
+    'Day 2 guided emergency briefing and highlighted route');
+  await clickSelector(cdp, '.has-commander [data-dialogue-next]');
+  await walkAlongGuide(cdp, `document.querySelector('[data-action="use"]')?.dataset.targetName.includes('Power Box')`, 'guided solar flare repair', 40000);
+  await clickSelector(cdp, '[data-action="use"]');
+  await waitFor(() => cdp.eval(`document.querySelector('.dialogue-line')?.textContent.includes('bright flash came from the Sun')`), 'Commander explains the Sun Flash');
+  await clickSelector(cdp, '.has-commander [data-dialogue-next]');
+  await waitFor(() => cdp.eval(`document.querySelectorAll('[data-disaster-tool]').length === 3
+    && document.querySelector('.disaster-warning a')?.href.endsWith('/49453/-1')`), 'three repair cards and DONKI source');
+  await clickSelector(cdp, '[data-disaster-tool="life"]');
+  await waitFor(() => cdp.eval(`document.querySelector('.disaster-clue[role="status"]')?.textContent.includes('try another tool')
+    && !document.querySelector('.emergency-rewind')`), 'wrong repair card allows a retry in place');
+  await clickSelector(cdp, '[data-disaster-tool="power"]');
+  await waitFor(() => cdp.eval(`document.querySelector('.dialogue-line')?.textContent.includes('Moon hero')
+    && document.querySelector('#hud-special-alert').hidden`), 'Commander congratulates the player and emergency clears');
+  await clickSelector(cdp, '.has-commander [data-dialogue-next]');
+}
+
 async function runPass2() {
   console.log('\n=== PASS 2: Tutorial Walkthrough, Patrols, EVA Hazard + Life Drain, Modal Freeze & Full Day 01 Report ===');
   const p2 = await launchChromePass({
@@ -801,21 +1017,24 @@ async function runPass2() {
       const originalFetch = window.fetch;
       window.fetch = (resource, init) => {
         const url = String(resource);
-        if (!url.startsWith('https://api.nasa.gov/DONKI/')) return originalFetch(resource, init);
+        if (!url.startsWith('https://ccmc.gsfc.nasa.gov/DONKI-API/get/') && !url.startsWith('https://api.nasa.gov/DONKI/')) return originalFetch(resource, init);
         return Promise.resolve(Response.json(url.includes('/FLR?')
-          ? [{ flrID: 'e2e-flare', beginTime: '2026-11-14T00:00Z', classType: 'M1' }] : []));
+          ? [{ flrID: 'e2e-flare', beginTime: '2026-11-14T07:33Z', classType: 'M1.7', link: 'https://ccmc.gsfc.nasa.gov/DONKI/view/FLR/49453/-1' }]
+          : url.includes('/CME?') ? [{ activityID: 'e2e-cme', startTime: '2026-11-13T01:48Z' }] : []));
       };
       crypto.getRandomValues = array => { array.fill(7); return array; };
     ` });
     await enterMissionDay01(cdp, 'researcher', {
-      difficulty: 'cadet', testRewind: true, tasks: ['upload-admin', 'grow-light-balance', 'nutrient-loop'],
+      difficulty: 'cadet', testRewind: true, tasks: ['upload-admin', 'grow-light-balance', 'med-pipes'],
     });
 
-    // Sample all 5 crew NPCs over ~4.2 seconds (14 x 300ms).
+    const stationCrew = ['chip', 'pip', 'rover', 'tater'];
+    // Sample the station crew over ~4.2 seconds (14 x 300ms).
     const samples = [];
     for (let i = 0; i < 14; i += 1) {
       const snap = await cdp.eval(`window.__spudTelemetry?.()`);
-      assert(snap && Array.isArray(snap.crew) && snap.crew.length === 5, `Expected 5 crew NPCs, got ${snap?.crew?.length}`);
+      const crewIds = snap?.crew?.map(npc => npc.id).sort();
+      assert(crewIds?.join(',') === stationCrew.join(','), `Expected the four station NPCs, got ${crewIds}`);
       for (const npc of snap.crew) {
         assert(npc.patrolBounds, `Missing patrolBounds for ${npc.id}`);
         assert(
@@ -832,7 +1051,7 @@ async function runPass2() {
 
     let maxTotalTravel = 0;
     const travelById = {};
-    for (const id of ['russet', 'pip', 'tater', 'chip', 'rover']) {
+    for (const id of stationCrew) {
       let travel = 0;
       for (let i = 1; i < samples.length; i += 1) {
         const prev = samples[i - 1].crew.find((c) => c.id === id);
@@ -862,10 +1081,10 @@ async function runPass2() {
       };
     })()`), 'tasks drawer expanded to the right');
     assert(tasksExpand.panelLeft >= tasksExpand.railRight - 2
-      && tasksExpand.taskCards === 4
-      && tasksExpand.emergencyCards === 1
-      && tasksExpand.taskLabel === '0 / 4',
-      `Tasks drawer must expand to the right of the rail with progress and damaged-area emergency task: ${JSON.stringify(tasksExpand)}`);
+      && tasksExpand.taskCards === 3
+      && tasksExpand.emergencyCards === 0
+      && tasksExpand.taskLabel === '0 / 3',
+      `Tasks drawer must show the three selected Day 1 assignments: ${JSON.stringify(tasksExpand)}`);
 
     await clickSelector(cdp, '[data-action="status"]');
     const statusExpand = await waitFor(() => cdp.eval(`(() => {
@@ -888,11 +1107,11 @@ async function runPass2() {
       return art?.complete && art.naturalWidth > 0;
     })()`), 'updated station map artwork loads');
     await clickSelector(cdp, '[data-map-walk-label="Researcher Room"]');
-    await waitFor(() => cdp.eval(`(() => {
+    await walkAlongGuide(cdp, `(() => {
       const t = window.__spudTelemetry?.();
-      return t?.room === 'Researcher Room' && Math.abs(t.player.x - 1616) <= 3
-        && Math.abs(t.player.y - 282) <= 3;
-    })()`), 'auto-pilot reaches the research workbench', 20000);
+      return t?.room === 'Researcher Room' && Math.abs(t.player.x - 1616) <= 36
+        && Math.abs(t.player.y - 282) <= 36;
+    })()`, 'guided walk reaches the research workbench', 24000);
 
     // The workbench collision starts at the y=288 tile edge.
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -903,17 +1122,17 @@ async function runPass2() {
     }
     console.log('Researcher Room route and repeated workbench collision verified.');
 
-    // Map auto-pilot to Landing Pad -> verify auto helmet seal.
+    // Map guidance to Landing Pad -> verify auto helmet seal.
     await clickSelector(cdp, '[data-action="map"]');
     await waitFor(() => cdp.eval(`Boolean(document.querySelector('.game-map-dialog[open]'))`), 'map dialog open');
     await clickSelector(cdp, '[data-map-walk-label="Landing Pad"]');
 
-    await waitFor(() => cdp.eval(`(() => {
+    await walkAlongGuide(cdp, `(() => {
       const room = document.querySelector('#hud-room')?.textContent?.trim();
       const helmet = document.querySelector('#hud-helmet-label')?.textContent?.trim();
       const t = window.__spudTelemetry?.();
       return room === 'LANDING PAD' && helmet === 'EVA: SEALED' && t?.player?.helmeted ? { room, helmet } : null;
-    })()`), 'player walks into Landing Pad and auto-seals helmet', 20000);
+    })()`, 'player walks into Landing Pad and auto-seals helmet', 24000);
 
     // Push south against the sealed Landing Pad bulkhead: player must NOT phase onto the exterior apron.
     await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40 });
@@ -1023,10 +1242,11 @@ async function runPass2() {
     }
     await waitFor(() => cdp.eval(`document.querySelector('#modal-root')?.childElementCount === 0 && !window.__spudTelemetry?.()?.frozen`), 'Rover dialogue closed');
 
-    await finishAssignedTasks(cdp);
+    await finishAssignedTasks(cdp, { waitForBunk: true });
     assert(await cdp.eval(`JSON.parse(localStorage.getItem('spudnaut-cooperative-trial-save-v8')).activeTrial.checkpoint.reason === 'after-task'`), 'task checkpoint persisted');
+    await playGuidedEmergency(cdp);
     for (let day = 2; day <= 3; day += 1) {
-      await clickSelector(cdp, '[data-report-next]');
+      if (day > 2) await clickSelector(cdp, '[data-report-next]');
       await waitFor(() => cdp.eval(`Boolean(document.querySelector('.shift-planner[open]'))`), 'next shift planner');
       assert(await cdp.eval(`!document.querySelector('#commander-tutorial-popover')`), 'landing tutorial stays complete');
       const offered = await cdp.eval(`Array.from(document.querySelectorAll('[data-offer]'), card => card.dataset.offer)`);
@@ -1043,6 +1263,9 @@ async function runPass2() {
     const final = await cdp.eval(`JSON.parse(localStorage.getItem('spudnaut-cooperative-trial-save-v8'))`);
     assert(final.medals === 1 && final.games === 1 && final.activeTrial === null, 'completion and medal saved once');
     assert(final.seenMinigames.length >= 6, 'minigame progress carried across shifts');
+    assert(['landing', 'power-restored', 'tasks', 'status', 'status-review', 'red-route', 'FLR', 'CME']
+      .every(id => final.seenCommanderBriefings.filter(seen => seen === id).length === 1),
+      'opening steps and first encounters are saved once across shifts');
     console.log('All three Cadet shifts, Commander praise, and persisted Golden Potato Medal verified.');
 
     assertErrorsClean(errors, 'Pass 2');
@@ -1083,6 +1306,8 @@ async function runPass3() {
     await clickSelector(cdp, '[data-action="tasks"]');
     await waitFor(() => cdp.eval(`document.querySelector('[data-action="tasks"]')?.getAttribute('aria-expanded') === 'true'`), 'tasks drawer expanded');
     await assertNoHorizontalOverflow('Tasks Drawer 390x844');
+    assert(await cdp.eval(`document.querySelector('#hud-drawer-panel').getBoundingClientRect().left
+      >= document.querySelector('.hud-left-rail').getBoundingClientRect().right - 2`), 'mobile Tasks drawer opens to the right');
 
     await clickSelector(cdp, '[data-action="help"]');
     await waitFor(() => cdp.eval(`Boolean(document.querySelector('.game-help-dialog[open]'))`), 'mobile help open');

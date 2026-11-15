@@ -2,6 +2,7 @@ import type { MissionMetric, TaskKind } from './model';
 import { shuffle } from './model';
 import { sfx } from './sfx';
 import { assignmentGameTip, mountAssignmentGame } from './hud/assignmentGames';
+import { mountStationMissionGame } from './hud/stationMissionGames';
 
 type Complete = () => void;
 type Cleanups = (() => void)[];
@@ -77,6 +78,7 @@ export function renderTaskGame(
   taskName?: string,
   system?: MissionMetric,
 ): void {
+  if (mountStationMissionGame(kind, host, complete, cleanups)) return;
   if (mountAssignmentGame(kind, host, complete, cleanups)) return;
   if (kind === 'wiring' && taskName === 'Spark-Wire Color Match') {
     renderWiring(host, complete, cleanups);

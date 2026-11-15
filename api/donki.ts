@@ -11,7 +11,7 @@ export const config = {
   runtime: 'edge',
 };
 
-const VALID_TYPES = new Set(['FLR', 'CME', 'SEP', 'GST']);
+const VALID_TYPES = new Set(['FLR', 'CME', 'SEP']);
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const CACHE_TTL_SECONDS = 900;
 

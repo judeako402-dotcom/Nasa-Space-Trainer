@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bookCover" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ff993b" />
+      <stop offset="60%" stop-color="#ff661c" />
+      <stop offset="100%" stop-color="#c9410a" />
+    </linearGradient>
+  </defs>
+  <g transform="rotate(-12 32 32)">
+    <!-- Cream bottom page stack -->
+    <path d="M16 15 H46 C48 15 50 17 50 19 V51 C50 53 48 55 46 55 H19 C15 55 13 52 13 48 V19 C13 16.8 14.5 15 16 15Z"
+      fill="#ffe8be" stroke="#13152c" stroke-width="4" stroke-linejoin="round" />
+    <!-- Orange front cover -->
+    <path d="M16 9 H47 C49 9 50 10.5 50 13 V45 H19 C15.5 45 13 47 13 49 V14 C13 11 14.5 9 16 9Z"
+      fill="url(#bookCover)" stroke="#13152c" stroke-width="4" stroke-linejoin="round" />
+    <!-- Spine crease + glossy accent -->
+    <line x1="20" y1="11" x2="20" y2="43" stroke="#13152c" stroke-width="3.2" />
+    <rect x="25" y="17" width="18" height="10" rx="2.5" fill="#fff7df" stroke="#13152c" stroke-width="2.6" />
+    <line x1="21" y1="49.5" x2="45" y2="49.5" stroke="#d99f5e" stroke-width="2.6" stroke-linecap="round" />
+  </g>
+</svg>

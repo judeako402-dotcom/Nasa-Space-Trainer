@@ -118,6 +118,7 @@ export const FIGMA_HYDROPONICS_PLATFORM = {
 } as const;
 
 const WATER_TANK = { name: 'Water tank', source: 'liferoom', x: 115, y: 746, w: 150, h: 199, footY: 945 } as const;
+const WALL_POWER_SWITCH = { name: '0856 · Wall power switch', source: 'hallway', x: 1165, y: 826, w: 57, h: 31, footY: 856 } as const;
 const RESEARCH_WORKBENCH = { name: 'Research workbench', source: 'research', x: 1442, y: 159, w: 299, h: 117, footY: 276 } as const;
 const HEALTH_CHECK = { name: 'Health check panel', source: 'research', x: 1750, y: 292, w: 130, h: 82, footY: 374 } as const;
 const CRYSTAL_SCANNER = { name: 'Crystal scanner', source: 'research', x: 1765, y: 375, w: 115, h: 81, footY: 456 } as const;
@@ -154,7 +155,7 @@ export const FIGMA_DEPTH_SLICES: readonly FigmaSliceSpec[] = [
   { name: '0736 · Twin utility pipes', source: 'hallway', x: 1010, y: 417, w: 75, h: 320, footY: 736 },
   { name: '0752 · CO2 scrubber', source: 'liferoom', x: 111, y: 395, w: 164, h: 358, footY: 752 },
   { name: '0790 · Cargo crate stack', source: 'storage', x: 1463, y: 615, w: 277, h: 176, footY: 790 },
-  { name: '0856 · Wall power switch', source: 'hallway', x: 1165, y: 826, w: 57, h: 31, footY: 856 },
+  WALL_POWER_SWITCH,
   CARGO_TERMINAL,
   { name: '0944 · Air-quality control panel', source: 'liferoom', x: 548, y: 803, w: 99, h: 142, footY: 944 },
   WATER_TANK,
@@ -201,11 +202,13 @@ export const TASK_OBJECT_OUTLINE_SPECS: Record<string, TaskObjectOutlineSpec> = 
   // Hydroponics / Life Room (liferoom.png)
   'wiring-cafeteria': { source: 'liferoom', x: 111, y: 395, w: 164, h: 358, footY: 752 },
   'garbage': WATER_TANK,
+  'med-pipes': WATER_TANK,
   'grow-light-balance': FIGMA_HYDROPONICS_PLATFORM,
   'nutrient-loop': { source: 'liferoom', x: 548, y: 803, w: 99, h: 142, footY: 944 },
 
   // Central Spine / Hallway (hallway.png)
   'asteroids': { source: 'hallway', x: 1010, y: 417, w: 75, h: 320, footY: 736 },
+  'power-switches': WALL_POWER_SWITCH,
 
   // Researcher Room
   'steering': CRYSTAL_SCANNER,
@@ -214,7 +217,6 @@ export const TASK_OBJECT_OUTLINE_SPECS: Record<string, TaskObjectOutlineSpec> = 
   'download-nav': HEALTH_CHECK,
 
   // Galley / Medbay (kitchen.png)
-  'med-pipes': { source: 'kitchen', x: 882, y: 1256, w: 282, h: 275, footY: 1530 },
   'inspect': { source: 'kitchen', x: 882, y: 1256, w: 282, h: 275, footY: 1530 },
 
   // Cargo Bay / Storage (storage.png)
@@ -232,9 +234,9 @@ export const TASK_OBJECT_OUTLINE_SPECS: Record<string, TaskObjectOutlineSpec> = 
   'eva-route': { source: 'airlock', x: 1554, y: 1694, w: 202, h: 37, footY: 1731, flat: true },
 
   // Emergency Damaged Area Highlights
-  'emergency-flr': { source: 'core', x: 597, y: 9, w: 584, h: 363, footY: 371 },
-  'emergency-cme': { source: 'bedroom', x: 467, y: 1090, w: 146, h: 172, footY: 1261 },
-  'emergency-sep': { source: 'research', x: 1771, y: 251, w: 110, h: 207, footY: 458 },
+  'emergency-flr': { source: 'core', x: 1078, y: 240, w: 104, h: 132, footY: 371 },
+  'emergency-cme': { source: 'airlock', x: 1554, y: 1694, w: 202, h: 37, footY: 1731, flat: true },
+  'emergency-sep': CRYSTAL_SCANNER,
   'emergency-gst': { source: 'liferoom', x: 548, y: 803, w: 99, h: 142, footY: 944 },
 };
 

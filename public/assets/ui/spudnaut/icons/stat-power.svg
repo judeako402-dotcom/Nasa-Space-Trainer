@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="boltFill" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0%" stop-color="#fff46b" />
+      <stop offset="50%" stop-color="#ffd018" />
+      <stop offset="100%" stop-color="#f08c00" />
+    </linearGradient>
+  </defs>
+  <polygon points="37,6 15,35 29,35 23,58 49,27 34,27"
+    fill="url(#boltFill)" stroke="#13152c" stroke-width="4.2" stroke-linejoin="round" />
+  <polygon points="34,13 22,31 30,31 32,19" fill="#ffffff" fill-opacity="0.58" />
+</svg>

@@ -99,4 +99,38 @@ export const sfx = {
       tone({ frequency, duration: 0.26, type: 'sawtooth', gain: 0.08, delay: index * 0.14 });
     });
   },
+  alarm(): void {
+    [0, 0.24].forEach((offset) => {
+      tone({ frequency: 880, duration: 0.12, type: 'sawtooth', gain: 0.11, delay: offset, slideTo: 620 });
+      tone({ frequency: 620, duration: 0.12, type: 'square', gain: 0.06, delay: offset + 0.1, slideTo: 480 });
+    });
+  },
+  systemFailure(): void {
+    noise(0.28, 0.14);
+    tone({ frequency: 138, duration: 0.48, type: 'sawtooth', gain: 0.14, slideTo: 52 });
+    tone({ frequency: 466, duration: 0.28, type: 'triangle', gain: 0.09, delay: 0.06, slideTo: 311 });
+  },
+  repair(): void {
+    tone({ frequency: 330, duration: 0.09, type: 'triangle', gain: 0.1 });
+    tone({ frequency: 494, duration: 0.1, type: 'triangle', gain: 0.1, delay: 0.08 });
+    tone({ frequency: 740, duration: 0.18, type: 'sine', gain: 0.11, delay: 0.16 });
+  },
+  cardPick(): void {
+    tone({ frequency: 640, duration: 0.045, type: 'triangle', gain: 0.07, slideTo: 920 });
+  },
+  modalOpen(): void {
+    tone({ frequency: 460, duration: 0.065, type: 'sine', gain: 0.06, slideTo: 660 });
+  },
+  modalClose(): void {
+    tone({ frequency: 520, duration: 0.06, type: 'sine', gain: 0.05, slideTo: 340 });
+  },
+  skipDay(): void {
+    [523, 392, 294].forEach((frequency, index) => {
+      tone({ frequency, duration: 0.18, type: 'sine', gain: 0.08, delay: index * 0.1 });
+    });
+  },
+  warning(): void {
+    tone({ frequency: 760, duration: 0.08, type: 'square', gain: 0.06 });
+    tone({ frequency: 760, duration: 0.08, type: 'square', gain: 0.06, delay: 0.12 });
+  },
 };

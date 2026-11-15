@@ -18,6 +18,9 @@ export interface SceneGameState {
   speed: number;
   frozen: boolean;
   visionEnabled: boolean;
+  blackout?: boolean;
+  spotlightGuide?: boolean;
+  restAtBunk?: boolean;
   activeInteractions: string[];
   completedInteractions: string[];
   objective: string;
@@ -41,6 +44,7 @@ export interface StationTelemetrySnapshot {
   frozen: boolean;
   player: { x: number; y: number; helmeted: boolean };
   crew: ReturnType<CrewNPC['getTelemetry']>[];
+  guide?: { x: number; y: number; path: { x: number; y: number }[]; isEmergency: boolean } | null;
 }
 
 export interface StationControllableScene extends Phaser.Scene {
@@ -48,7 +52,7 @@ export interface StationControllableScene extends Phaser.Scene {
   setReducedMotion(reduced: boolean): void;
   navigateTo(x: number, y: number): boolean;
   interactNow(): void;
-  transitionThroughBlack(onCovered: () => void): void;
+  transitionThroughBlack(onCovered: () => void, onFinished?: () => void): void;
   getTelemetrySnapshot(): StationTelemetrySnapshot;
 }
 

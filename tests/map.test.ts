@@ -16,7 +16,7 @@ import {
   FIGMA_LAYER_TEXTURES,
   TASK_OBJECT_OUTLINE_SPECS,
 } from '../src/game/world/figmaMapLayers';
-import { PLAYER_SPAWN, STATION_TASKS, TASKS } from '../src/model';
+import { EMERGENCY_TASKS, PLAYER_SPAWN, STATION_TASKS, TASKS } from '../src/model';
 
 /**
  * Validates the generated station map (traced from Sample mapppp.png) against
@@ -363,6 +363,19 @@ describe('station map traversability', () => {
         const assetPath = layer.path.split('?')[0];
         expect(existsSync(`public${assetPath}`), `missing asset ${assetPath}`).toBe(true);
       }
+    }
+  });
+
+  it('places each DONKI repair in the same room as its equipment artwork', () => {
+    for (const [id, roomId, source] of [
+      ['emergency-flr', 'reactor', 'core'],
+      ['emergency-cme', 'exterior', 'airlock'],
+      ['emergency-sep', 'communications', 'research'],
+    ] as const) {
+      const repair = EMERGENCY_TASKS.find(task => task.id === id)!;
+      expect(repair.roomId).toBe(roomId);
+      expect(TASK_OBJECT_OUTLINE_SPECS[id]?.source).toBe(source);
+      expect(hasTileClearance(grid, map.tilewidth, repair, PLAYER_FEET.width, PLAYER_FEET.height), id).toBe(true);
     }
   });
 

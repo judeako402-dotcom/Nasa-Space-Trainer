@@ -33,8 +33,37 @@ class LaunchScene extends Phaser.Scene {
     }
     this.load.image('mission-earth', '/assets/placeholders/kenney/planets/planet00.png');
     this.load.image('mission-moon', '/assets/ui/spudnaut/design/moon.webp');
-    this.load.image('mission-ship', '/assets/placeholders/kenney/simple-space/ship_A.png');
     this.load.image('landing-habitat', '/assets/placeholders/kenney/sci-fi-rts/scifiStructure_07.png');
+  }
+
+  private createRocketTexture(): void {
+    if (this.textures.exists('mission-rocket')) return;
+    const g = this.make.graphics({ x: 0, y: 0 }, false);
+    // Exhaust flame
+    g.fillStyle(0xff7b29, 0.95);
+    g.fillTriangle(36, 98, 60, 98, 48, 126);
+    g.fillStyle(0xffe066, 1);
+    g.fillTriangle(41, 98, 55, 98, 48, 118);
+    // Side fins
+    g.fillStyle(0xd9413b, 1);
+    g.fillTriangle(30, 68, 14, 96, 32, 92);
+    g.fillTriangle(66, 68, 82, 96, 64, 92);
+    // Engine nozzle
+    g.fillStyle(0x52627a, 1);
+    g.fillRect(38, 90, 20, 9);
+    // Fuselage body
+    g.fillStyle(0xf2f6fc, 1);
+    g.fillRoundedRect(31, 28, 34, 64, 12);
+    // Nose cone
+    g.fillStyle(0xe54b43, 1);
+    g.fillTriangle(31, 34, 65, 34, 48, 4);
+    // Porthole window
+    g.fillStyle(0x283852, 1);
+    g.fillCircle(48, 52, 10);
+    g.fillStyle(0x74e5ff, 1);
+    g.fillCircle(48, 52, 7);
+    g.generateTexture('mission-rocket', 96, 128);
+    g.destroy();
   }
 
   create(): void {
@@ -54,10 +83,11 @@ class LaunchScene extends Phaser.Scene {
     const targetSize = Math.min(height * 0.48, width * 0.3);
     this.target = this.add.image(width * 0.82, height * 0.36, 'mission-moon')
       .setDisplaySize(targetSize, targetSize).setDepth(1).setAlpha(0.18);
+    this.createRocketTexture();
     this.habitat = this.add.image(width * 0.82, height * 0.79, 'landing-habitat')
       .setDisplaySize(Math.min(width * 0.16, 176), Math.min(height * 0.19, 148)).setDepth(2).setAlpha(0);
-    this.ship = this.add.image(width * 0.16, height * 0.68, 'mission-ship')
-      .setDisplaySize(70, 70).setDepth(3).setAngle(0);
+    this.ship = this.add.image(width * 0.16, height * 0.68, 'mission-rocket')
+      .setDisplaySize(54, 72).setDepth(3).setAngle(48);
 
     const titleSize = Math.max(20, Math.min(34, width * 0.033));
     this.caption = this.add.text(width / 2, height * 0.13, '', {
@@ -109,7 +139,7 @@ class LaunchScene extends Phaser.Scene {
   private startFlight(width: number, height: number, earthSize: number, line: Phaser.GameObjects.Graphics): void {
     this.showCaption('LIFTOFF!', 'Next stop: the Moon.');
     this.tweens.add({ targets: this.earth, x: -earthSize * 0.45, y: height * 0.96, duration: 5000, ease: 'Sine.easeIn' });
-    this.tweens.add({ targets: this.ship, x: width * 0.72, y: height * 0.38, angle: -38, duration: 4200, ease: 'Sine.easeInOut' });
+    this.tweens.add({ targets: this.ship, x: width * 0.78, y: height * 0.39, angle: 56, duration: 4200, ease: 'Sine.easeInOut' });
     this.time.delayedCall(1300, () => {
       this.showCaption('ACROSS SPACE', 'There’s the Moon!');
       this.tweens.add({ targets: [this.target, line], alpha: 1, duration: 1000, ease: 'Sine.easeOut' });
@@ -120,7 +150,10 @@ class LaunchScene extends Phaser.Scene {
       if (this.ship) this.tweens.add({ targets: this.ship, alpha: 0.18, duration: 900, ease: 'Sine.easeIn' });
       if (this.habitat) this.tweens.add({ targets: this.habitat, alpha: 1, y: height * 0.73, duration: 1300, delay: 750, ease: 'Back.easeOut' });
     });
-    this.time.delayedCall(4300, () => this.showCaption('TOUCHDOWN', 'Welcome to the Moon!'));
+    this.time.delayedCall(4300, () => this.showCaption('TOUCHDOWN', 'Beginning lunar descent...'));
+    this.time.delayedCall(4900, () => {
+      this.cameras.main.fadeOut(380, 3, 7, 17);
+    });
     this.time.delayedCall(5300, this.finish);
   }
 

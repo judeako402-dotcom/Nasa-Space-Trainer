@@ -38,9 +38,9 @@ npm run preview   # serve the production build
 
 ## Space weather and EVA
 
-The game rolls the past week’s NASA DONKI reports from newest to oldest, with a 15% chance per report on Cadet, 30% on Crew, and 50% on Veteran. When reports are unavailable, the game uses seeded Space Apps practice alerts. Each major alert names the affected station part and offers three tools. A wrong pick or empty status bar rewinds to the last checkpoint.
+The game rolls the past week’s NASA DONKI reports from newest to oldest, with a 15% chance per report on Cadet, 30% on Crew, and 50% on Veteran. When reports are unavailable, the game uses seeded Space Apps practice alerts. Follow the red route to the broken equipment and play a repair card. Use the Power Wrench on the Reactor Dome power box (FLR), the Shield Patch at the Landing Pad airlock (CME), or the Sensor Fixer on the Researcher Room sensors (SEP). Commander Russet explains each event on the first interaction with its broken part. A wrong pick during the guided repair lets you try again. In later shifts, a wrong pick or empty status bar rewinds to the last checkpoint.
 
-Set `VITE_NASA_API_KEY` in a local `.env` file to use a public NASA API key in place of the default `DEMO_KEY`. Vite includes this value in the browser bundle.
+By default, the game fetches reports from NASA CCMC’s public DONKI API. Set `VITE_NASA_API_KEY` in a local `.env` file to use the keyed `api.nasa.gov` endpoint. Vite includes this value in the browser bundle.
 
 EVA means **Extravehicular Activity**, commonly called a spacewalk. In this game, EVA refers to existing suited outdoor assignments such as collecting geology samples and inspecting the exterior power cable.
 

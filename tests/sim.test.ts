@@ -5,10 +5,12 @@ import { SURFACE_HABITAT } from '../src/data/surfaceHabitat';
 import { EVENT_CARDS } from '../src/data/events';
 import {
   DEFAULT_OPTIONS, SAVE_KEY, SPECIALISTS, TASKS,
-  loadSave, migrateMetrics, penaltyMaxDays, persistSave, taskById, trialMaxDays,
+  isDifficultyUnlocked, loadSave, migrateMetrics, penaltyMaxDays, persistSave, taskById, trialMaxDays,
 } from '../src/model';
+import { MIN_MAJOR_EVENTS } from '../src/sim/majorEvents';
 import {
-  applyDailyOperations, applyEvent, applyMissedDay, applyTaskCompletion, createMetrics, evaluateMission, eventForDay,
+  applyDailyOperations, applyEvent, applyLiveOperationsDrain, applyMissedDay, applyTaskCompletion,
+  createMetrics, evaluateMission, eventForDay,
   offersForDay, systemHealth,
 } from '../src/sim/mission';
 import { applySpecialistSpeed, createPlayerState, normalizeInput, stepPlayer } from '../src/sim/movement';
@@ -100,9 +102,9 @@ describe('movement', () => {
 
   it('uses specialist speed and marks waypoint movement as moving', () => {
     const state = createPlayerState(0, 0);
-    applySpecialistSpeed(state, 'traveller');
+    applySpecialistSpeed(state, 'repairman');
     stepPlayer(state, { axisX: 0, axisY: 0, moveRequest: { x: 150, y: 0 } }, 1 / 60, 300, () => true);
-    expect(state.x).toBeCloseTo(5.9, 5);
+    expect(state.x).toBeCloseTo(5, 5);
     expect(state.moving).toBe(true);
   });
 
@@ -148,11 +150,29 @@ describe('navigation', () => {
 });
 
 describe('surface mission and destination science', () => {
-  it('applies daily life-support use and maintenance without treating gauges as percentages', () => {
+  it('applies daily life-support use and maintenance across all four systems', () => {
     const before = createMetrics();
     const next = applyDailyOperations(before);
-    expect(next).toMatchObject({ life: 78.5, power: 74.5, research: 30, farm: 77 });
+    expect(next).toMatchObject({ life: 78, power: 73.5, research: 29, farm: 76.5 });
     expect(before.power).toBe(76);
+  });
+
+  it('applies live per-second consumption across all four systems with specialist modifiers', () => {
+    const before = createMetrics();
+    const after10s = applyLiveOperationsDrain(before, 10);
+    expect(after10s.life).toBeCloseTo(78, 4);
+    expect(after10s.power).toBeCloseTo(73.5, 4);
+    expect(after10s.research).toBeCloseTo(29, 4);
+    expect(after10s.farm).toBeCloseTo(76.5, 4);
+
+    const farmer10s = applyLiveOperationsDrain(before, 10, 'farmer');
+    expect(farmer10s.life).toBeCloseTo(79, 4);
+
+    const repairman10s = applyLiveOperationsDrain(before, 10, 'repairman');
+    expect(repairman10s.power).toBeCloseTo(74.75, 4);
+
+    const emergencyPower10s = applyLiveOperationsDrain(before, 10, undefined, 'power');
+    expect(emergencyPower10s.power).toBeCloseTo(68.5, 4);
   });
 
   it('keeps lunar dust events active on The Moon with no Mars hazards', () => {
@@ -176,7 +196,7 @@ describe('surface mission and destination science', () => {
     const route = geometry.findPath(SURFACE_HABITAT.spawn, { x: 1450, y: 1580 });
     expect(route.length).toBeGreaterThan(0);
     expect(geometry.canStand(route.at(-1)!.x, route.at(-1)!.y)).toBe(true);
-    expect(SURFACE_HABITAT.interactions.filter(item => item.roomId === 'exterior')).toHaveLength(3);
+    expect(SURFACE_HABITAT.interactions.filter(item => item.roomId === 'exterior')).toHaveLength(4);
   });
 
   it('keeps all mission assignment stations reachable from the crew spawn', () => {
@@ -212,15 +232,14 @@ describe('mission simulation', () => {
     expect(offers[0]!.system).toBe('farm');
   });
 
-  it('offers three pairs of tasks in their dedicated rooms', () => {
+  it('offers all five station missions in their dedicated rooms', () => {
+    const rooms = { life: ['cafeteria'], power: ['reactor', 'admin'], research: ['communications'], farm: ['cafeteria'] };
     for (const specialist of SPECIALISTS) {
       const offers = offersForDay(TASKS, specialist.id, createRng(seedFor(1, 0)));
-      expect(new Set(offers.map(offer => offer.system)).size).toBe(3);
-      const rooms = { life: 'medbay', power: 'reactor', research: 'communications', farm: 'cafeteria' };
-      for (let index = 0; index < offers.length; index += 2) {
-        expect(offers[index]!.system).toBe(offers[index + 1]!.system);
-        expect(offers[index]!.roomId).toBe(rooms[offers[index]!.system]);
-        expect(offers[index + 1]!.roomId).toBe(rooms[offers[index]!.system]);
+      expect(offers).toHaveLength(DAY.offerCount);
+      expect(new Set(offers.map(offer => offer.system)).size).toBe(4);
+      for (const offer of offers) {
+        expect(rooms[offer.system]).toContain(offer.roomId);
       }
     }
   });
@@ -237,9 +256,9 @@ describe('mission simulation', () => {
   it('applies specialist mitigation to missed days', () => {
     const metrics = createMetrics();
     const repairman = applyMissedDay(metrics, 'repairman');
-    const traveller = applyMissedDay(metrics, 'traveller');
-    expect(applyMissedDay(metrics, 'farmer').life).toBeGreaterThan(traveller.life);
-    expect(repairman.power).toBeGreaterThan(traveller.power);
+    const researcher = applyMissedDay(metrics, 'researcher');
+    expect(applyMissedDay(metrics, 'farmer').life).toBeGreaterThan(researcher.life);
+    expect(repairman.power).toBeGreaterThan(researcher.power);
   });
 
   it('awards system progress for a completed assignment', () => {
@@ -300,13 +319,31 @@ describe('save options & showFps persistence', () => {
   };
 
   it('scales trial duration and extension days by difficulty and limits metrics to the four core pillars', () => {
-    expect(trialMaxDays('cadet')).toBe(3);
-    expect(trialMaxDays('crew')).toBe(5);
-    expect(trialMaxDays('veteran')).toBe(7);
+    expect(trialMaxDays('cadet')).toBe(7);
+    expect(trialMaxDays('crew')).toBe(9);
+    expect(trialMaxDays('veteran')).toBe(14);
+    expect(MIN_MAJOR_EVENTS).toEqual({ cadet: 1, crew: 3, veteran: 5 });
     expect(penaltyMaxDays('cadet')).toBe(3);
     expect(penaltyMaxDays('crew')).toBe(5);
     expect(penaltyMaxDays('veteran')).toBe(7);
     expect(Object.keys(createMetrics()).sort()).toEqual(['farm', 'life', 'power', 'research']);
+  });
+
+  it('locks Veteran (3rd difficulty) until Cadet (1st difficulty) is finished', () => {
+    expect(isDifficultyUnlocked('cadet', { completedDifficulties: [] })).toBe(true);
+    expect(isDifficultyUnlocked('crew', { completedDifficulties: [] })).toBe(true);
+    expect(isDifficultyUnlocked('veteran', { completedDifficulties: [] })).toBe(false);
+    expect(isDifficultyUnlocked('veteran', { completedDifficulties: ['crew'] })).toBe(false);
+    expect(isDifficultyUnlocked('veteran', { completedDifficulties: ['cadet'] })).toBe(true);
+
+    withMockStorage(
+      { [SAVE_KEY]: JSON.stringify({ options: { difficulty: 'veteran' }, completedDifficulties: [] }) },
+      () => expect(loadSave().options.difficulty).toBe('crew'),
+    );
+    withMockStorage(
+      { [SAVE_KEY]: JSON.stringify({ options: { difficulty: 'veteran' }, completedDifficulties: ['cadet'] }) },
+      () => expect(loadSave().options.difficulty).toBe('veteran'),
+    );
   });
 
   it('migrates legacy 6-metric saves cleanly into life, power, research, and farm', () => {

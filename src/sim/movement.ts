@@ -187,7 +187,6 @@ export function applySpecialistSpeed(
   const specialists: Record<string, number> = {
     repairman: 1.0,
     farmer: 1.0,
-    traveller: 1.18,
     researcher: 1.0,
     // Add new specialists here as the game grows
   };

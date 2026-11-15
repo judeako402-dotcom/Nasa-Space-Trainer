@@ -40,6 +40,14 @@ describe('findNearestInteractable', () => {
     expect(nearest?.name).toBe('enabled');
   });
 
+  it('prefers an active repair at the airlock only within the repair radius', () => {
+    const exit = item('exit', 0, 0, true, { x: -100, y: -100, width: 200, height: 200 });
+    const repair = { ...item('repair', 0, 30), priority: 1, interactionRadius: 62 };
+    expect(findNearestInteractable({ x: 0, y: 0 }, [exit, repair])?.name).toBe('repair');
+    expect(findNearestInteractable({ x: 0, y: -40 }, [exit, repair])?.name).toBe('exit');
+    expect(findNearestInteractable({ x: 0, y: 0 }, [exit, { ...repair, enabled: false }])?.name).toBe('exit');
+  });
+
   it('excludes items exactly at the radius edge boundary plus epsilon', () => {
     const items = [item('edge', 96.5, 0)];
     expect(findNearestInteractable({ x: 0, y: 0 }, items)).toBeNull();

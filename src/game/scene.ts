@@ -158,12 +158,12 @@ export function interactStation(game: Phaser.Game): void {
   activeStationScene(game)?.interactNow();
 }
 
-export function transitionStationThroughBlack(game: Phaser.Game, onCovered: () => void): void {
+export function transitionStationThroughBlack(game: Phaser.Game, onCovered: () => void, onFinished?: () => void): void {
   const scene = activeStationScene(game);
   if (!scene) {
     throw new Error('Station scene is not available for a transition');
   }
-  scene.transitionThroughBlack(onCovered);
+  scene.transitionThroughBlack(onCovered, onFinished);
 }
 
 /** Pause or resume whichever station scene (`training` or `surface`) is active. */

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="shieldOrange" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffe162" />
+      <stop offset="52%" stop-color="#ff8c1a" />
+      <stop offset="100%" stop-color="#d9480f" />
+    </linearGradient>
+  </defs>
+  <path d="M32 7 L53 15 V31 C53 45.5 41.8 54 32 58 C22.2 54 11 45.5 11 31 V15 Z"
+    fill="url(#shieldOrange)" stroke="#13152c" stroke-width="4.2" stroke-linejoin="round" />
+  <polygon points="32,17 35.8,25.4 45,26.4 38.1,32.6 40,41.6 32,37 24,41.6 25.9,32.6 19,26.4 28.2,25.4"
+    fill="#fffbeb" stroke="#13152c" stroke-width="3" stroke-linejoin="round" />
+</svg>

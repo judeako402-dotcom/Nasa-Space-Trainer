@@ -4,6 +4,7 @@ import { routes } from '../app/router';
 import { dom, session, setScreen, syncLobbyFromSave, trialDayLabel } from '../app/session';
 import { sfx } from '../sfx';
 import { renderArcadeButton } from '../ui/icons';
+import { showPlayIntro } from './playIntroScreen';
 
 export function showMenu(): void {
   const { screenRoot } = dom();
@@ -102,14 +103,13 @@ export function showMenu(): void {
       case 'resume':
         launchMenuTransition(() => {
           syncLobbyFromSave();
-          routes.showResumeStaging();
+          routes.resumeTrial();
         });
         break;
       case 'play':
       case 'start':
         launchMenuTransition(() => {
-          syncLobbyFromSave();
-          routes.showLobby();
+          showPlayIntro();
         });
         break;
       case 'options':

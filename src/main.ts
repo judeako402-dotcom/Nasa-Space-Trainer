@@ -8,6 +8,7 @@ import {
   showToast, talkToCrew, walkStationTo,
 } from './app/session';
 import type { GameEvent } from './game';
+import { REACTOR_POWER_SWITCH } from './data/missionOpening';
 import {
   setHudDrawer, syncEvaHazardState, syncHelmetButton, syncHudRoomText,
   toggleHudDrawer, togglePlayerHelmet, updateActionButtons, updateHUD, updateRadarMarker,
@@ -23,8 +24,8 @@ import {
 } from './screens/lobbyScreen';
 import { showMenu } from './screens/menuScreen';
 import {
-  beginMission, completeMission, finishDay, renderReport, resumeTrial,
-  showMissionShell, startDay, startLoop, startPlanning,
+  beginMission, completeMission, finishDay, openBedSkipModal, renderReport, resumeTrial,
+  restoreStationPower, showMissionShell, startDay, startLoop, startPlanning,
 } from './screens/missionScreens';
 import { showCredits, showOptions } from './screens/optionsScreen';
 import { showSplash } from './screens/splashScreen';
@@ -199,8 +200,12 @@ function onGameEvent(event: GameEvent): void {
   if (event.type === 'interact') {
     if (session.currentScreen === 'training') {
       handleTrainingInteract(event.interactionId);
+    } else if (session.mission.opening === 'blackout') {
+      if (event.interactionId === REACTOR_POWER_SWITCH.id) restoreStationPower();
     } else if (event.kind === 'exit' || event.interactionId === 'airlock-exit') {
       openExteriorSortieModal();
+    } else if (event.kind === 'bed' || event.interactionId === 'crew-bed') {
+      openBedSkipModal();
     } else {
       openMissionTask(event.interactionId);
     }
@@ -208,6 +213,7 @@ function onGameEvent(event: GameEvent): void {
   }
 
   if (event.type === 'crew') {
+    if (session.currentScreen === 'mission' && session.mission.opening === 'blackout') return;
     talkToCrew(event.crewId, event.name, event.lines);
     return;
   }
@@ -288,7 +294,7 @@ function wireControls(): void {
     if (event.key === 'Escape') {
       if (session.rewinding || modalRoot.querySelector('.disaster-card')) return;
       if (modalRoot.childElementCount) {
-        const close = modalRoot.querySelector<HTMLButtonElement>('[data-result-continue], [data-close]');
+        const close = modalRoot.querySelector<HTMLButtonElement>('[data-result-continue], [data-close], [data-dialogue-next][aria-label="Close dialogue"]');
         if (close) close.click();
         else {
           clearActiveModals(modalRoot);

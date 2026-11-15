@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 757" width="540" height="757">
+  <defs>
+    <clipPath id="cardClip">
+      <rect x="6" y="6" width="528" height="745" rx="22" />
+    </clipPath>
+    <linearGradient id="pumpBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0e5b3a" />
+      <stop offset="55%" stop-color="#198754" />
+      <stop offset="100%" stop-color="#0b3b28" />
+    </linearGradient>
+    <radialGradient id="pumpGlow" cx="50%" cy="46%" r="55%">
+      <stop offset="0%" stop-color="#86efac" stop-opacity="0.72" />
+      <stop offset="60%" stop-color="#22c55e" stop-opacity="0.22" />
+      <stop offset="100%" stop-color="#052e16" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="metalPipe" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#94a3b8" />
+      <stop offset="35%" stop-color="#f1f5f9" />
+      <stop offset="75%" stop-color="#cbd5e1" />
+      <stop offset="100%" stop-color="#64748b" />
+    </linearGradient>
+    <linearGradient id="waterDrop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#bae6fd" />
+      <stop offset="50%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+  </defs>
+  <g clip-path="url(#cardClip)">
+    <!-- Lower diagonal pale mint + emerald body band -->
+    <rect x="0" y="444" width="540" height="313" fill="#c7ffd6" />
+    <polygon points="0,757 540,468 540,757" fill="#34d378" />
+    <!-- Top white title band -->
+    <rect x="0" y="0" width="540" height="86" fill="#ffffff" />
+    <!-- Thin green accent trim below title -->
+    <rect x="0" y="86" width="540" height="12" fill="#22c55e" />
+    <!-- Middle artwork window -->
+    <rect x="0" y="98" width="540" height="352" fill="url(#pumpBg)" />
+    <rect x="0" y="98" width="540" height="352" fill="url(#pumpGlow)" />
+    <!-- Subtle halftone / grid burst lines -->
+    <g stroke="#a7f3d0" stroke-opacity="0.22" stroke-width="5">
+      <line x1="270" y1="265" x2="55" y2="120" />
+      <line x1="270" y1="265" x2="485" y2="120" />
+      <line x1="270" y1="265" x2="30" y2="290" />
+      <line x1="270" y1="265" x2="510" y2="290" />
+      <line x1="270" y1="265" x2="95" y2="430" />
+      <line x1="270" y1="265" x2="445" y2="430" />
+    </g>
+    <!-- Pipe manifold & valve -->
+    <rect x="92" y="294" width="356" height="44" rx="14" fill="url(#metalPipe)" stroke="#11131d" stroke-width="8" />
+    <rect x="218" y="218" width="104" height="148" rx="18" fill="url(#metalPipe)" stroke="#11131d" stroke-width="8" />
+    <!-- Pressure gauge wheel on pump -->
+    <circle cx="270" cy="288" r="56" fill="#22d3ee" stroke="#11131d" stroke-width="8" />
+    <circle cx="270" cy="288" r="39" fill="#ecfeff" stroke="#11131d" stroke-width="5" />
+    <line x1="270" y1="288" x2="295" y2="262" stroke="#ef4444" stroke-width="7" stroke-linecap="round" />
+    <circle cx="270" cy="288" r="9" fill="#11131d" />
+    <!-- Valve wheel on top -->
+    <rect x="260" y="168" width="20" height="54" fill="#64748b" stroke="#11131d" stroke-width="6" />
+    <ellipse cx="270" cy="166" rx="64" ry="15" fill="#fbbf24" stroke="#11131d" stroke-width="7" />
+    <!-- Shiny water droplets -->
+    <path d="M150 182 C164 208 174 222 174 236 A24 24 0 1 1 126 236 C126 222 136 208 150 182Z" fill="url(#waterDrop)" stroke="#11131d" stroke-width="6" />
+    <ellipse cx="141" cy="233" rx="5" ry="10" transform="rotate(-18 141 233)" fill="#ffffff" fill-opacity="0.7" />
+    <!-- Vivid sprout on right pipe -->
+    <path d="M388 294 V234" stroke="#15803d" stroke-width="11" stroke-linecap="round" />
+    <path d="M388 242 C356 205 330 220 342 252 C354 274 380 264 388 242Z" fill="#4ade80" stroke="#11131d" stroke-width="6" />
+    <path d="M388 232 C416 184 462 198 446 236 C436 258 402 252 388 232Z" fill="#22c55e" stroke="#11131d" stroke-width="6" />
+    <!-- Horizontal frame dividers matching extracted PNG cards -->
+    <line x1="0" y1="86" x2="540" y2="86" stroke="#11131d" stroke-width="8" />
+    <line x1="0" y1="98" x2="540" y2="98" stroke="#11131d" stroke-width="7" />
+    <line x1="0" y1="450" x2="540" y2="450" stroke="#11131d" stroke-width="8" />
+  </g>
+  <rect x="6" y="6" width="528" height="745" rx="22" fill="none" stroke="#11131d" stroke-width="10" />
+</svg>

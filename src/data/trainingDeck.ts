@@ -109,9 +109,9 @@ export const TRAINING_DECK: MapDefinition = {
       id: 'russet', name: 'Cmdr. Russet', role: 'Training Officer', art: '/assets/potato-repairman.png',
       x: 780, y: 300, facing: 1, accent: '#f2b544',
       lines: [
-        'Stand up straight, recruit. This deck is the closest thing to space you will get before launch.',
-        'Four systems keep a habitat alive: power, life support, farming, and shielding. Ignore one and the others fail.',
-        'Walk the deck. Use the consoles. Then we will talk about your exam.',
+        'Welcome aboard, Spudnaut! This is your practice deck. Let’s get you ready for the Moon.',
+        'Power runs the machines, Life gives us air and water, Research helps us learn, and Farm grows our food.',
+        'Find and use all four consoles. Then come back to the bridge to see if you’re ready to launch!',
       ],
     },
     {

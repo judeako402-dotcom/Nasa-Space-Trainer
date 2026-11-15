@@ -21,7 +21,7 @@ export interface PlayerColor {
 
 export type GamePhase = 'menu' | 'story' | 'exam' | 'launch' | 'playing' | 'report' | 'penalty' | 'complete';
 export type DestinationId = 'moon';
-export type SpecialistId = 'repairman' | 'farmer' | 'traveller' | 'researcher';
+export type SpecialistId = 'repairman' | 'farmer' | 'researcher';
 export type DifficultyId = 'cadet' | 'crew' | 'veteran';
 export type MissionMetric = 'life' | 'power' | 'research' | 'farm';
 
@@ -75,6 +75,8 @@ export interface MajorEventRun {
   nextCandidateIndex: number;
 }
 
+export type MissionOpening = 'blackout' | 'first-shift' | 'guided-emergency' | 'second-shift';
+
 export interface SavedTrial extends TrialProgress {
   phase: 'playing' | 'report' | 'penalty';
   tasks: string[];
@@ -90,6 +92,8 @@ export interface SavedTrial extends TrialProgress {
   position?: { x: number; y: number };
   planning?: { eventBase: MissionMetrics; selected: string[]; majorEventReportId?: string; offers?: string[] };
   pendingDisaster?: boolean;
+  opening?: MissionOpening;
+  hudBriefing?: 'tasks' | 'status' | 'status-review';
   checkpoint?: MissionCheckpoint;
 }
 
@@ -132,7 +136,8 @@ export type TaskKind =
   | 'shield'
   | 'garbage'
   | 'cards'
-  | 'rainbow' | 'harvest' | 'scrub' | 'pipes' | 'solar' | 'crystals' | 'signal';
+  | 'rainbow' | 'harvest' | 'scrub' | 'pipes' | 'solar' | 'crystals' | 'signal'
+  | 'folders' | 'grow-plant' | 'circuit-slider' | 'power-switches';
 
 export interface TaskDef {
   id: string;
@@ -143,6 +148,7 @@ export interface TaskDef {
   y: number;
   system?: MissionMetric;
   cost?: MissionMetric;
+  blurb?: string;
   isEmergency?: boolean;
 }
 
@@ -169,6 +175,7 @@ export interface PlayerSave {
   trainingComplete: boolean;
   trainingRank: 'S' | 'A' | 'B' | null;
   tutorialComplete: boolean;
+  seenCommanderBriefings: CommanderBriefing[];
   seenMinigames: string[];
   medals: number;
   examBest: number;
@@ -176,8 +183,15 @@ export interface PlayerSave {
   activeTrial: SavedTrial | null;
   specialist: SpecialistId;
   destination: DestinationId;
+  completedDifficulties: DifficultyId[];
   options: GameOptions;
 }
+
+const COMMANDER_BRIEFINGS = [
+  'landing', 'power-restored', 'tasks', 'status', 'status-review', 'red-route', 'first-repair',
+  'FLR', 'CME', 'SEP', 'GST',
+] as const;
+export type CommanderBriefing = typeof COMMANDER_BRIEFINGS[number];
 
 export interface Specialist {
   id: SpecialistId;
@@ -287,21 +301,22 @@ const PREVIOUS_TASKS: TaskDef[] = [
   { id: 'eva-route', name: 'Mark Return-to-Airlock Route', kind: 'download', roomId: 'exterior', x: 1696, y: 1696, system: 'research' },
 ];
 
+export const STATION_MISSIONS: TaskDef[] = [
+  { id: 'med-pipes', name: 'Connect the Water Pipes', kind: 'pipes', roomId: 'cafeteria', x: 304, y: 848, system: 'life', cost: 'power', blurb: 'Fix the pipes at the H₂O tank. The pump uses electricity to bring back clean water.' },
+  { id: 'upload-admin', name: 'Send Science Files to Earth', kind: 'folders', roomId: 'communications', x: 1568, y: 304, system: 'research', cost: 'power', blurb: 'Send the science folders from the PC. The computer and radio use electricity.' },
+  { id: 'grow-light-balance', name: 'Grow a Moon Sprout', kind: 'grow-plant', roomId: 'cafeteria', x: 608, y: 784, system: 'farm', cost: 'power', blurb: 'Give the garden sprout light to grow. Its lamp uses electricity.' },
+  { id: 'wiring-electrical', name: 'Balance the Power Slider', kind: 'circuit-slider', roomId: 'reactor', x: 1104, y: 400, system: 'power', cost: 'research', blurb: 'Tune the electric circuit. The lab pauses its experiments while you test the power.' },
+  { id: 'power-switches', name: 'Flip the Power Switches', kind: 'power-switches', roomId: 'admin', x: 1136, y: 848, system: 'power', cost: 'life', blurb: 'Reset the wall’s electric box. The air and water systems use their backup supply during the reset.' },
+];
+
 export const TASKS: TaskDef[] = [
-  { id: 'grow-light-balance', name: 'Grow-Light Rainbow Tune', kind: 'rainbow', roomId: 'cafeteria', x: 608, y: 784, system: 'farm', cost: 'power' },
-  { id: 'nutrient-loop', name: 'Potato Harvest Catch', kind: 'harvest', roomId: 'cafeteria', x: 544, y: 928, system: 'farm', cost: 'life' },
-  { id: 'inspect', name: 'Moon-Dust Filter Scrub', kind: 'scrub', roomId: 'medbay', x: 736, y: 1376, system: 'life', cost: 'power' },
-  { id: 'med-pipes', name: 'Oxygen & Water Pipe Connect', kind: 'pipes', roomId: 'medbay', x: 800, y: 1472, system: 'life', cost: 'farm' },
-  { id: 'wiring-electrical', name: 'Spark-Wire Color Match', kind: 'wiring', roomId: 'reactor', x: 1104, y: 400, system: 'power', cost: 'life' },
-  { id: 'align-engine', name: 'Sun-Beam Solar Catcher', kind: 'solar', roomId: 'reactor', x: 784, y: 400, system: 'power', cost: 'research' },
-  { id: 'steering', name: 'Moon-Rock Crystal Scanner', kind: 'crystals', roomId: 'communications', x: 1776, y: 432, system: 'research', cost: 'power' },
-  { id: 'upload-admin', name: 'Star-Signal Memory Beat', kind: 'signal', roomId: 'communications', x: 1568, y: 304, system: 'research', cost: 'farm' },
+  ...STATION_MISSIONS,
 ];
 
 export const EMERGENCY_TASKS: TaskDef[] = [
-  { id: 'emergency-flr', name: 'Damaged Area · Solar Power Bus', kind: 'calibrate', roomId: 'reactor', x: 784, y: 400, system: 'power', isEmergency: true },
-  { id: 'emergency-cme', name: 'Damaged Area · Airlock & Hull Shield', kind: 'shield', roomId: 'security', x: 528, y: 1488, system: 'life', isEmergency: true },
-  { id: 'emergency-sep', name: 'Damaged Area · Comms & Science Sensors', kind: 'calibrate', roomId: 'communications', x: 1776, y: 432, system: 'research', isEmergency: true },
+  { id: 'emergency-flr', name: 'Damaged Area · Power Box', kind: 'calibrate', roomId: 'reactor', x: 1104, y: 400, system: 'power', isEmergency: true },
+  { id: 'emergency-cme', name: 'Damaged Area · Airlock Shield', kind: 'shield', roomId: 'exterior', x: 1696, y: 1696, system: 'life', isEmergency: true },
+  { id: 'emergency-sep', name: 'Damaged Area · Science Sensors', kind: 'calibrate', roomId: 'communications', x: 1776, y: 432, system: 'research', isEmergency: true },
   { id: 'emergency-gst', name: 'Damaged Area · Hydroponic Grow Pumps', kind: 'inspect', roomId: 'cafeteria', x: 544, y: 928, system: 'farm', isEmergency: true },
 ];
 
@@ -335,16 +350,6 @@ export const SPECIALISTS: Specialist[] = [
     accent: '#9bd15a',
   },
   {
-    id: 'traveller',
-    name: 'Traveller',
-    shortName: 'TRAVEL',
-    role: 'Surface Scouting',
-    art: '/assets/potato-traveller.png',
-    perk: 'Life and airlock repairs give +3 extra Life. You walk 18% faster.',
-    description: 'You have walked every dust field on the training map. A long corridor is a short walk.',
-    accent: '#e9c27b',
-  },
-  {
     id: 'researcher',
     name: 'Researcher',
     shortName: 'RESEARCH',
@@ -371,9 +376,9 @@ export const DESTINATIONS: Destination[] = [
 export const TASK_RANGE = 82;
 
 export const TRIAL_DAYS_BY_DIFFICULTY: Record<DifficultyId, number> = {
-  cadet: 3,
-  crew: 5,
-  veteran: 7,
+  cadet: 7,
+  crew: 9,
+  veteran: 14,
 };
 
 export const PENALTY_DAYS_BY_DIFFICULTY: Record<DifficultyId, number> = {
@@ -396,10 +401,18 @@ export const EXAM_QUESTION_COUNT = 8;
 export const EXAM_PASS_RATIO = 0.7;
 
 export const DIFFICULTY_INFO: Record<DifficultyId, { name: string; description: string }> = {
-  cadet: { name: 'Cadet', description: '3 shifts · 15% alert chance · bigger boosts and smaller costs.' },
-  crew: { name: 'Crew', description: '5 shifts · 30% alert chance · balanced boosts and costs.' },
-  veteran: { name: 'Veteran', description: '7 shifts · 50% alert chance · tougher tradeoffs and shorter clocks.' },
+  cadet: { name: 'Cadet', description: '7 days · 1 dangerous event · bigger boosts and smaller costs.' },
+  crew: { name: 'Crew', description: '9 days · 3 dangerous events · balanced boosts and costs.' },
+  veteran: { name: 'Veteran', description: '14 days · 5 dangerous events · tougher tradeoffs and shorter clocks.' },
 };
+
+/** Veteran (Level 3) stays locked until the player finishes Cadet (Level 1). */
+export function isDifficultyUnlocked(
+  difficulty: DifficultyId,
+  save: Pick<PlayerSave, 'completedDifficulties'>,
+): boolean {
+  return difficulty !== 'veteran' || save.completedDifficulties.includes('cadet');
+}
 
 export const DEFAULT_OPTIONS: GameOptions = {
   masterVolume: 80,
@@ -581,6 +594,7 @@ export function defaultSave(): PlayerSave {
     trainingComplete: false,
     trainingRank: null,
     tutorialComplete: false,
+    seenCommanderBriefings: [],
     seenMinigames: [],
     medals: 0,
     examBest: 0,
@@ -588,6 +602,7 @@ export function defaultSave(): PlayerSave {
     activeTrial: null,
     specialist: 'repairman',
     destination: 'moon',
+    completedDifficulties: [],
     options: { ...DEFAULT_OPTIONS },
   };
 }
@@ -619,7 +634,13 @@ function parseSaveRecord(parsed: unknown): PlayerSave {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return fallback;
   const record = parsed as Partial<PlayerSave> & { version?: number };
   const options = (record.options && typeof record.options === 'object' ? record.options : {}) as Partial<GameOptions>;
-  const difficulty = isDifficultyId(options.difficulty) ? options.difficulty : fallback.options.difficulty;
+  const completedDifficulties = (['cadet', 'crew', 'veteran'] as const).filter(
+    id => Array.isArray(record.completedDifficulties) && record.completedDifficulties.includes(id),
+  );
+  const rawDifficulty = isDifficultyId(options.difficulty) ? options.difficulty : fallback.options.difficulty;
+  const difficulty = isDifficultyUnlocked(rawDifficulty, { completedDifficulties })
+    ? rawDifficulty
+    : fallback.options.difficulty;
   const maxDaySpan = trialMaxDays(difficulty) + penaltyMaxDays(difficulty);
   return {
     version: 8,
@@ -634,6 +655,8 @@ function parseSaveRecord(parsed: unknown): PlayerSave {
       ? record.trainingRank
       : null,
     tutorialComplete: Boolean(record.tutorialComplete),
+    seenCommanderBriefings: COMMANDER_BRIEFINGS.filter(id =>
+      Array.isArray(record.seenCommanderBriefings) && record.seenCommanderBriefings.includes(id)),
     seenMinigames: Array.isArray(record.seenMinigames)
       ? [...new Set(record.seenMinigames.filter(id => typeof id === 'string' && id.length <= 64))].slice(0, 100)
       : [],
@@ -643,6 +666,7 @@ function parseSaveRecord(parsed: unknown): PlayerSave {
     activeTrial: parseSavedTrial(record.activeTrial, difficulty),
     specialist: isSpecialistId(record.specialist) ? record.specialist : fallback.specialist,
     destination: isDestinationId(record.destination) ? record.destination : fallback.destination,
+    completedDifficulties,
     options: {
       masterVolume: typeof options.masterVolume === 'number' ? Math.max(0, Math.min(100, options.masterVolume)) : (fallback.options.masterVolume ?? 80),
       sound: typeof options.sound === 'boolean' ? options.sound : fallback.options.sound,
@@ -687,7 +711,7 @@ export function parseImportedSaveJson(raw: string): PlayerSave | null {
       : decoded;
     if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null;
     const keys = Object.keys(candidate);
-    const knownFields = ['version', 'name', 'colorId', 'options', 'wins', 'certified', 'activeTrial', 'specialist'];
+    const knownFields = ['version', 'name', 'colorId', 'options', 'wins', 'certified', 'activeTrial', 'specialist', 'completedDifficulties'];
     if (!keys.some(key => knownFields.includes(key))) return null;
     return parseSaveRecord(candidate);
   } catch {
@@ -698,6 +722,8 @@ export function parseImportedSaveJson(raw: string): PlayerSave | null {
 function parseSavedTrial(value: unknown, difficulty: DifficultyId = 'crew'): SavedTrial | null {
   if (!value || typeof value !== 'object') return null;
   const trial = value as Partial<SavedTrial>;
+  const storedBriefing = (value as { hudBriefing?: unknown }).hudBriefing;
+  const briefing = storedBriefing === 'status-prompt' ? 'status-review' : storedBriefing;
   if (trial.phase !== 'playing' && trial.phase !== 'report' && trial.phase !== 'penalty') return null;
   const majorEventRun = parseMajorEventRun(trial.majorEventRun);
   const runDifficulty = majorEventRun?.difficulty ?? difficulty;
@@ -760,6 +786,10 @@ function parseSavedTrial(value: unknown, difficulty: DifficultyId = 'crew'): Sav
       && position.x > 0 && position.x < WORLD_WIDTH && position.y > 0 && position.y < WORLD_HEIGHT
       ? { x: position.x, y: position.y } : undefined,
     pendingDisaster: trial.pendingDisaster === true,
+    opening: trial.opening === 'blackout' || trial.opening === 'first-shift'
+      || trial.opening === 'guided-emergency' || trial.opening === 'second-shift' ? trial.opening : undefined,
+    hudBriefing: trial.opening === 'first-shift' && trial.tasks.length > 0
+      && (briefing === 'tasks' || briefing === 'status' || briefing === 'status-review') ? briefing : undefined,
     checkpoint: parseCheckpoint(trial.checkpoint, trial.tasks),
     planning: planningBase ? {
       eventBase: planningBase,

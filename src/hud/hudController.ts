@@ -1,4 +1,5 @@
 import { SYSTEMS } from '../data/balance';
+import { REACTOR_POWER_SWITCH } from '../data/missionOpening';
 import {
   destinationById, getColor, getRoomName, specialistById, taskById, type MissionMetrics,
 } from '../model';
@@ -9,8 +10,10 @@ import {
 } from '../app/session';
 import { isUnpressurizedHazard } from '../app/state';
 import { supportsHelmetArt } from '../game/assets/characterSprites';
+import { startGameplayOst } from '../audio/music';
 import { sfx } from '../sfx';
-import { assignmentOffer, systemHealth } from '../sim/mission';
+import { DISASTER_REPAIRS } from '../sim/disasters';
+import { assignmentOffer, systemHealth, taskExchange } from '../sim/mission';
 import { METRIC_LABELS, renderCharacterSpriteThumb } from '../ui/icons';
 
 const FIGMA_SYSTEM_ACCENTS: Record<string, string> = {
@@ -72,7 +75,7 @@ export function setHudDrawer(mode: HudDrawerMode): void {
 }
 
 export function toggleHudDrawer(mode: 'tasks' | 'status'): void {
-  if (session.currentScreen !== 'mission') return;
+  if (session.currentScreen !== 'mission' || session.mission.opening === 'blackout') return;
   if (!isMissionActive() && session.activeHudDrawer === null) return;
   sfx.click();
   setHudDrawer(session.activeHudDrawer === mode ? null : mode);
@@ -163,7 +166,7 @@ export function updateRadarPings(): void {
 }
 
 function tasksDrawerMarkup(): string {
-  const { mission } = session;
+  const { mission, lobby } = session;
   if (!mission.tasks.length) {
     return '<div class="hud-task-empty">Plan today\'s shift to receive crew assignments.</div>';
   }
@@ -181,11 +184,13 @@ function tasksDrawerMarkup(): string {
       <button
         type="button"
         class="hud-task-card-item ${done ? 'is-done' : 'is-pending'} ${isEmergency && !done ? 'is-emergency' : ''}"
-        ${done ? 'disabled' : `data-drawer-walk-task="${escapeHtml(id)}" title="Auto-pilot to ${escapeHtml(getRoomName(task.roomId))}"`}
+        ${done ? 'disabled' : `data-drawer-walk-task="${escapeHtml(id)}" title="Show route line to ${escapeHtml(getRoomName(task.roomId))}"`}
       >
         <span class="hud-task-item-kicker">${category}</span>
         <strong class="hud-task-item-title">${escapeHtml(task.name)}</strong>
-        <small class="hud-task-item-desc">${escapeHtml(summary)}</small>
+        <small class="hud-task-item-desc">${escapeHtml(summary)}
+          ${!done && !isEmergency ? `<span class="station-task-exchange">${metricChips(taskExchange(task, lobby.specialist, mission.majorEventRun.difficulty))}</span>` : ''}
+        </small>
         <span class="hud-task-item-status">
           ${done
             ? '<i class="hud-task-check" aria-hidden="true">✓</i><span>COMPLETED</span>'
@@ -232,8 +237,10 @@ export function updateActionButtons(): void {
   if (!use) return;
   const { currentPrompt, currentScreen, mission } = session;
   const id = currentPrompt.id;
-  const isSpecial = currentPrompt.kind === 'crew' || currentPrompt.kind === 'exit';
-  const relevant = Boolean(id) && (currentScreen === 'training' || (isMissionActive() && (isSpecial || mission.tasks.includes(id ?? ''))));
+  const isSpecial = currentPrompt.kind === 'crew' || currentPrompt.kind === 'exit' || currentPrompt.kind === 'bed';
+  const relevant = currentScreen === 'mission' && mission.opening === 'blackout'
+    ? id === REACTOR_POWER_SWITCH.id && !mission.modalOpen
+    : Boolean(id) && (currentScreen === 'training' || (isMissionActive() && (isSpecial || mission.tasks.includes(id ?? ''))));
   use.dataset.targetName = relevant ? currentPrompt.name : '';
   use.dataset.targetRoom = relevant ? currentPrompt.room : '';
   use.setAttribute('aria-label', relevant ? `Use ${currentPrompt.name} in ${currentPrompt.room}` : 'Use');
@@ -246,6 +253,24 @@ export function updateActionButtons(): void {
 export function updateHUD(): void {
   if (session.currentScreen !== 'mission') return;
   const { mission, save, lobby } = session;
+  const hudRoot = document.querySelector<HTMLElement>('#hud');
+  const emergency = mission.pendingDisaster && isMissionActive() ? mission.eventCard?.majorEvent : undefined;
+  const isRedAlert = Boolean(emergency);
+  hudRoot?.classList.toggle('is-red-alert', isRedAlert);
+  hudRoot?.classList.toggle('is-blackout', mission.opening === 'blackout');
+  hudRoot?.classList.toggle('is-guide-briefing', Boolean(mission.spotlightGuide));
+  const specialAlert = document.querySelector<HTMLElement>('#hud-special-alert');
+  if (specialAlert) {
+    specialAlert.hidden = !isRedAlert;
+    const alertText = document.querySelector<HTMLElement>('#hud-special-alert-text');
+    const eventTitle = emergency ? DISASTER_REPAIRS[emergency.type].title : '';
+    if (alertText && alertText.textContent !== eventTitle) {
+      alertText.textContent = eventTitle;
+    }
+  }
+  if (isMissionActive()) {
+    startGameplayOst(isRedAlert ? 'alert' : 'ambient');
+  }
   const taskLabel = document.querySelector<HTMLSpanElement>('#task-label');
   const taskStatus = mission.tasks.length ? `${mission.completed.length} / ${mission.tasks.length}` : 'PLANNING';
   if (taskLabel && taskLabel.textContent !== taskStatus) taskLabel.textContent = taskStatus;

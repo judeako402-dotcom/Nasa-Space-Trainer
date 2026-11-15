@@ -51,6 +51,10 @@
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  width: max-content;
+  max-width: calc(100vw - 32px);
   transform: translateX(-50%);
   gap: min(5.8vw, 10vh);
   margin: 0;
@@ -433,37 +437,13 @@
 }
 .spud-dialogue-arcade .spud-dialogue-quote { letter-spacing: .06em; }
 
-:is(.spud-console-tablet, .task-result-card, .disaster-card) {
-  background: url('/assets/ui/spudnaut/design/task-frame.webp') center / 100% 100% no-repeat, #333044;
-  border: 0;
-  border-radius: 13px;
-  color: #fff9fc;
-}
-:is(.spud-console-tablet, .task-result-card, .disaster-card) { padding-inline: clamp(22px, 5vw, 48px); }
-.spud-console-tablet .spud-modal-top, .task-result-card .spud-modal-top { border: 0; }
-.spud-console-tablet .spud-modal-top > div > .spud-constellation-kicker { color: #f6e5fc; }
-.spud-console-tablet .spud-modal-top::before {
-  display: block;
-  content: '';
-  width: clamp(58px, 9vw, 105px);
-  aspect-ratio: 3;
-  background: url('/assets/ui/spudnaut/design/task-label.webp') left center / contain no-repeat;
-}
-.spud-console-tablet [data-close] {
-  background: url('/assets/ui/spudnaut/design/task-close.webp') center / contain no-repeat;
-  border: 0;
-  color: transparent;
-}
-.spud-console-tablet [data-close] > * { visibility: hidden; }
 .mission-status { background: #29263e; border-color: #8e8095; }
 .hud-quick-tasks button { background: #262340; border-color: #867b95; }
-.shift-planner .spud-copy-block, .shift-planner .spud-arcade-panel-box,
+.shift-planner .spud-arcade-panel-box,
 .spud-canvas-overlay .spud-slot-row, .game-menu-dialog .spud-copy-block { background-color: var(--design-panel); }
 .spud-canvas-overlay:not(.shift-planner, .homecoming) {
   background: linear-gradient(#171438d9, #151035dd), url('/assets/ui/spudnaut/design/moonbase-dark.webp') center / cover;
 }
-.assignment-control, .disaster-tools button, .minigame-tutorial button { background-color: #242045; border-color: #9083ad; }
-.assignment-control:hover, .disaster-tools button:hover { background-color: #463263; }
 
 @media (min-aspect-ratio: 4 / 3) {
   .spud-arcade-menu:not(.is-options-open) .spud-art-stage-img {
@@ -496,5 +476,4 @@
   .design-habitat .spud-habitat-showcase.is-moon-only { grid-template-columns: 38% 60%; }
   .design-habitat #habitat-title { width: 42vw; }
   .design-habitat .spud-habitat-left::before { height: 130%; }
-  .spud-console-tablet .spud-modal-top::before { display: none; }
 }

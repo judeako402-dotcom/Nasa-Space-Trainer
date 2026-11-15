@@ -1,5 +1,5 @@
 import type {
-  DifficultyId, EarthProgressReport, ExamQuestion, GamePhase, MajorEventRun, MissionCheckpoint, TrialProgress,
+  DifficultyId, EarthProgressReport, ExamQuestion, GamePhase, MajorEventRun, MissionCheckpoint, MissionOpening, SavedTrial, TrialProgress,
 } from '../model';
 import { PLAYER_SPAWN } from '../model';
 import { TRAINING_DECK } from '../data/trainingDeck';
@@ -9,7 +9,7 @@ import { createMajorEventRun } from '../sim/majorEvents';
 import type { SceneGameState } from '../game';
 
 export type ScreenId =
-  | 'splash' | 'menu' | 'options' | 'credits' | 'story' | 'exam'
+  | 'splash' | 'menu' | 'play-intro' | 'options' | 'credits' | 'story' | 'exam'
   | 'remedial' | 'graduation' | 'lobby' | 'launch' | 'training' | 'mission';
 
 export interface MissionState extends TrialProgress {
@@ -25,6 +25,9 @@ export interface MissionState extends TrialProgress {
   eventCard: EventCard | null;
   majorEventRun: MajorEventRun;
   pendingDisaster: boolean;
+  opening?: MissionOpening;
+  hudBriefing?: SavedTrial['hudBriefing'];
+  spotlightGuide?: boolean;
   checkpoint?: MissionCheckpoint;
   playerX: number;
   playerY: number;
