@@ -136,11 +136,15 @@ export function playCutsceneVideo(options: CutsceneVideoOptions): void {
     video.volume = gain;
   }
 
-  void video.play().catch(() => {
-    video.muted = true;
-    video.volume = 0;
-    return video.play().catch(finish);
-  });
+  try {
+    void Promise.resolve(video.play()).catch(() => {
+      video.muted = true;
+      video.volume = 0;
+      return Promise.resolve(video.play()).catch(finish);
+    });
+  } catch {
+    finish();
+  }
 
   monitorRaf = requestAnimationFrame(monitorPlayback);
   fallbackTimer = window.setTimeout(finish, 45000);
@@ -158,5 +162,17 @@ export function showPlayIntro(): void {
       syncLobbyFromSave();
       routes.showLobby();
     },
+  });
+}
+
+/** Plays the fullscreen return-to-Earth ending video after completing all shifts, then returns straight to the Main Menu. */
+export function showEndingCutscene(): void {
+  playCutsceneVideo({
+    screenId: 'ending',
+    ariaLabel: 'Return to Earth ending cinematic',
+    src: '/assets/ui/spudnaut/ending/homecoming.mp4',
+    skipLabel: 'SKIP',
+    skipAriaLabel: 'Skip ending video',
+    onComplete: () => routes.showMenu(),
   });
 }

@@ -1,7 +1,7 @@
 import {
   DEFAULT_OPTIONS, DIFFICULTY_INFO, PLAYER_SPAWN, STATION_MISSIONS, TASKS,
-  destinationById, getColor, getRoomName, isDifficultyUnlocked, persistSave,
-  specialistById, taskById, trialMaxDays,
+  destinationById, getRoomName, isDifficultyUnlocked, persistSave,
+  taskById, trialMaxDays,
   type CommanderBriefing, type EarthProgressReport, type MissionCheckpoint, type MissionMetric, type MissionMetrics, type SavedTrial,
 } from '../model';
 import { DAILY_OPERATIONS_DRIFT, DAY, PASS_THRESHOLDS } from '../data/balance';
@@ -9,9 +9,9 @@ import { fetchDonkiReports } from '../data/donki';
 import { EVENT_CARDS } from '../data/events';
 import { BLACKOUT_EVENT, COMMANDER_ART, LANDING_PAD_SPAWN } from '../data/missionOpening';
 import { startGameplayOst, stopMusic } from '../audio/music';
-import { playHomecoming } from '../game/ending';
 import { WALK_SPEED } from '../game/constants';
 import { routes, type DialogueOptions } from '../app/router';
+import { showEndingCutscene } from './playIntroScreen';
 import {
   applyOptions, configureScene, dayDurationMs, dom, ensureStationGame, escapeHtml, pauseMissionForModal,
   isMissionActive, missionDayNumber, movementSpeed, resumeMissionAfterModal, saveTrialProgress, session,
@@ -30,7 +30,7 @@ import {
 import { createRng, seedFor } from '../sim/rng';
 import { metricChips, setHudDrawer, statusBarsMarkup, syncEvaHazardState, updateHUD } from '../hud/hudController';
 import {
-  METRIC_LABELS, renderCharacterSpriteThumb, renderConstellationAction, renderConstellationTitle,
+  METRIC_LABELS, renderConstellationAction, renderConstellationTitle,
 } from '../ui/icons';
 import { clearActiveModals, mountCustomModal } from '../ui/modalController';
 import { showDisaster } from '../hud/disasterModal';
@@ -1101,6 +1101,10 @@ export function finishDay(reason: string, skipMissedPenalty = false): void {
   };
   mission.report = report;
   mission.reports.push(report);
+  if (mission.day >= trialMaxDays(mission.majorEventRun.difficulty)) {
+    completeMission();
+    return;
+  }
   configureScene();
   updateHUD();
   saveTrialProgress();
@@ -1128,18 +1132,20 @@ export function renderReport(reason: string): void {
     advanceAfterReport();
     return;
   }
-  const verdict = evaluateMission(mission.metrics, mission.totalAssigned, mission.totalCompleted);
   const maxDays = trialMaxDays(mission.majorEventRun.difficulty);
-  const isFinalDay = mission.day >= maxDays;
+  if (mission.day >= maxDays) {
+    completeMission();
+    return;
+  }
   const metricOrder: (keyof MissionMetrics)[] = ['life', 'power', 'research', 'farm'];
   const prevReport = mission.reports.length >= 2 ? mission.reports[mission.reports.length - 2] : null;
   const baselineMetrics = prevReport?.metrics ?? (report.day === 1 ? createMetrics() : mission.metrics);
 
   overlayRoot.innerHTML = `
-    <section class="spud-canvas-overlay earth-report-full ${isFinalDay ? (verdict.passed ? 'final-review passed' : 'final-review below-target') : ''} ${save.options.reducedMotion ? 'reduce-motion' : ''}" aria-labelledby="report-screen-title">
+    <section class="spud-canvas-overlay earth-report-full ${save.options.reducedMotion ? 'reduce-motion' : ''}" aria-labelledby="report-screen-title">
       <div class="spud-canvas-inner">
         ${renderConstellationTitle(
-          isFinalDay ? 'FINAL HABITAT REVIEW' : 'SHIFT TELEMETRY REPORT',
+          'SHIFT TELEMETRY REPORT',
           'report-screen-title',
           `EARTH PROGRESS REPORT · DAY ${String(report.day).padStart(2, '0')} OF ${maxDays} · ASSIGNMENTS ${report.completed} / ${report.assigned}`,
         )}
@@ -1192,28 +1198,14 @@ export function renderReport(reason: string): void {
                 `;
               }).join('')}
             </div>
-            ${isFinalDay ? `
-              <div class="spud-constellation-divider" aria-hidden="true"></div>
-              <div class="spud-copy-block">
-                <h2>CERTIFICATION TARGETS</h2>
-                <div class="spud-telemetry-grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 16px;">
-                  ${verdict.requirements.map((item) => `
-                    <div class="spud-telemetry-cell">
-                      <span>${escapeHtml(item.label)}</span>
-                      <strong style="color:${item.met ? 'var(--spud-gain)' : 'var(--spud-danger)'};">${item.value} / ${item.target}</strong>
-                    </div>
-                  `).join('')}
-                </section>
-              </div>
-            ` : ''}
           </aside>
         </div>
 
         <footer class="spud-constellation-actions">
           ${renderConstellationAction({ icon: 'back', label: 'SAVE & EXIT', attrs: 'data-report-save' })}
           ${renderConstellationAction({
-            icon: isFinalDay ? 'cert' : 'forward',
-            label: isFinalDay ? 'SEE FINAL RESULT' : 'NEXT SHIFT',
+            icon: 'forward',
+            label: 'NEXT SHIFT',
             attrs: 'data-report-next',
             variant: 'primary',
           })}
@@ -1248,11 +1240,9 @@ export function advanceAfterReport(): void {
 }
 
 export function completeMission(): void {
-  const { overlayRoot } = dom();
   const { mission, save } = session;
   if (mission.phase === 'complete') return;
   const difficulty = mission.majorEventRun.difficulty;
-  const maxDays = trialMaxDays(difficulty);
   stopLoop();
   setWalking(false);
   stopMusic(350);
@@ -1263,113 +1253,13 @@ export function completeMission(): void {
   save.medals += 1;
   if (passed) save.wins += 1;
   else save.losses += 1;
-  const justUnlockedVeteran = difficulty === 'cadet' && !save.completedDifficulties.includes('cadet');
   if (!save.completedDifficulties.includes(difficulty)) {
     save.completedDifficulties = [...save.completedDifficulties, difficulty];
   }
   save.activeTrial = null;
   save.trialDay = 1;
   persistSave(save);
-  const masterVolume = (save.options.masterVolume ?? 80) / 100;
-  playHomecoming(
-    overlayRoot,
-    save.options.reducedMotion,
-    () => renderMissionEnd(passed, maxDays, justUnlockedVeteran),
-    {
-      soundEnabled: save.options.sound && masterVolume > 0 && save.options.volume > 0,
-      soundVolume: (save.options.volume / 100) * masterVolume,
-      onArrival: () => (passed ? sfx.win() : sfx.lose()),
-    },
-  );
-}
-
-function renderMissionEnd(passed: boolean, maxDays: number, justUnlockedVeteran = false): void {
-  const { overlayRoot } = dom();
-  const { mission, save, lobby } = session;
-  const verdict = evaluateMission(mission.metrics, mission.totalAssigned, mission.totalCompleted);
-  const destination = destinationById(lobby.destination);
-  const specialist = specialistById(lobby.specialist);
-  const color = getColor(lobby.colorId);
-  overlayRoot.innerHTML = `
-    <section class="spud-canvas-overlay mission-end ${save.options.reducedMotion ? 'reduce-motion' : ''}" aria-labelledby="mission-end-title">
-      <div class="spud-canvas-inner">
-        ${renderConstellationTitle(
-          'YOU EARNED THE GOLDEN POTATO MEDAL!',
-          'mission-end-title',
-          `SPUDNAUT SPACE AGENCY · FINAL EVALUATION · ${passed ? 'CERTIFIED' : 'REVIEW LOGGED'}`,
-        )}
-        <div class="spud-split-columns">
-          <div class="spud-copy-stack">
-            <div class="spud-loadout-portrait" style="--choice-accent:${color.css}">
-              <div class="spud-portrait-ring">${renderCharacterSpriteThumb(specialist.art, true, lobby.colorId)}</div>
-              <div class="spud-loadout-meta">
-                <span>GOLDEN POTATO MEDAL</span>
-                <h3>${escapeHtml(save.name)} · ${escapeHtml(specialist.name)}</h3>
-                <small><i aria-hidden="true"></i>${escapeHtml(destination.name)} · Rank ${escapeHtml(save.trainingRank ?? 'B')}</small>
-              </div>
-            </div>
-            <div class="spud-copy-block">
-              <p>
-                ${passed
-                  ? `${escapeHtml(save.name)} and the crew held all four pillars together for ${maxDays + mission.penaltyDay} days on ${escapeHtml(destination.name)}. Earth approves the habitat design.`
-                  : `${escapeHtml(save.name)} completed the trial on ${escapeHtml(destination.name)}, and brought home a Golden Potato Medal. The final checklist shows what to try on your next trip.`}
-                ${justUnlockedVeteran ? ' Veteran difficulty (14 days · 5 dangerous events) is now unlocked in Launch Loadout!' : ''}
-              </p>
-            </div>
-            <div class="spud-telemetry-grid is-four">
-              <div class="spud-telemetry-cell">
-                <span>DAYS</span>
-                <strong>${mission.day + mission.penaltyDay}</strong>
-                <small>TRIAL SPAN</small>
-              </div>
-              <div class="spud-telemetry-cell">
-                <span>TASKS</span>
-                <strong>${mission.totalCompleted}/${mission.totalAssigned}</strong>
-                <small>COMPLETED</small>
-              </div>
-              <div class="spud-telemetry-cell">
-                <span>MISSED</span>
-                <strong>${mission.missedDays}</strong>
-                <small>SHIFTS</small>
-              </div>
-              <div class="spud-telemetry-cell">
-                <span>EXAM</span>
-                <strong>${save.examBest}%</strong>
-                <small>CERT BEST</small>
-              </div>
-            </div>
-          </div>
-
-          <div class="spud-vertical-rule" aria-hidden="true"></div>
-
-          <aside class="spud-copy-stack">
-            <div class="spud-constellation-heading">CERTIFICATION CHECKLIST</div>
-            <div class="spud-slot-list">
-              ${verdict.requirements.map((item) => `
-                <div class="spud-slot-row">
-                  <strong>${escapeHtml(item.label)}</strong>
-                  <span class="spud-status-tag ${item.met ? 'is-done' : 'is-urgent'}">${item.value} / ${item.target} ${item.met ? '✓' : '×'}</span>
-                </div>
-              `).join('')}
-            </div>
-          </aside>
-        </div>
-
-        <footer class="spud-constellation-actions">
-          ${renderConstellationAction({ icon: 'back', label: 'RETURN TO MENU', attrs: 'data-end-menu' })}
-          ${renderConstellationAction({ icon: 'launch', label: 'PLAY AGAIN', attrs: 'data-end-retry', variant: 'primary' })}
-        </footer>
-      </div>
-    </section>
-  `;
-  overlayRoot.querySelector('[data-end-menu]')?.addEventListener('click', () => {
-    sfx.click();
-    routes.showMenu();
-  });
-  overlayRoot.querySelector('[data-end-retry]')?.addEventListener('click', () => {
-    sfx.click();
-    routes.showLobby();
-  });
+  showEndingCutscene();
 }
 
 export function resumeTrial(): void {

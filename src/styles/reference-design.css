@@ -441,7 +441,7 @@
 .hud-quick-tasks button { background: #262340; border-color: #867b95; }
 .shift-planner .spud-arcade-panel-box,
 .spud-canvas-overlay .spud-slot-row, .game-menu-dialog .spud-copy-block { background-color: var(--design-panel); }
-.spud-canvas-overlay:not(.shift-planner, .homecoming) {
+.spud-canvas-overlay:not(.shift-planner) {
   background: linear-gradient(#171438d9, #151035dd), url('/assets/ui/spudnaut/design/moonbase-dark.webp') center / cover;
 }
 

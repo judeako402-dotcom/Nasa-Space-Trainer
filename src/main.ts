@@ -277,7 +277,11 @@ function wireControls(): void {
     }
     if (target?.closest('input, textarea')) return;
 
-    if (event.key === 'Enter' && (session.currentScreen === 'splash' || session.currentScreen === 'launch') && !target?.closest('button, a')) {
+    const isCutsceneScreen = session.currentScreen === 'play-intro'
+      || session.currentScreen === 'launch'
+      || session.currentScreen === 'ending';
+    if ((event.key === 'Enter' && (session.currentScreen === 'splash' || isCutsceneScreen) && !target?.closest('button, a'))
+      || (event.key === 'Escape' && isCutsceneScreen)) {
       const skipBtn = screenRoot.querySelector<HTMLButtonElement>('.intro-skip');
       if (skipBtn) {
         event.preventDefault();
@@ -400,7 +404,12 @@ function wireControls(): void {
   });
 
   const unlockAudio = (): void => {
-    if (session.currentScreen === 'splash' || session.currentScreen === 'mission' || session.currentScreen === 'training') return;
+    if (session.currentScreen === 'splash'
+      || session.currentScreen === 'play-intro'
+      || session.currentScreen === 'launch'
+      || session.currentScreen === 'ending'
+      || session.currentScreen === 'mission'
+      || session.currentScreen === 'training') return;
     if (session.save.options.music) startMusic();
     document.removeEventListener('pointerdown', unlockAudio);
   };

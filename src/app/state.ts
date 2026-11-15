@@ -10,7 +10,7 @@ import type { SceneGameState } from '../game';
 
 export type ScreenId =
   | 'splash' | 'menu' | 'play-intro' | 'options' | 'credits' | 'story' | 'exam'
-  | 'remedial' | 'graduation' | 'lobby' | 'launch' | 'training' | 'mission';
+  | 'remedial' | 'graduation' | 'lobby' | 'launch' | 'training' | 'mission' | 'ending';
 
 export interface MissionState extends TrialProgress {
   phase: GamePhase;

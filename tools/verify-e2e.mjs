@@ -876,9 +876,9 @@ async function solveActiveMinigame(cdp) {
   await clickSelector(cdp, '.task-result-card [data-result-continue]');
 }
 
-async function finishAssignedTasks(cdp, { waitForBunk = false } = {}) {
+async function finishAssignedTasks(cdp, { waitForBunk = false, expectEnding = false } = {}) {
   for (let taskIdx = 0; taskIdx < 6; taskIdx += 1) {
-    if (await cdp.eval(`Boolean(document.querySelector('.earth-report-full'))`)) break;
+    if (await cdp.eval(`Boolean(document.querySelector('.earth-report-full')) || document.body.dataset.screen === 'ending'`)) break;
     const isTasksOpen = await cdp.eval(`document.querySelector('[data-action="tasks"]')?.getAttribute('aria-expanded') === 'true'`);
     if (!isTasksOpen) {
       await clickSelector(cdp, '[data-action="tasks"]');
@@ -956,6 +956,8 @@ async function finishAssignedTasks(cdp, { waitForBunk = false } = {}) {
     await pressKey(cdp, 'Escape', 'Escape');
     return;
   }
+
+  if (expectEnding) return;
 
   const reportReached = await waitFor(() => cdp.eval(`(() => {
     const report = document.querySelector('.earth-report-full');
@@ -1253,13 +1255,11 @@ async function runPass2() {
       const seen = await cdp.eval(`JSON.parse(localStorage.getItem('spudnaut-cooperative-trial-save-v8')).activeTrial.reports.flatMap(report => report.completedTasks)`);
       const tasks = [...offered.filter(id => !seen.includes(id)), ...offered.filter(id => seen.includes(id))].slice(0, 3);
       await startPlannedShift(cdp, { tasks });
-      await finishAssignedTasks(cdp);
+      await finishAssignedTasks(cdp, { expectEnding: day === 7 });
     }
-    await clickSelector(cdp, '[data-report-next]');
-    await waitFor(() => cdp.eval(`Boolean(document.querySelector('.homecoming'))`), 'return to Earth cinematic');
-    await clickSelector(cdp, '[data-skip-homecoming]');
-    await waitFor(() => cdp.eval(`Boolean(document.querySelector('[data-end-retry]'))`), 'Golden Potato Medal awarded');
-    await clickSelector(cdp, '[data-end-menu]');
+    await waitFor(() => cdp.eval(`document.body.dataset.screen === 'ending' && Boolean(document.querySelector('.opening-video'))`), 'return to Earth ending video');
+    await clickSelector(cdp, '.intro-skip');
+    await waitFor(() => cdp.eval(`document.body.dataset.screen === 'menu'`), 'returned straight to main menu');
     const final = await cdp.eval(`JSON.parse(localStorage.getItem('spudnaut-cooperative-trial-save-v8'))`);
     assert(final.medals === 1 && final.games === 1 && final.activeTrial === null, 'completion and medal saved once');
     assert(final.seenMinigames.length >= 6, 'minigame progress carried across shifts');
