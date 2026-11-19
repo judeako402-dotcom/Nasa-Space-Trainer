@@ -3,13 +3,12 @@ import { scheduleIdlePrewarm, scheduleSurfacePrewarm } from '../app/prewarm';
 import { routes } from '../app/router';
 import {
   TRAINING_SYSTEM_IDS, configureScene, dom, ensureStationGame, escapeHtml,
-  interactActiveStation, pauseTrainingForModal, resumeTraining, session,
-  setSceneLoadingState, setScreen, showToast, stopLoop, wakeStationGame,
+  pauseTrainingForModal, resumeTraining, session, setSceneLoadingState, setScreen,
+  showToast, stopLoop, wakeStationGame,
 } from '../app/session';
 import { createTrainingState } from '../app/state';
 import { STORY_BEATS } from '../data/story';
 import { TRAINING_DECK } from '../data/trainingDeck';
-import { touchControls } from '../game/systems/TouchControls';
 import { persistSave, type TaskKind } from '../model';
 import { sfx } from '../sfx';
 import {
@@ -150,9 +149,7 @@ export function showTraining(): void {
     });
   }
   renderTrainingHud();
-  showToast(touchControls.enabled
-    ? 'Drag the joystick to move. Tap a console to walk there, then tap USE. Inspect all four systems.'
-    : 'Training Deck online. Walk with WASD, then press E at a console. Inspect all four systems.', 5000);
+  showToast('Training Deck online. Inspect all four systems.');
 }
 
 export function renderTrainingHud(): void {
@@ -187,20 +184,7 @@ export function renderTrainingHud(): void {
       <div class="training-footer">${inspected === systems.length ? 'REPORT TO THE BRIDGE CONSOLE' : `INSPECT ${systems.length - inspected} MORE SYSTEM${systems.length - inspected === 1 ? '' : 'S'}`}</div>
       <div class="toast training-toast" id="training-toast" role="status"></div>
     </section>
-    <button
-      type="button"
-      class="training-use"
-      data-training-use
-      aria-keyshortcuts="E"
-      aria-label="Use the highlighted console or crew member"
-      disabled
-    >USE<kbd aria-hidden="true">E</kbd></button>
   `;
-  trainingHud.querySelector('[data-training-use]')?.addEventListener('click', () => {
-    if (session.currentPrompt.id === null) return;
-    sfx.click();
-    interactActiveStation();
-  });
   trainingHud.querySelector('[data-training-exit]')?.addEventListener('click', () => {
     sfx.click();
     routes.showMenu();
@@ -214,8 +198,6 @@ export function renderTrainingHud(): void {
     renderTrainingHud();
     trainingHud.querySelector<HTMLButtonElement>('[data-training-toggle]')?.focus();
   });
-  // Re-apply USE state after the markup was rebuilt from scratch.
-  routes.updateActionButtons();
 }
 
 export function handleTrainingInteract(interactionId: string): void {

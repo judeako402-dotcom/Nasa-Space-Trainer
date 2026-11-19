@@ -233,29 +233,21 @@ function systemsMarkup(): string {
 }
 
 export function updateActionButtons(): void {
-  const buttons = [
-    document.querySelector<HTMLButtonElement>('[data-action="use"]'),
-    document.querySelector<HTMLButtonElement>('[data-training-use]'),
-  ].filter((button): button is HTMLButtonElement => button !== null);
-  if (!buttons.length) return;
+  const use = document.querySelector<HTMLButtonElement>('[data-action="use"]');
+  if (!use) return;
   const { currentPrompt, currentScreen, mission } = session;
   const id = currentPrompt.id;
   const isSpecial = currentPrompt.kind === 'crew' || currentPrompt.kind === 'exit' || currentPrompt.kind === 'bed';
   const relevant = currentScreen === 'mission' && mission.opening === 'blackout'
     ? id === REACTOR_POWER_SWITCH.id && !mission.modalOpen
     : Boolean(id) && (currentScreen === 'training' || (isMissionActive() && (isSpecial || mission.tasks.includes(id ?? ''))));
-  for (const use of buttons) {
-    // The training USE control stays on screen at all times so its thumb target
-    // never jumps around; only its enabled state changes.
-    const isMissionUse = use.matches('[data-action="use"]');
-    use.dataset.targetName = relevant ? currentPrompt.name : '';
-    use.dataset.targetRoom = relevant ? currentPrompt.room : '';
-    use.setAttribute('aria-label', relevant ? `Use ${currentPrompt.name} in ${currentPrompt.room}` : 'Use');
-    use.hidden = isMissionUse ? (currentScreen === 'mission' ? false : !relevant) : false;
-    use.disabled = !relevant;
-    use.classList.toggle('is-ready', relevant);
-    use.classList.toggle('is-inactive', !relevant);
-  }
+  use.dataset.targetName = relevant ? currentPrompt.name : '';
+  use.dataset.targetRoom = relevant ? currentPrompt.room : '';
+  use.setAttribute('aria-label', relevant ? `Use ${currentPrompt.name} in ${currentPrompt.room}` : 'Use');
+  use.hidden = currentScreen === 'mission' ? false : !relevant;
+  use.disabled = !relevant;
+  use.classList.toggle('is-ready', relevant);
+  use.classList.toggle('is-inactive', !relevant);
 }
 
 export function updateHUD(): void {

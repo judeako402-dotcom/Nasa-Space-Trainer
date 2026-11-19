@@ -8,23 +8,15 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "android:assets": "capacitor-assets generate --android --assetPath resources --iconBackgroundColor=#05070d --iconBackgroundColorDark=#05070d --splashBackgroundColor=#05070d --splashBackgroundColorDark=#05070d",
-    "android:sync": "npm run build && cap sync android",
-    "android:open": "cap open android",
-    "android:apk": "npm run android:sync && cd android && gradlew assembleDebug",
     "test": "vitest run",
     "test:e2e": "node tools/verify-e2e.mjs",
     "prepare-assets": "node scripts/prepare-assets.mjs",
     "map:gen": "node tools/generate-station-map.mjs"
   },
   "dependencies": {
-    "@capacitor/android": "^8.6.2",
-    "@capacitor/core": "^8.6.2",
     "phaser": "^3.90.0"
   },
   "devDependencies": {
-    "@capacitor/assets": "^4.0.0",
-    "@capacitor/cli": "^8.6.2",
     "typescript": "~5.8.3",
     "vite": "^6.3.5",
     "vitest": "^5.0.5"

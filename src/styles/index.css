@@ -1,9 +1,7 @@
 @import './tokens.css';
-@import './style.css';
-@import './ui-kit.css';
-@import './spudnaut-theme.css';
+@import './style.css' layer(legacy);
+@import './ui-kit.css' layer(components);
+@import './spudnaut-theme.css' layer(overrides);
 @import './mission.css';
 @import './reference-design.css';
 @import './ingame-hud.css';
-@import './touch-controls.css';
-@import './pwa.css';

@@ -5,7 +5,6 @@
  */
 
 import { StationMapUrls } from '../game/assets/AssetKeys';
-import { detectTouchControls } from '../game/systems/TouchControls';
 
 interface NetworkInformationLike {
   saveData?: boolean;
@@ -22,13 +21,9 @@ const PREWARM_URLS = [
 let gamePrewarmScheduled = false;
 let surfacePrewarmScheduled = false;
 
-export function shouldPrewarmAssets(saveData: boolean, touchDevice: boolean): boolean {
-  return !saveData && !touchDevice;
-}
-
-function canPrewarmAssets(): boolean {
+function hasSaveDataPreference(): boolean {
   const nav = navigator as Navigator & { connection?: NetworkInformationLike };
-  return shouldPrewarmAssets(Boolean(nav.connection?.saveData), detectTouchControls());
+  return Boolean(nav.connection?.saveData);
 }
 
 function scheduleWhenIdle(task: () => void, timeoutMs: number): void {
@@ -43,27 +38,24 @@ function scheduleWhenIdle(task: () => void, timeoutMs: number): void {
 }
 
 export function scheduleIdlePrewarm(): void {
-  if (gamePrewarmScheduled || !canPrewarmAssets()) return;
+  if (gamePrewarmScheduled || hasSaveDataPreference()) return;
   gamePrewarmScheduled = true;
 
   scheduleWhenIdle(() => {
-    void import('../game').catch((error: unknown) => {
-      console.warn('Idle Phaser prewarm failed; the game will load when requested.', error);
-    });
+    void import('../game').catch(() => {});
   }, 1800);
 }
 
 export function scheduleSurfacePrewarm(): void {
   scheduleIdlePrewarm();
-  if (surfacePrewarmScheduled || !canPrewarmAssets()) return;
+  if (surfacePrewarmScheduled || hasSaveDataPreference()) return;
   surfacePrewarmScheduled = true;
 
   scheduleWhenIdle(() => {
     for (const url of PREWARM_URLS) {
-      if (typeof fetch !== 'function') return;
-      void fetch(url, { priority: 'low' } as RequestInit).catch((error: unknown) => {
-        console.warn(`Optional surface prewarm failed for ${url}.`, error);
-      });
+      if (typeof fetch === 'function') {
+        void fetch(url, { priority: 'low' } as RequestInit).catch(() => {});
+      }
     }
   }, 1200);
 }

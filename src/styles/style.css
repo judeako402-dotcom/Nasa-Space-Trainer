@@ -481,7 +481,6 @@ button:disabled {
   align-items: center;
   justify-content: center;
   height: 100vh;
-  height: 100dvh; /* mobile URL bar: real viewport height */
   width: 100vw;
   padding: 0;
   margin: 0;
@@ -510,10 +509,8 @@ button:disabled {
   z-index: 2;
   width: 100vw;
   height: 100vh;
-  height: 100dvh;
   max-width: 100vw;
   max-height: 100vh;
-  max-height: 100dvh;
   aspect-ratio: auto;
   margin: 0;
   overflow: hidden;
@@ -901,7 +898,6 @@ body[data-screen="options"] {
 .spud-options-panel {
   width: min(560px, calc(100vw - 40px));
   max-height: calc(100vh - 88px);
-  max-height: calc(100dvh - 88px);
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -1261,7 +1257,6 @@ body[data-screen="options"] {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  min-height: 100dvh;
   padding: 0 clamp(20px, 4.5vw, 72px);
   overflow: hidden;
   isolation: isolate;
@@ -4202,6 +4197,24 @@ body[data-screen="options"] {
     radial-gradient(circle at 50% 50%, transparent 58%, rgba(2, 4, 9, 0.36) 100%);
 }
 
+.rotate-hint {
+  display: none;
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  z-index: 21;
+  transform: translateX(-50%);
+  padding: 7px 12px;
+  color: var(--gold-bright);
+  background: rgba(5, 10, 18, 0.8);
+  border: 1px solid rgba(245, 196, 81, 0.34);
+  border-radius: 999px;
+  font: 500 8px/1.3 var(--mono);
+  letter-spacing: 0.08em;
+  text-align: center;
+  white-space: nowrap;
+}
+
 .hud {
   position: absolute;
   inset: 0;
@@ -7116,6 +7129,12 @@ kbd,
 
   .asteroid {
     font-size: 32px;
+  }
+}
+
+@media (max-width: 900px) and (max-aspect-ratio: 5 / 4) {
+  .rotate-hint {
+    display: block;
   }
 }
 
