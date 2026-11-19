@@ -1,6 +1,6 @@
 ﻿import Phaser from 'phaser';
 import { isExteriorApron } from '../../app/state';
-import { CAMERA } from '../../data/balance';
+import { cameraZoomForViewport } from '../../data/balance';
 import type { MapDefinition } from '../../data/mapTypes';
 import { surfaceHabitatFor, SURFACE_HABITAT } from '../../data/surfaceHabitat';
 import { getRoomName } from '../../model';
@@ -8,7 +8,7 @@ import { AssetKeys, MapKeys, StationMapUrls } from '../assets/AssetKeys';
 import { registerCharacterAnimations } from '../assets/characterSprites';
 import { createPlaceholderTextures } from '../assets/PlaceholderFactory';
 import { ensureColoredCharacterTextures } from '../assets/suitColorizer';
-import { DEBUG_PAN_SPEED, DEMO_PAN_DURATION, DEPTH_FLOOR, PLAYER_FEET } from '../constants';
+import { DEBUG_PAN_SPEED, DEMO_PAN_DURATION, DEPTH_FLOOR, PLAYER_FEET, ROUTE_WAYPOINT_GRAB } from '../constants';
 import { CREW_FEET_OFFSET_Y, CrewNPC } from '../entities/CrewNPC';
 import type { Interactable } from '../entities/Interactable';
 import { Player } from '../entities/Player';
@@ -76,6 +76,7 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
   private lightAngle = 0;
   private guideTarget?: { x: number; y: number; color: number; manual?: boolean };
   private guidePath: { x: number; y: number }[] = [];
+  private routeBlockedReported = false;
   private lastGuideOrigin?: { x: number; y: number };
   private transitionActive = false;
 
@@ -147,14 +148,30 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
       registerCharacterAnimations(this);
       this.blackoutElement = document.querySelector('#station-blackout');
 
-      this.cameras.main.setZoom(CAMERA.zoom);
+      this.cameras.main.setZoom(cameraZoomForViewport(this.cameras.main.width));
       this.cameras.main.setBackgroundColor('#080d18');
+
+      // Re-fit the camera when the viewport changes (rotation, foldable,
+      // split view) so portrait phones keep the wider adaptive framing.
+      this.scale.on('resize', this.applyAdaptiveZoom, this);
 
       this.tiledInput = new InputSystem(this);
       this.tiledInteraction.onSelectionChanged(() => this.emitPrompt(true));
 
+      // Tap / click the floor or a station marker to auto-walk there. The HUD
+      // and the virtual joystick sit above the canvas, so only bare world taps
+      // reach this handler.
+      this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+        if (!this.ready || this.state.frozen || this.state.blackout) return;
+        if (pointer.button !== 0) return;
+        const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+        const target = this.nearestTapTarget(world.x, world.y);
+        this.navigateTo(target.x, target.y);
+      });
+
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
         this.ready = false;
+        this.scale.off('resize', this.applyAdaptiveZoom, this);
         this.input.keyboard?.removeAllListeners();
         this.input.removeAllListeners();
         this.teardown();
@@ -199,6 +216,22 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
   navigateTo(x: number, y: number): boolean {
     if (!this.ready || this.state.frozen || this.state.blackout) return false;
     return this.routeTo(x, y);
+  }
+
+  /** Snap a raw floor tap onto a nearby station marker so the prompt lines up. */
+  private nearestTapTarget(x: number, y: number): { x: number; y: number } {
+    let best: { x: number; y: number } | null = null;
+    let bestDistance = 80;
+    const known = new Set([...this.state.activeInteractions, ...this.state.completedInteractions]);
+    for (const item of this.map.interactions) {
+      if (!known.has(item.id)) continue;
+      const distance = Math.hypot(item.x - x, item.y - y);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = { x: item.x, y: item.y };
+      }
+    }
+    return best ?? { x, y };
   }
 
   interactNow(): void {
@@ -338,6 +371,10 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
         this.followerCamera.cancelPan();
       }
       this.tiledPlayer.applyInput(move);
+    } else if (this.autopilotStep()) {
+      // Walking the route line the player asked for by tapping the world or a
+      // Map / Tasks waypoint. Manual keyboard or joystick input takes over the
+      // moment it returns, then autopilot resumes when the input stops.
     } else {
       this.tiledPlayer.stop();
     }
@@ -373,11 +410,16 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
     light.style.setProperty('--light-angle', `${this.lightAngle}deg`);
   }
 
+  /** Keep the adaptive framing in sync with viewport size changes. */
+  private applyAdaptiveZoom(): void {
+    this.cameras.main.setZoom(cameraZoomForViewport(this.cameras.main.width));
+  }
+
   private buildSurface(): void {
     this.teardown();
 
     this.cameras.main.setBackgroundColor('#080d18');
-    this.cameras.main.setZoom(CAMERA.zoom);
+    this.cameras.main.setZoom(cameraZoomForViewport(this.cameras.main.width));
 
     const loader = new MapLoader(this, MapKeys.station);
     this.tiledMap = loader.load({});
@@ -748,6 +790,7 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
 
   private routeTo(x: number, y: number): boolean {
     if (!this.tiledPlayer) return false;
+    this.routeBlockedReported = false;
     const isEmergencyTarget = this.map.interactions.some(
       (item) =>
         item.id.startsWith('emergency-') &&
@@ -767,6 +810,46 @@ export class SurfaceScene extends Phaser.Scene implements StationControllableSce
     this.lastGuideOrigin = { ...this.tiledPlayer.position };
     this.updateGuideLine(performance.now());
     return true;
+  }
+
+  /**
+   * Walk one step along the active route line.
+   *
+   * Only player-requested routes (tap-to-walk, Map / Tasks waypoints) auto-path;
+   * scripted emergency markers stay visual so the player still has to reach
+   * them under time pressure. Returns false when there is nothing to follow so
+   * the caller stops the player instead.
+   */
+  private autopilotStep(): boolean {
+    if (this.state.blackout || !this.guideTarget?.manual || !this.tiledPlayer) return false;
+    if (this.guidePath.length === 0) {
+      this.reportBlockedRoute();
+      return false;
+    }
+    const pos = this.tiledPlayer.position;
+    let next = this.guidePath[0]!;
+    let distance = Math.hypot(next.x - pos.x, next.y - pos.y);
+    while (distance <= ROUTE_WAYPOINT_GRAB && this.guidePath.length > 1) {
+      this.guidePath.shift();
+      next = this.guidePath[0]!;
+      distance = Math.hypot(next.x - pos.x, next.y - pos.y);
+    }
+    // On the last waypoint already: hold position and let the arrival check in
+    // `updateGuideLine` retire the route.
+    if (distance <= ROUTE_WAYPOINT_GRAB) return true;
+    this.tiledPlayer.applyInput({ x: (next.x - pos.x) / distance, y: (next.y - pos.y) / distance });
+    return true;
+  }
+
+  /** One-shot notice when a route line can no longer be followed. */
+  private reportBlockedRoute(): void {
+    if (this.routeBlockedReported || !this.guideTarget?.manual) return;
+    this.routeBlockedReported = true;
+    this.guideTarget = undefined;
+    this.guidePath = [];
+    this.lastGuideOrigin = undefined;
+    this.guideLine?.clear();
+    this.coordinator.onEvent({ type: 'route-blocked' });
   }
 
   private updateGuideLine(now: number): void {

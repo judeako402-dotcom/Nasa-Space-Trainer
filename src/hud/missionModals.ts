@@ -115,7 +115,7 @@ export function showDialogue(options: DialogueOptions): void {
   const paint = (): void => {
     const line = options.lines[index] ?? '';
     const isLast = index >= options.lines.length - 1;
-    const actionLabel = isLast ? 'CLOSE' : 'NEXT';
+    const actionLabel = advanceKey ? 'CONTINUE' : isLast ? 'CLOSE' : 'NEXT';
     shade.innerHTML = `
       ${spotlightSelector ? '<div class="spud-dialogue-task-spotlight" aria-hidden="true"></div>' : ''}
       <section class="spud-dialogue-arcade${commander ? ' has-commander' : ''}" style="--accent:${options.accent}" role="dialog" aria-modal="true" aria-label="${escapeHtml(options.speaker)}" aria-describedby="commander-dialogue-line" tabindex="-1">
@@ -130,10 +130,11 @@ export function showDialogue(options: DialogueOptions): void {
         <p id="commander-dialogue-line" class="dialogue-line spud-dialogue-quote">${escapeHtml(line)}</p>
         <footer class="spud-dialogue-arcade-footer">
           <span class="spud-dialogue-pager">${options.lines.length > 1 ? `${index + 1} / ${options.lines.length}` : ''}</span>
-          ${advanceKey ? `<span class="spud-dialogue-key-prompt">Press <kbd>${advanceKey}</kbd> to continue</span>` : renderArcadeButton({
+          ${advanceKey ? `<span class="spud-dialogue-key-prompt">Press <kbd>${advanceKey}</kbd> or tap the button</span>` : ''}
+          ${renderArcadeButton({
             label: actionLabel,
             attrs: 'data-dialogue-next',
-            ariaLabel: isLast ? 'Close dialogue' : 'Next line',
+            ariaLabel: advanceKey ? 'Continue briefing' : isLast ? 'Close dialogue' : 'Next line',
             size: 'md',
             extraClass: 'spud-dialogue-cta',
           })}
@@ -142,17 +143,22 @@ export function showDialogue(options: DialogueOptions): void {
     `;
     if (advanceKey) {
       shade.querySelector<HTMLElement>('[role="dialog"]')?.focus();
-      return;
     }
     const action = shade.querySelector<HTMLButtonElement>('[data-dialogue-next]')!;
     action.addEventListener('click', () => {
       sfx.click();
+      // Commander briefings advance through their own key path; a tap mirrors it
+      // exactly so touch players are never stranded behind an `inert` backdrop.
+      if (advanceKey) {
+        finishClose();
+        return;
+      }
       if (index < options.lines.length - 1) {
         index += 1;
         paint();
       } else finishClose();
     });
-    action.focus();
+    if (!advanceKey) action.focus();
   };
   paint();
 }
@@ -416,7 +422,7 @@ export function openMap(): void {
           ${gameMenuClose('map')}
         </header>
         <div class="${map.id === 'surface' ? 'station-map-porthole' : 'training-map-viewport'}">
-        <div class="spud-map-blueprint map-canvas ${map.id === 'surface' ? 'is-surface' : ''}" style="${map.id === 'surface' ? '' : `height:${height}px;`}">
+        <div class="spud-map-blueprint map-canvas ${map.id === 'surface' ? 'is-surface' : ''}" style="${map.id === 'surface' ? '' : `height:min(${height}px, 54dvh);`}">
           ${map.id === 'surface' ? `<img class="spud-map-art" src="${StationMapUrls.overview}" alt="" aria-hidden="true" />` : ''}
           ${map.rooms.map((room) => `
             <button type="button" class="spud-map-room map-room" ${blackout ? 'disabled' : ''} data-map-walk-x="${Math.round(room.x + room.w / 2)}" data-map-walk-y="${Math.round(room.y + room.h / 2)}" data-map-walk-label="${escapeHtml(room.name)}" title="${escapeHtml(blackout ? room.name : `Click to walk to ${room.name}`)}" style="left:${(room.x / map.width) * 100}%;top:${(room.y / map.height) * 100}%;width:${(room.w / map.width) * 100}%;height:${(room.h / map.height) * 100}%;--room-accent:${room.accent};">
@@ -516,7 +522,7 @@ export function openMissionLog(): void {
       </header>
       <div class="spud-split-columns">
         <div class="spud-copy-stack">
-          <div class="spud-slot-list spud-scroll-region" style="max-height:44vh;overflow-y:auto;">
+          <div class="spud-slot-list spud-scroll-region" style="max-height:max(200px, 44dvh);overflow-y:auto;">
             ${reports.length ? reports.map((rep) => `
               <button type="button" class="spud-slot-row ${rep.day === selectedDay ? 'selected' : ''}" data-log-day="${rep.day}">
                 <div>

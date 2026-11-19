@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { touchControls } from './TouchControls';
 
 export type Action = 'interact' | 'snapCamera' | 'demoPan';
 
@@ -11,6 +12,10 @@ const KEY_BINDINGS: Record<Action, string[]> = {
 /**
  * Samples WASD/Arrow movement input, Shift free-camera peek, and action keys
  * while leaving DOM focus (Tab) and text inputs unobstructed.
+ *
+ * The virtual joystick (`TouchControls`) is merged in as a second source:
+ * whenever the keyboard produces a non-zero vector it wins outright, so desktop
+ * behaviour is unchanged and on-screen buttons are purely additive.
  */
 export class InputSystem {
   private keys: Record<string, Phaser.Input.Keyboard.Key>;
@@ -48,6 +53,7 @@ export class InputSystem {
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
       this.moveVector = { x: 0, y: 0 };
       this.justPressedActions.clear();
+      touchControls.drainActions();
       return;
     }
 
@@ -57,7 +63,7 @@ export class InputSystem {
     if (this.isDownKey('D') || this.isDownKey('RIGHT')) x += 1;
     if (this.isDownKey('W') || this.isDownKey('UP')) y -= 1;
     if (this.isDownKey('S') || this.isDownKey('DOWN')) y += 1;
-    this.moveVector = { x, y };
+    this.moveVector = x !== 0 || y !== 0 ? { x, y } : touchControls.getVector();
 
     this.justPressedActions.clear();
     for (const action of Object.keys(KEY_BINDINGS) as Action[]) {
@@ -69,6 +75,7 @@ export class InputSystem {
         }
       }
     }
+    for (const action of touchControls.drainActions()) this.justPressedActions.add(action);
   }
 
   getMoveVector(): { x: number; y: number } {
@@ -76,7 +83,7 @@ export class InputSystem {
   }
 
   isShiftDown(): boolean {
-    return this.isDownKey('SHIFT');
+    return this.isDownKey('SHIFT') || touchControls.isPeeking();
   }
 
   isDown(action: Action): boolean {

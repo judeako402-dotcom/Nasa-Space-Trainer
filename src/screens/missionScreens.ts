@@ -10,6 +10,7 @@ import { EVENT_CARDS } from '../data/events';
 import { BLACKOUT_EVENT, COMMANDER_ART, LANDING_PAD_SPAWN } from '../data/missionOpening';
 import { startGameplayOst, stopMusic } from '../audio/music';
 import { WALK_SPEED } from '../game/constants';
+import { touchControls } from '../game/systems/TouchControls';
 import { routes, type DialogueOptions } from '../app/router';
 import { showEndingCutscene } from './playIntroScreen';
 import {
@@ -176,7 +177,9 @@ function commitAssignments(): void {
       showToast(`Follow the red line to ${room}.`, 5500);
     } else {
       startGameplayOst('ambient');
-      showToast('Shift started! Tap a task to walk there.');
+      showToast(touchControls.enabled
+        ? 'Shift started! Tap Tasks for a job, then drag to move or tap the floor to walk.'
+        : 'Shift started. Open Tasks to choose a job and follow its route.');
     }
   }
 }
@@ -555,11 +558,17 @@ function showCommanderOnce(
 
 function beginBlackoutBriefing(): void {
   void fetchDonkiReports();
-  showCommanderOnce('landing', `Ready, ${session.save.name}? The Moon base lost power. Use W, A, S, and D to walk. Find the power switch in the Reactor Dome and press E.`);
+  const controls = touchControls.enabled
+    ? 'Drag the joystick or tap the station floor to walk to the Reactor Dome. When the power switch is highlighted, tap USE.'
+    : 'Use W, A, S, and D to walk. Find the power switch in the Reactor Dome and press E.';
+  showCommanderOnce('landing', `Ready, ${session.save.name}? The Moon base lost power. ${controls}`);
 }
 
 function briefFirstShift(): void {
-  showCommanderOnce('power-restored', 'The lights are back! Pick three jobs, then look for them in Tasks.', () => startDay(), { spotlight: 'tasks' });
+  const guidance = touchControls.enabled
+    ? 'The lights are back! Tap Tasks, choose three jobs, then tap a job to follow its path. Tap USE when you reach the station.'
+    : 'The lights are back! Pick three jobs, then look for them in Tasks.';
+  showCommanderOnce('power-restored', guidance, () => startDay(), { spotlight: 'tasks' });
 }
 
 function briefAssignmentControls(): void {
@@ -570,11 +579,17 @@ function briefAssignmentControls(): void {
     briefAssignmentControls();
   };
   if (mission.hudBriefing === 'tasks') {
-    showCommanderOnce('tasks', 'Press T to open Tasks. Pick a job to see the path. Press M to open the map.',
+    const guidance = touchControls.enabled
+      ? 'Tap CONTINUE to open Tasks. Pick a job to see the path. Tap Map to find rooms.'
+      : 'Press T to open Tasks. Pick a job to see the path. Press M to open the map.';
+    showCommanderOnce('tasks', guidance,
       () => advance('status'), { spotlight: 'tasks', advanceKey: 'T' });
   } else if (mission.hudBriefing === 'status') {
     setHudDrawer('tasks');
-    showCommanderOnce('status', 'Press V to see how the base is doing. Each job helps one bar and uses a little of another.',
+    const guidance = touchControls.enabled
+      ? 'Tap CONTINUE to see how the base is doing. Each job helps one bar and uses a little of another.'
+      : 'Press V to see how the base is doing. Each job helps one bar and uses a little of another.';
+    showCommanderOnce('status', guidance,
       () => advance('status-review'), { spotlight: 'task-drawer', advanceKey: 'V' });
   } else if (mission.hudBriefing === 'status-review') {
     setHudDrawer('status');
@@ -1190,7 +1205,7 @@ export function renderReport(reason: string): void {
                 const deltaColor = delta > 0 ? 'var(--spud-gain)' : delta < 0 ? 'var(--spud-danger)' : 'var(--spud-ink-muted)';
                 const target = PASS_THRESHOLDS[metric as keyof typeof PASS_THRESHOLDS];
                 return `
-                  <div class="spud-stat-row" style="grid-template-columns:86px 1fr 94px;">
+                  <div class="spud-stat-row" style="grid-template-columns:minmax(64px,86px) minmax(0,1fr) auto;">
                     <span>${METRIC_LABELS[metric].toUpperCase()}</span>
                     <div class="spud-stat-track"><div class="spud-stat-fill" style="width:${Math.min(100, Math.max(0, value))}%"></div></div>
                     <b style="text-align:right;">${value} <small style="color:${deltaColor};font-weight:600;">(${deltaBadge})</small> <small style="color:var(--spud-ink-muted);font-weight:500;">/ ${typeof target === 'number' ? Math.round(target) : '—'}</small></b>

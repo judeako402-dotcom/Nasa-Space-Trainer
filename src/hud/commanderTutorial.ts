@@ -1,6 +1,7 @@
 import { persistSave } from '../model';
 import { routes } from '../app/router';
 import { dom, escapeHtml, isMissionActive, pauseMissionForModal, resumeMissionAfterModal, session } from '../app/session';
+import { touchControls } from '../game/systems/TouchControls';
 import { sfx } from '../sfx';
 import { renderArcadeButton, renderConstellationIcon } from '../ui/icons';
 
@@ -43,6 +44,13 @@ const steps: TutorialStep[] = [
     selector: '.shift-planner .spud-planning-columns > section', preferredDock: 'bottom-right',
   },
 ];
+
+const touchStep: TutorialStep = {
+  id: 'touch', role: 'COMMANDER RUSSET', title: 'Walk on touch',
+  body: 'Drag the joystick to move. Tap the station floor to walk there, then tap USE at a nearby job. PEEK, RECENTER, and TOUR adjust your view.',
+  selector: '#touch-joystick', fallbackSelector: '.hud-top-left', preferredDock: 'top-right',
+};
+let activeSteps = steps;
 
 function isElementVisible(el: HTMLElement | null): el is HTMLElement {
   if (!el) return false;
@@ -124,6 +132,9 @@ export function startCommanderTutorial(options: { force?: boolean; beforePlannin
   dismissCommanderTutorial(false);
 
   showPlannerAfter = Boolean(options.beforePlanning);
+  activeSteps = touchControls.enabled
+    ? [steps[0]!, touchStep, ...steps.slice(1)]
+    : steps;
   dom().hud.inert = true;
   if (isMissionActive() && !session.mission.modalOpen) {
     pauseMissionForModal();
@@ -167,9 +178,9 @@ export function startCommanderTutorial(options: { force?: boolean; beforePlannin
     } else {
       planner?.remove();
     }
-    const step = steps[activeStepIndex] ?? steps[0]!;
+    const step = activeSteps[activeStepIndex] ?? activeSteps[0]!;
     const isFirst = activeStepIndex === 0;
-    const isLast = activeStepIndex >= steps.length - 1;
+    const isLast = activeStepIndex >= activeSteps.length - 1;
     popover.innerHTML = `
       <div class="spud-dialogue-badge is-portrait" aria-hidden="true">
         <img class="spud-dialogue-portrait-img" src="/assets/ui/spudnaut/design/commander.webp" alt="" draggable="false" />
@@ -184,7 +195,7 @@ export function startCommanderTutorial(options: { force?: boolean; beforePlannin
       </header>
       <p class="dialogue-line spud-dialogue-quote" id="tutorial-step-body">${escapeHtml(step.body)}</p>
       <footer class="spud-tutorial-footer">
-        <span class="spud-dialogue-pager" aria-label="Step ${activeStepIndex + 1} of ${steps.length}">${activeStepIndex + 1} / ${steps.length}</span>
+        <span class="spud-dialogue-pager" aria-label="Step ${activeStepIndex + 1} of ${activeSteps.length}">${activeStepIndex + 1} / ${activeSteps.length}</span>
         <div class="spud-tutorial-actions">
           <button type="button" class="spud-tutorial-link" data-tutorial-skip>SKIP</button>
           ${!isFirst ? `<button type="button" class="spud-tutorial-link" data-tutorial-prev>BACK</button>` : ''}
@@ -227,7 +238,7 @@ export function startCommanderTutorial(options: { force?: boolean; beforePlannin
   };
 
   const handleResize = (): void => {
-    const step = steps[activeStepIndex];
+    const step = activeSteps[activeStepIndex];
     if (step) positionTutorialElements(step);
   };
   const handleKeyDown = (event: KeyboardEvent): void => {

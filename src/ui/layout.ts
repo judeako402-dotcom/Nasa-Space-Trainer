@@ -19,6 +19,17 @@ export function mountAppFrame(): DomRefs {
   app.innerHTML = `
     <div class="game-frame">
       <main class="screen-root" id="screen-root"></main>
+      <aside class="pwa-banner" id="pwa-banner" hidden aria-labelledby="pwa-banner-title">
+        <div class="pwa-banner-copy">
+          <strong id="pwa-banner-title">Spudnaut</strong>
+          <p id="pwa-banner-message" role="status" aria-live="polite"></p>
+        </div>
+        <div class="pwa-banner-actions">
+          <button type="button" class="pwa-banner-action" id="pwa-install-action" data-pwa-install hidden>Install</button>
+          <button type="button" class="pwa-banner-action" id="pwa-update-action" hidden>Restart to update</button>
+          <button type="button" class="pwa-banner-dismiss" data-pwa-dismiss aria-label="Dismiss install or update message">×</button>
+        </div>
+      </aside>
       <div class="scene-shell" id="scene-shell" hidden>
         <div id="game-canvas" class="game-canvas"></div>
         <div id="station-blackout" class="station-blackout" aria-hidden="true" hidden></div>
@@ -38,6 +49,18 @@ export function mountAppFrame(): DomRefs {
         </div>
         <div class="scene-fallback" id="scene-fallback" role="alert" hidden></div>
         <div class="scene-vignette" aria-hidden="true"></div>
+        <div class="touch-controls" id="touch-controls" hidden>
+          <div
+            class="touch-joystick"
+            id="touch-joystick"
+            role="application"
+            aria-label="Virtual joystick. Drag to walk around the station."
+            tabindex="-1"
+          >
+            <span class="touch-joystick-hint" aria-hidden="true">DRAG TO WALK</span>
+            <span class="touch-joystick-base" aria-hidden="true"><span class="touch-joystick-knob"></span></span>
+          </div>
+        </div>
         <div class="hud mission-hud" id="hud" hidden>
           <div class="hud-special-alert" id="hud-special-alert" role="alert" hidden>
             <svg class="hud-special-alert-triangle" viewBox="0 0 64 56" width="54" height="48" aria-hidden="true">
@@ -152,6 +175,17 @@ export function mountAppFrame(): DomRefs {
                 <kbd aria-hidden="true">G</kbd>
               </button>
             </div>
+          </div>
+          <div class="camera-cluster" id="camera-cluster" hidden>
+            <button type="button" class="camera-button" data-action="cam-peek" aria-label="Free camera peek, hold to look around" aria-keyshortcuts="Shift">
+              <span>PEEK</span>
+            </button>
+            <button type="button" class="camera-button" data-action="cam-snap" aria-label="Recenter camera on the crew member" aria-keyshortcuts="R">
+              <span>RECENTER</span>
+            </button>
+            <button type="button" class="camera-button" data-action="cam-tour" aria-label="Pan across the station map" aria-keyshortcuts="P">
+              <span>TOUR</span>
+            </button>
           </div>
           <div class="action-cluster hud-bottom-right">
             <button type="button" class="action-button use is-inactive" data-action="use" aria-keyshortcuts="E" disabled>

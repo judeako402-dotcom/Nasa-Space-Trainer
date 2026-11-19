@@ -1054,6 +1054,56 @@ body {
   z-index: 12;
 }
 
+/* On-screen equivalent of the training deck's `E` interact key. Mirrors the
+   mission HUD's USE control so touch players always have the same thumb target. */
+.training-use {
+  position: absolute;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 16px);
+  min-width: 96px;
+  min-height: 52px;
+  padding: 10px 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 2px solid var(--spud-ice, #8cf5ed);
+  border-radius: 12px;
+  background: rgba(16, 28, 64, 0.92);
+  color: var(--spud-ink, #f3f8ff);
+  font: 800 15px/1 var(--display, system-ui, sans-serif);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  box-shadow: 0 6px 18px rgba(3, 6, 18, 0.55);
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 140ms ease, border-color 140ms ease, opacity 140ms ease;
+}
+
+.training-use kbd {
+  padding: 2px 5px;
+  border: 1px solid rgba(155, 225, 255, 0.42);
+  border-radius: 3px;
+  font: 700 10px/1 var(--mono, ui-monospace, monospace);
+  color: var(--spud-ice, #8cf5ed);
+}
+
+.training-use.is-ready {
+  background: rgba(28, 74, 66, 0.95);
+  border-color: #8fe6a8;
+}
+
+.training-use:disabled {
+  opacity: 0.45;
+  border-color: #8398bb;
+}
+
+.training-use:focus-visible {
+  outline: 2px solid #ffd560;
+  outline-offset: 3px;
+}
+
 .training-panel {
   position: absolute;
   top: clamp(10px, 2vh, 22px);
@@ -1068,6 +1118,33 @@ body {
   color: var(--spud-ink);
   text-shadow: var(--spud-text-shadow);
   pointer-events: auto;
+}
+
+@media (max-width: 640px) {
+  .training-panel {
+    top: max(8px, env(safe-area-inset-top));
+    left: max(8px, env(safe-area-inset-left));
+    width: min(260px, calc(100vw - 112px - env(safe-area-inset-left)));
+    max-height: min(42dvh, 300px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 8px;
+  }
+
+  .training-use {
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(12px, env(safe-area-inset-bottom));
+    min-width: 68px;
+    min-height: 60px;
+    padding: 8px 10px;
+  }
+}
+
+@media (max-width: 640px) and (orientation: landscape) {
+  .training-panel {
+    width: min(250px, 34vw);
+    max-height: calc(100dvh - 20px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
 }
 
 .training-head {

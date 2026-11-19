@@ -26,6 +26,12 @@ export const CAMERA = {
   smoothing: 11,
 } as const;
 
+/** Keep enough world visible on phones without widening the desktop framing. */
+export function cameraZoomForViewport(viewWidth: number): number {
+  if (!Number.isFinite(viewWidth) || viewWidth <= 0) return CAMERA.zoom;
+  return Math.min(CAMERA.zoom, Math.max(0.55, Math.min(1, viewWidth / 900)));
+}
+
 export const VISION = {
   radius: 440,
   darkness: 0.9,

@@ -59,6 +59,7 @@ export function showMenu(): void {
           <div class="spud-menu-secondary" aria-label="Training and archives">
             <button type="button" class="spud-tutorial-link" data-menu="training">TRAINING DECK</button>
             <button type="button" class="spud-tutorial-link" data-menu="credits">ARCHIVES</button>
+            <button type="button" class="spud-tutorial-link" data-pwa-install>INSTALL APP</button>
           </div>
         </div>
 

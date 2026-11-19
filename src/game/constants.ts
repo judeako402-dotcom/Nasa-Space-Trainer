@@ -53,3 +53,6 @@ export const DEBUG_PAN_SPEED = 700;
 /** Duration of smooth pan-to-center animation in ms. */
 export const DEMO_PAN_DURATION = 1000;
 
+/** Distance (px) at which the autopilot counts a route waypoint as reached. */
+export const ROUTE_WAYPOINT_GRAB = 8;
+

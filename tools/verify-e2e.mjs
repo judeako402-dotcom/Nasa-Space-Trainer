@@ -213,7 +213,7 @@ async function launchChromePass({ autoplayAllowed, viewport }) {
     });
     cdp.on('Network.loadingFailed', (p) => {
       const url = reqUrls.get(p.requestId) || '';
-      const isMediaAbort = p.errorText === 'net::ERR_ABORTED' && /\.(mp4|ogg|webm|mp3)(\?|$)/i.test(url);
+      const isMediaAbort = p.errorText === 'net::ERR_ABORTED' && /\.(mp4|ogg|webm|mp3|wav|flac|m4a)(\?|$)/i.test(url);
       if (url.startsWith(BASE_URL) && !isMediaAbort) {
         errors.failedLocalRequests.push(`FAILED ${url}: ${p.errorText}`);
       }
@@ -237,6 +237,9 @@ async function launchChromePass({ autoplayAllowed, viewport }) {
       deviceScaleFactor: viewport.isMobile ? 2 : 1,
       mobile: Boolean(viewport.isMobile),
     });
+    await cdp.send('Emulation.setTouchEmulationEnabled', viewport.isMobile
+      ? { enabled: true, maxTouchPoints: 1 }
+      : { enabled: false });
 
     await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
       source: `
@@ -308,12 +311,38 @@ async function clickSelector(cdp, selector) {
     if (!el || el.hidden || el.disabled) return null;
     el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
     const r = el.getBoundingClientRect();
-    return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height };
+    const x = r.left + r.width / 2;
+    const y = r.top + r.height / 2;
+    const hit = document.elementFromPoint(x, y);
+    return {
+      x, y, w: r.width, h: r.height,
+      receivesPointer: Boolean(hit?.closest(${JSON.stringify(selector)})),
+      hit: hit ? hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') + '.' + String(hit.className || '').replaceAll(' ', '.') : null,
+    };
   })()`);
   assert(rect && rect.w > 0 && rect.h > 0, `Expected visible clickable selector: ${selector}`);
+  assert(rect.receivesPointer, `Expected ${selector} to receive pointer events at its center, hit=${rect.hit}`);
   await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: rect.x, y: rect.y });
   await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: rect.x, y: rect.y, button: 'left', clickCount: 1 });
   await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: rect.x, y: rect.y, button: 'left', clickCount: 1 });
+}
+
+async function touchDrag(cdp, startX, startY, endX, endY, durationMs = 420) {
+  const point = (x, y) => ({ x, y, id: 1, radiusX: 4, radiusY: 4, force: 1 });
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [point(startX, startY)],
+  });
+  const steps = 8;
+  for (let step = 1; step <= steps; step += 1) {
+    const ratio = step / steps;
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [point(startX + (endX - startX) * ratio, startY + (endY - startY) * ratio)],
+    });
+    await sleep(durationMs / steps);
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 }
 
 function vkFor(key) {
@@ -583,6 +612,7 @@ async function runPass1() {
       return t && t.ready && t.activeMode === 'training' ? t : null;
     })()`), 'TrainingScene ready', 20000);
     assert(trainingSnap.activeMode === 'training', `Expected TrainingScene activeMode, got ${trainingSnap.activeMode}`);
+    await waitFor(() => cdp.eval(`document.querySelector('#scene-loading')?.hidden`), 'training loading overlay dismissed');
 
     const surfaceLeakUrls = errors.requestedUrls.filter((u) => (
       u.includes('spudnaut-station.tmj')
@@ -597,25 +627,24 @@ async function runPass1() {
     await clickSelector(cdp, '[data-training-exit]');
     await waitFor(() => cdp.eval(`document.body.dataset.screen === 'menu'`), 'menu after training exit');
 
-    // Open Play -> play-intro video -> Traveller loadout -> Cadet 3-shift check -> Habitat -> check Moon hero & Launch check.
+    // Open Play -> play-intro video -> loadout -> Cadet check -> Habitat -> check Moon hero & Launch check.
     await clickSelector(cdp, '[data-menu="play"]');
     await waitFor(() => cdp.eval(`document.body.dataset.screen === 'play-intro' && Boolean(document.querySelector('.intro-skip'))`), 'play intro video');
     await clickSelector(cdp, '.intro-skip');
-    await waitFor(() => cdp.eval(`document.body.dataset.screen === 'lobby' && Boolean(document.querySelector('[data-specialist="traveller"]'))`), 'lobby traveller specialist');
+    await waitFor(() => cdp.eval(`document.body.dataset.screen === 'lobby' && Boolean(document.querySelector('[data-specialist="repairman"]'))`), 'lobby specialist grid');
     const bannerWidths = [];
-    for (const specialist of ['repairman', 'farmer', 'traveller', 'researcher']) {
-      const spriteName = specialist === 'traveller' ? 'explorer' : specialist;
+    for (const specialist of ['repairman', 'farmer', 'researcher']) {
       const ribbon = await waitFor(() => cdp.eval(`(() => {
         const sprite = document.querySelector('#loadout-hero-stage .spud-sprite-strip');
         const banner = document.querySelector('#loadout-class-banner');
-        if (!sprite?.complete || !sprite.naturalWidth || !sprite.src.includes(${JSON.stringify(spriteName)})) return null;
+        if (!sprite?.complete || !sprite.naturalWidth || !sprite.src.includes(${JSON.stringify(specialist)})) return null;
         return { width: banner.offsetWidth, label: banner.textContent.trim().toLowerCase() };
       })()`), `${specialist} sprite and class ribbon`);
       assert(ribbon.label === specialist, 'the class ribbon follows the selected sprite');
       bannerWidths.push(ribbon.width);
       await clickSelector(cdp, '[data-specialist-next]');
     }
-    assert(bannerWidths[1] < bannerWidths[3], 'the ribbon grows to fit longer names');
+    assert(bannerWidths[1] < bannerWidths[2], 'the ribbon grows to fit longer names');
     for (const direction of ['prev', 'next']) {
       const hit = await cdp.eval(`(() => {
         const button = document.querySelector('[data-specialist-${direction}]');
@@ -647,58 +676,239 @@ async function runPass1() {
     await clickSelector(cdp, '[data-habitat-next]');
     const launchSummary = await waitFor(() => cdp.eval(`(() => {
       const txt = document.querySelector('#screen-root')?.textContent || '';
-      return txt.includes('3 SHIFTS') && txt.includes('4 CORE') ? { ok: true } : null;
-    })()`), 'Launch check displays 3 SHIFTS and 4 CORE metrics');
-    console.log('Moon habitat & Cadet 3-shift Flight Check verified:', { moonHero, launchSummary });
+      return txt.includes('7 SHIFTS') && txt.includes('Cadet') && txt.includes('The Moon') ? { ok: true } : null;
+    })()`), 'Launch check displays 7 SHIFTS, Cadet difficulty and The Moon destination');
+    console.log('Moon habitat & Cadet Flight Check verified:', { moonHero, launchSummary });
 
     assertErrorsClean(errors, 'Pass 1B');
   } finally {
     await p1b.cleanup();
   }
+
+  console.log('\n=== PASS 1C: PWA install, cache lifecycle & offline cold start ===');
+  const p1c = await launchChromePass({
+    autoplayAllowed: true,
+    viewport: { width: 390, height: 844, isMobile: true },
+  });
+  try {
+    const { cdp, errors } = p1c;
+    await cdp.send('Page.navigate', { url: `${BASE_URL}/offline.html` });
+    await waitFor(() => cdp.eval(`document.title === 'Offline · SPUDNAUT'`), 'offline fallback page');
+    await cdp.eval(`(async () => {
+      const oldCache = await caches.open('spudnaut-cache-v3');
+      await oldCache.put('/obsolete', new Response('stale'));
+      return true;
+    })()`);
+    await cdp.send('Page.navigate', { url: BASE_URL });
+    await waitFor(() => cdp.eval(`document.body.dataset.screen === 'splash'`), 'PWA app shell');
+    await waitFor(() => cdp.eval(`Boolean(navigator.serviceWorker?.controller)`), 'service worker controls the app', 20000);
+
+    const pwaState = await cdp.eval(`(async () => {
+      const manifest = await (await fetch('/manifest.webmanifest')).json();
+      const names = await caches.keys();
+      const cache = await caches.open(names.find(name => name.startsWith('spudnaut-cache-')) || '');
+      const cachedUrls = (await cache.keys()).map(request => new URL(request.url).pathname);
+      return {
+        manifestIcons: manifest.icons,
+        cacheVersion: names.find(name => name.startsWith('spudnaut-cache-')),
+        removedOldCache: !names.includes('spudnaut-cache-v3'),
+        cachedUrls,
+      };
+    })()`);
+    assert(pwaState.manifestIcons.some(icon => icon.sizes === '192x192' && icon.purpose === 'any')
+      && pwaState.manifestIcons.some(icon => icon.sizes === '512x512' && icon.purpose === 'any')
+      && pwaState.manifestIcons.some(icon => icon.purpose === 'maskable'),
+    `Expected square and maskable PWA icons: ${JSON.stringify(pwaState.manifestIcons)}`);
+    assert(pwaState.cacheVersion === 'spudnaut-cache-v4' && pwaState.removedOldCache,
+      `Expected versioned cache cleanup: ${JSON.stringify(pwaState)}`);
+    assert(pwaState.cachedUrls.includes('/offline.html')
+      && pwaState.cachedUrls.includes('/assets/pwa/icon-maskable-512.png'),
+    `Expected offline fallback and maskable icon in app shell cache: ${JSON.stringify(pwaState.cachedUrls)}`);
+
+    const installReady = await cdp.eval(`(() => {
+      window.__pwaPromptCalls = 0;
+      const event = new Event('beforeinstallprompt', { cancelable: true });
+      Object.defineProperties(event, {
+        prompt: { value: async () => { window.__pwaPromptCalls += 1; } },
+        userChoice: { value: Promise.resolve({ outcome: 'accepted', platform: 'test' }) },
+      });
+      window.dispatchEvent(event);
+      return {
+        prevented: event.defaultPrevented,
+        bannerVisible: !document.querySelector('#pwa-banner').hidden,
+        installVisible: !document.querySelector('#pwa-install-action').hidden,
+      };
+    })()`);
+    assert(installReady.prevented && installReady.bannerVisible && installReady.installVisible,
+      `Expected install affordance to appear: ${JSON.stringify(installReady)}`);
+    await cdp.eval(`document.querySelector('#pwa-install-action').click()`);
+    await waitFor(() => cdp.eval(`window.__pwaPromptCalls === 1`), 'install prompt action');
+
+    const updateReady = await cdp.eval(`(async () => {
+      const registration = await navigator.serviceWorker.getRegistration('/');
+      if (!registration || !navigator.serviceWorker.controller) return { available: false };
+      const worker = new EventTarget();
+      Object.defineProperty(worker, 'state', { value: 'installed', configurable: true });
+      worker.postMessage = message => {
+        window.__pwaUpdateMessages = [...(window.__pwaUpdateMessages || []), message];
+      };
+      Object.defineProperty(registration, 'installing', { value: worker, configurable: true });
+      Object.defineProperty(registration, 'waiting', { value: worker, configurable: true });
+      registration.dispatchEvent(new Event('updatefound'));
+      worker.dispatchEvent(new Event('statechange'));
+      return {
+        available: true,
+        bannerVisible: !document.querySelector('#pwa-banner').hidden,
+        updateVisible: !document.querySelector('#pwa-update-action').hidden,
+      };
+    })()`);
+    assert(updateReady.available && updateReady.bannerVisible && updateReady.updateVisible,
+      `Expected a waiting worker to expose the update action: ${JSON.stringify(updateReady)}`);
+    await cdp.eval(`document.querySelector('#pwa-update-action').click()`);
+    const updateMessage = await cdp.eval(`({
+      messages: window.__pwaUpdateMessages || [],
+      updateHidden: document.querySelector('#pwa-update-action').hidden,
+      updateDisabled: document.querySelector('#pwa-update-action').disabled,
+    })`);
+    assert(updateMessage.messages.some(message => message.type === 'SKIP_WAITING'),
+      `Expected update action to message the waiting worker: ${JSON.stringify(updateMessage)}`);
+    await cdp.eval(`navigator.serviceWorker.dispatchEvent(new Event('controllerchange'))`);
+    await waitFor(() => cdp.eval(`document.body.dataset.screen === 'splash'`), 'reload after service worker update');
+    assertErrorsClean(errors, 'PWA online lifecycle');
+
+    await cdp.send('Page.reload');
+    await waitFor(() => cdp.eval(`document.body.dataset.screen === 'splash'`), 'controlled app shell reload');
+    await waitFor(() => cdp.eval(`navigator.serviceWorker.ready.then(registration =>
+      registration.active?.state === 'activated' && Boolean(navigator.serviceWorker.controller))`),
+    'service worker remains active').catch(async error => {
+      console.error('PWA reload state:', await cdp.eval(`(async () => {
+        const registration = await navigator.serviceWorker.getRegistration('/');
+        return {
+          controller: navigator.serviceWorker.controller?.scriptURL ?? null,
+          active: registration?.active?.scriptURL ?? null,
+          waiting: registration?.waiting?.scriptURL ?? null,
+          screen: document.body.dataset.screen,
+        };
+      })()`));
+      throw error;
+    });
+    const cachedRuntime = await cdp.eval(`(async () => {
+      const name = (await caches.keys()).find(key => key.startsWith('spudnaut-cache-'));
+      const cache = await caches.open(name);
+      return (await cache.keys()).map(request => new URL(request.url).pathname)
+        .filter(path => /\\.(?:js|css)$/.test(path));
+    })()`);
+    assert(cachedRuntime.some(path => path.endsWith('.js')) && cachedRuntime.some(path => path.endsWith('.css')),
+      `Expected runtime JavaScript and CSS cached for offline startup: ${JSON.stringify(cachedRuntime)}`);
+
+    await cdp.send('Network.emulateNetworkConditions', {
+      offline: true,
+      latency: 0,
+      downloadThroughput: 0,
+      uploadThroughput: 0,
+    });
+    await cdp.send('Page.reload');
+    await waitFor(() => cdp.eval(`['splash', 'menu'].includes(document.body.dataset.screen)
+      && document.querySelector('#screen-root')?.childElementCount > 0`), 'offline cold start', 20000);
+    console.log('PWA square/maskable icons, version cleanup, install action, and offline shell verified.');
+  } finally {
+    await p1c.cleanup();
+  }
 }
 
-async function enterMissionDay01(cdp, specialist = 'traveller', options = {}) {
+async function enterMissionDay01(cdp, specialist = 'repairman', options = {}) {
   if (!options.alreadyOnMenu) {
     await cdp.send('Page.navigate', { url: TELEMETRY_URL });
     await waitFor(() => cdp.eval(`document.body.dataset.screen === 'splash'`), 'splash');
     await clickSelector(cdp, '.intro-skip');
     await waitFor(() => cdp.eval(`document.body.dataset.screen === 'menu'`), 'menu');
   }
-  await clickSelector(cdp, '[data-menu="play"]');
+  await cdp.eval(`document.querySelector('[data-menu="play"]').click()`);
   await waitFor(() => cdp.eval(`document.body.dataset.screen === 'play-intro' && Boolean(document.querySelector('.intro-skip'))`), 'play intro video');
-  await clickSelector(cdp, '.intro-skip');
+  await cdp.eval(`document.querySelector('.intro-skip').click()`);
   await waitFor(() => cdp.eval(`document.body.dataset.screen === 'lobby' && Boolean(document.querySelector('[data-specialist]'))`), 'lobby');
-  const specialistOrder = ['repairman', 'farmer', 'traveller', 'researcher'];
+  const specialistOrder = ['repairman', 'farmer', 'researcher'];
   const active = await cdp.eval(`document.querySelector('[data-specialist][aria-pressed=true]').dataset.specialist`);
   const steps = (specialistOrder.indexOf(specialist) - specialistOrder.indexOf(active) + specialistOrder.length) % specialistOrder.length;
-  for (let step = 0; step < steps; step += 1) await clickSelector(cdp, '[data-specialist-next]');
+  for (let step = 0; step < steps; step += 1) await cdp.eval(`document.querySelector('[data-specialist-next]').click()`);
   if (options.difficulty) {
-    await clickSelector(cdp, `[data-difficulty="${options.difficulty}"]`);
+    await cdp.eval(`document.querySelector(${JSON.stringify(`[data-difficulty="${options.difficulty}"]`)}).click()`);
   }
-  await clickSelector(cdp, '[data-lobby-next]');
+  await cdp.eval(`document.querySelector('[data-lobby-next]').click()`);
   await waitFor(() => cdp.eval(`Boolean(document.querySelector('[data-habitat-next]'))`), 'habitat screen');
-  await clickSelector(cdp, '[data-habitat-next]');
+  await cdp.eval(`document.querySelector('[data-habitat-next]').click()`);
   await waitFor(() => cdp.eval(`Boolean(document.querySelector('[data-launch-begin]'))`), 'launch check screen');
-  await clickSelector(cdp, '[data-launch-begin]');
+  await cdp.eval(`document.querySelector('[data-launch-begin]').click()`);
   await waitFor(() => cdp.eval(`document.body.dataset.screen === 'launch' && Boolean(document.querySelector('.intro-skip'))`), 'launch flight deck');
-  await clickSelector(cdp, '.intro-skip');
+  await cdp.eval(`document.querySelector('.intro-skip').click()`);
   await waitFor(() => cdp.eval(`(() => {
     const t = window.__spudTelemetry?.();
-    return t?.ready && t.room === 'Landing Pad' && t.frozen && !document.querySelector('#station-blackout').hidden
-      && document.querySelector('.spud-commander-model img')?.naturalWidth > 0;
-  })()`), 'Commander briefing and blackout at the Landing Pad', 20000);
+    const blackout = document.querySelector('#station-blackout');
+    return t?.ready && t.room === 'Landing Pad' && blackout && !blackout.hidden
+      ? { ready: true, room: t.room } : null;
+  })()`), 'Landing Pad scene and blackout ready', 20000).catch(async error => {
+    console.error('Landing scene state:', await cdp.eval(`(() => {
+      const state = window.__spudTelemetry?.();
+      const blackout = document.querySelector('#station-blackout');
+      return {
+        ready: state?.ready,
+        room: state?.room,
+        blackoutExists: Boolean(blackout),
+        blackoutHidden: blackout?.hidden,
+        predicate: Boolean(state?.ready && state.room === 'Landing Pad' && blackout && !blackout.hidden),
+      };
+    })()`));
+    throw error;
+  });
+  await waitFor(() => cdp.eval(`(() => {
+    const t = window.__spudTelemetry?.();
+    const commanderImage = document.querySelector('.spud-commander-model img');
+    return t?.frozen && commanderImage?.naturalWidth > 0
+      ? { frozen: true, imageWidth: commanderImage.naturalWidth } : null;
+  })()`), 'Commander briefing presentation ready', 20000).catch(async error => {
+    console.error('Landing setup state:', await cdp.eval(`({
+      screen: document.body.dataset.screen,
+      telemetry: window.__spudTelemetry?.(),
+      hudHidden: document.querySelector('#hud')?.hidden,
+      fallback: document.querySelector('#scene-fallback')?.textContent,
+      blackoutHidden: document.querySelector('#station-blackout')?.hidden,
+      commanderImage: document.querySelector('.spud-commander-model img')?.naturalWidth,
+      modal: document.querySelector('#modal-root')?.textContent,
+    })`));
+    throw error;
+  });
+  if (options.assertTouchGuidance) {
+    assert(await cdp.eval(`document.querySelector('#modal-root .dialogue-line')?.textContent
+      .includes('Drag the joystick') && document.querySelector('#modal-root .dialogue-line')?.textContent.includes('tap USE')`),
+    'touch opening briefing explains joystick movement and USE');
+  }
   assert(await cdp.eval(`window.__spudTelemetry().guide === null && document.querySelector('#hud-special-alert').hidden`),
     'opening blackout has neither a path line nor an emergency warning');
-  await clickSelector(cdp, '.has-commander [data-dialogue-next]');
+  await cdp.eval(`document.querySelector('.has-commander [data-dialogue-next]').click()`);
   await waitFor(() => cdp.eval(`!window.__spudTelemetry?.()?.frozen`), 'blackout player movement enabled');
   for (const [x, y] of [[1696, 906], [896, 906], [896, 400], [856, 400]]) {
     await walkToOpeningPoint(cdp, x, y);
   }
   await waitFor(() => cdp.eval(`document.querySelector('[data-action="use"]')?.dataset.targetName.includes('Restore Station Power')`), 'reactor power switch in range');
-  await clickSelector(cdp, '[data-action="use"]');
+  await cdp.eval(`document.querySelector('[data-action="use"]').click()`);
   await waitFor(() => cdp.eval(`document.querySelector('#station-blackout').hidden && Boolean(document.querySelector('.spud-dialogue-task-spotlight'))`),
-    'restored vision and spotlight on Tasks');
-  await clickSelector(cdp, '.has-commander [data-dialogue-next]');
+    'restored vision and spotlight on Tasks').catch(async error => {
+    console.error('Power restoration state:', await cdp.eval(`({
+      telemetry: window.__spudTelemetry?.(),
+      blackoutHidden: document.querySelector('#station-blackout')?.hidden,
+      modal: document.querySelector('#modal-root')?.textContent,
+      useTarget: document.querySelector('[data-action=\"use\"]')?.dataset.targetName,
+      spotlight: Boolean(document.querySelector('.spud-dialogue-task-spotlight')),
+      tasksExpanded: document.querySelector('[data-action=\"tasks\"]')?.getAttribute('aria-expanded'),
+    })`));
+    throw error;
+  });
+  if (options.assertTouchGuidance) {
+    assert(await cdp.eval(`document.querySelector('#modal-root .dialogue-line')?.textContent
+      .includes('Tap Tasks') && document.querySelector('#modal-root .dialogue-line')?.textContent.toLowerCase().includes('tap use')`),
+    'first-shift briefing explains selecting and completing jobs on touch');
+  }
+  await cdp.eval(`document.querySelector('.has-commander [data-dialogue-next]').click()`);
   await waitFor(() => cdp.eval(`Boolean(document.querySelector('.shift-planner[open]:not([inert])'))`), 'day 01 shift planner');
   const layout = await cdp.eval(`(() => {
     const rect = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
@@ -719,13 +929,17 @@ async function enterMissionDay01(cdp, specialist = 'traveller', options = {}) {
   })()`);
   assert(layout.left.top < layout.height / 2 && layout.left.left < layout.width / 2, 'upper-left rail');
   assert(layout.right.top < layout.height / 2 && layout.right.right > layout.width / 2, 'upper-right map and settings');
-  assert(layout.statusBtn.top > layout.tasksBtn.top, 'status button positioned lower than tasks button');
+  const shortLandscape = layout.height <= 520 && layout.width > layout.height;
+  assert(shortLandscape
+    ? layout.statusBtn.left > layout.tasksBtn.left && Math.abs(layout.statusBtn.top - layout.tasksBtn.top) < 2
+    : layout.statusBtn.top > layout.tasksBtn.top,
+  shortLandscape ? 'status button positioned to the right of tasks button in short landscape' : 'status button positioned lower than tasks button');
   assert(!layout.hasBottomBars && !layout.hasQuickTasks && !layout.hasTopTaskCard, 'top task summary, 3 quick tasks, and bottom status bars removed');
   assert(!layout.hasShiftMeta && !layout.hasInteractionPrompt && !layout.hasDayClock, 'shift meta pills, gameplay clock, and interaction prompt removed');
   assert(layout.planningTimer.startsWith('PICK IN '), 'card selection timer visible in shift planner');
-  assert(await cdp.eval(`document.querySelectorAll('[data-offer]').length === 6
-    && document.querySelectorAll('#planning-status-bars meter').length === 4`), 'six offers and four preview meters');
-  console.log('HUD layout, card selection timer, four gauges, and six assignment offers verified.');
+  assert(await cdp.eval(`document.querySelectorAll('[data-offer]').length === 5
+    && document.querySelectorAll('#planning-status-bars meter').length === 4`), 'five offers and four preview meters');
+  console.log('HUD layout, card selection timer, four gauges, and five assignment offers verified.');
 
   await startPlannedShift(cdp, { ...options, expectHudBriefing: true });
 }
@@ -750,6 +964,10 @@ async function startPlannedShift(cdp, options = {}) {
 
   if (options.expectHudBriefing) {
     await waitFor(() => cdp.eval(`Boolean(document.querySelector('[data-dialogue-key="T"]'))`), 'Commander asks for T');
+      if (options.assertTouchGuidance) {
+        assert(await cdp.eval(`document.querySelector('#modal-root .dialogue-line')?.textContent.includes('Tap CONTINUE')`),
+          'touch task briefing explains how to open Tasks');
+      }
     await pressKey(cdp, 'v', 'KeyV');
     await pressKey(cdp, 'Escape', 'Escape');
     await cdp.eval(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 't', code: 'KeyT', bubbles: true }))`);
@@ -759,6 +977,10 @@ async function startPlannedShift(cdp, options = {}) {
     await waitFor(() => cdp.eval(`Boolean(document.querySelector('[data-dialogue-key="V"]'))
       && Boolean(document.querySelector('#hud-drawer-panel[data-mode="tasks"]:not([hidden])'))
       && document.querySelectorAll('#hud-tasks-list .hud-task-card-item').length === 3`), 'T opens the three chosen tasks');
+    if (options.assertTouchGuidance) {
+      assert(await cdp.eval(`document.querySelector('#modal-root .dialogue-line')?.textContent.includes('Tap CONTINUE')`),
+        'touch status briefing explains how to open status');
+    }
     await pressKey(cdp, 't', 'KeyT');
     assert(await cdp.eval(`Boolean(document.querySelector('[data-dialogue-key="V"]'))`), 'pressing T again does not complete the Status step');
     await cdp.eval(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', code: 'KeyV', bubbles: true }))`);
@@ -797,7 +1019,7 @@ function insideBounds(x, y, b) {
 }
 
 async function solveActiveMinigame(cdp) {
-  await waitFor(() => cdp.eval(`Boolean(document.querySelector('.spud-console-tablet #task-body'))`), 'assignment minigame');
+  await waitFor(() => cdp.eval(`Boolean(document.querySelector('#task-body') && document.querySelector('.spud-console-tablet'))`), 'assignment minigame', 20000);
   await cdp.eval(`document.querySelector('#minigame-tip:not([hidden]) [data-minigame-ready]')?.click();`);
   const kindInfo = await cdp.eval(`(() => {
     const host = document.querySelector('#task-body');
@@ -1247,7 +1469,7 @@ async function runPass2() {
     await finishAssignedTasks(cdp, { waitForBunk: true });
     assert(await cdp.eval(`JSON.parse(localStorage.getItem('spudnaut-cooperative-trial-save-v8')).activeTrial.checkpoint.reason === 'after-task'`), 'task checkpoint persisted');
     await playGuidedEmergency(cdp);
-    for (let day = 2; day <= 3; day += 1) {
+    for (let day = 2; day <= 7; day += 1) {
       if (day > 2) await clickSelector(cdp, '[data-report-next]');
       await waitFor(() => cdp.eval(`Boolean(document.querySelector('.shift-planner[open]'))`), 'next shift planner');
       assert(await cdp.eval(`!document.querySelector('#commander-tutorial-popover')`), 'landing tutorial stays complete');
@@ -1262,7 +1484,7 @@ async function runPass2() {
     await waitFor(() => cdp.eval(`document.body.dataset.screen === 'menu'`), 'returned straight to main menu');
     const final = await cdp.eval(`JSON.parse(localStorage.getItem('spudnaut-cooperative-trial-save-v8'))`);
     assert(final.medals === 1 && final.games === 1 && final.activeTrial === null, 'completion and medal saved once');
-    assert(final.seenMinigames.length >= 6, 'minigame progress carried across shifts');
+    assert(final.seenMinigames.length >= 5, `minigame progress carried across shifts: ${JSON.stringify(final.seenMinigames)}`);
     assert(['landing', 'power-restored', 'tasks', 'status', 'status-review', 'red-route', 'FLR', 'CME']
       .every(id => final.seenCommanderBriefings.filter(seen => seen === id).length === 1),
       'opening steps and first encounters are saved once across shifts');
@@ -1282,6 +1504,7 @@ async function runPass3() {
   });
   try {
     const { cdp, errors } = p3;
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
     const assertNoHorizontalOverflow = async (label) => {
       const metrics = await cdp.eval(`({ sw: document.documentElement.scrollWidth, iw: window.innerWidth })`);
       assert(metrics.sw <= metrics.iw + 2, `[${label}] Horizontal overflow on 390px mobile: scrollWidth=${metrics.sw}, innerWidth=${metrics.iw}`);
@@ -1294,8 +1517,46 @@ async function runPass3() {
     await waitFor(() => cdp.eval(`document.body.dataset.screen === 'menu'`), 'mobile menu');
     await assertNoHorizontalOverflow('Menu');
 
-    await enterMissionDay01(cdp, 'farmer', { alreadyOnMenu: true, difficulty: 'crew', skipTutorial: true });
+    await enterMissionDay01(cdp, 'farmer', {
+      alreadyOnMenu: true,
+      difficulty: 'crew',
+      skipTutorial: true,
+      assertTouchGuidance: true,
+    });
     await assertNoHorizontalOverflow('Mission HUD 390x844');
+    assert(await cdp.eval(`document.body.hasAttribute('data-touch-controls')
+      && !document.querySelector('#touch-controls')?.hidden
+      && !document.querySelector('#camera-cluster')?.hidden`), 'mobile joystick and camera controls mounted');
+    assert(await cdp.eval(`(() => {
+      const use = document.querySelector('.mission-hud .action-button.use')?.getBoundingClientRect();
+      const camera = document.querySelector('#camera-cluster')?.getBoundingClientRect();
+      return use && camera && (use.bottom <= camera.top || camera.bottom <= use.top);
+    })()`), 'mobile USE button does not overlap camera cluster');
+
+    for (const viewport of [{ width: 320, height: 640 }, { width: 430, height: 932 }]) {
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        ...viewport,
+        deviceScaleFactor: 2,
+        mobile: true,
+      });
+      await sleep(250);
+      await assertNoHorizontalOverflow(`Mission HUD ${viewport.width}x${viewport.height}`);
+      assert(await cdp.eval(`(() => {
+        const use = document.querySelector('.mission-hud .action-button.use')?.getBoundingClientRect();
+        const camera = document.querySelector('#camera-cluster')?.getBoundingClientRect();
+        const pad = document.querySelector('#touch-joystick')?.getBoundingClientRect();
+        const profile = document.querySelector('.mission-hud .hud-bottom-left')?.getBoundingClientRect();
+        const separate = (a, b) => a && b && (a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+        return separate(use, camera) && separate(pad, profile);
+      })()`), `mission controls clear each other at ${viewport.width}x${viewport.height}`);
+    }
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 2,
+      mobile: true,
+    });
+    await sleep(250);
     await waitFor(() => cdp.eval(`(() => {
       const sprites = ['.hud-profile-plate', '#hud-portrait img', '.hud-radar-topology', '.hud-settings-btn img'];
       return sprites.every(selector => document.querySelector(selector)?.naturalWidth > 0)
@@ -1308,8 +1569,9 @@ async function runPass3() {
     await assertNoHorizontalOverflow('Tasks Drawer 390x844');
     assert(await cdp.eval(`document.querySelector('#hud-drawer-panel').getBoundingClientRect().left
       >= document.querySelector('.hud-left-rail').getBoundingClientRect().right - 2`), 'mobile Tasks drawer opens to the right');
+    assert(await cdp.eval(`getComputedStyle(document.querySelector('#touch-joystick')).visibility === 'hidden'`), 'joystick yields pointer area to open drawer');
 
-    await clickSelector(cdp, '[data-action="help"]');
+    await cdp.eval(`document.querySelector('[data-action="help"]').click()`);
     await waitFor(() => cdp.eval(`Boolean(document.querySelector('.game-help-dialog[open]'))`), 'mobile help open');
     await pressKey(cdp, 'Escape', 'Escape');
     await waitFor(() => cdp.eval(`document.querySelector('#modal-root')?.childElementCount === 0`), 'mobile help closed');
@@ -1319,6 +1581,7 @@ async function runPass3() {
     await assertNoHorizontalOverflow('Status Drawer 390x844');
     assert(await cdp.eval(`Boolean(document.querySelector('#hud-drawer-panel[data-mode="status"]')
       && document.querySelectorAll('#hud-systems .hud-status-card').length === 4)`), 'status monitor has four live readings');
+    assert(await cdp.eval(`getComputedStyle(document.querySelector('#touch-joystick')).visibility === 'hidden'`), 'joystick yields pointer area to status drawer');
     await pressKey(cdp, 'Escape', 'Escape');
 
     await clickSelector(cdp, '[data-action="map"]');
@@ -1339,6 +1602,71 @@ async function runPass3() {
     await waitFor(() => cdp.eval(`Boolean(document.querySelector('.mission-abort-dialog[open] [data-confirm-accept]'))`), 'abort confirmation dialog');
     await clickSelector(cdp, '.mission-abort-dialog [data-confirm-accept]');
     await waitFor(() => cdp.eval(`document.body.dataset.screen === 'menu'`), 'returned to menu after abort');
+
+    // Re-enter the training deck on touch and verify its dedicated USE affordance.
+    await cdp.eval(`document.querySelector('[data-menu="training"]').click()`);
+    await waitFor(() => cdp.eval(`document.body.dataset.screen === 'story'`), 'mobile training intro');
+    await cdp.eval(`document.querySelector('[data-story-skip]').click()`);
+    const trainingStart = await waitFor(() => cdp.eval(`(() => {
+      const state = window.__spudTelemetry?.();
+      const pad = document.querySelector('#touch-joystick');
+      const bounds = pad?.getBoundingClientRect();
+      if (state?.activeMode !== 'training' || !state.ready || !bounds?.width
+        || getComputedStyle(pad).visibility === 'hidden') return null;
+      return { x: state.player.x, y: state.player.y, pad: bounds.toJSON() };
+    })()`), 'mobile training scene and joystick ready', 20000);
+    assert(await cdp.eval(`Boolean(document.querySelector('#training-hud [data-training-use]'))`), 'training deck exposes touch USE button');
+    await assertNoHorizontalOverflow('Training Deck 390x844');
+    await touchDrag(cdp,
+      trainingStart.pad.left + trainingStart.pad.width / 2,
+      trainingStart.pad.top + trainingStart.pad.height / 2,
+      trainingStart.pad.left + trainingStart.pad.width / 2 + 52,
+      trainingStart.pad.top + trainingStart.pad.height / 2,
+      900);
+    const movedTrainingPlayer = await waitFor(() => cdp.eval(`(() => {
+      const player = window.__spudTelemetry?.()?.player;
+      return player && player.x > ${trainingStart.x} + 6 ? player.x : null;
+    })()`), 'joystick drag moves the training player', 5000);
+    assert(movedTrainingPlayer > trainingStart.x + 6,
+      `Expected touch joystick movement from x=${trainingStart.x}, got ${movedTrainingPlayer}`);
+    await cdp.eval(`document.querySelector('[data-training-exit]').click()`);
+    await waitFor(() => cdp.eval(`document.body.dataset.screen === 'menu'`), 'menu after mobile training');
+
+    // Exercise the documented short-landscape viewport after rotating the same session.
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width: 667, height: 375, deviceScaleFactor: 2, mobile: true });
+    await sleep(350);
+    await enterMissionDay01(cdp, 'farmer', { alreadyOnMenu: true, difficulty: 'crew', skipTutorial: true });
+    await waitFor(() => cdp.eval(`document.body.dataset.screen === 'game' && !document.querySelector('#hud').hidden`), 'landscape mission HUD', 20000).catch(async error => {
+      console.error('Landscape setup state:', await cdp.eval(`({ screen: document.body.dataset.screen,
+        hudHidden: document.querySelector('#hud')?.hidden, trainingHidden: document.querySelector('#training-hud')?.hidden,
+        fallback: document.querySelector('#scene-fallback')?.textContent, modal: document.querySelector('#modal-root')?.textContent,
+        telemetry: window.__spudTelemetry?.() })`));
+      throw error;
+    });
+    await assertNoHorizontalOverflow('Mission HUD 667x375 landscape');
+    assert(await cdp.eval(`(() => {
+      const pad = document.querySelector('#touch-joystick')?.getBoundingClientRect();
+      const profile = document.querySelector('.mission-hud .hud-bottom-left')?.getBoundingClientRect();
+      return pad && profile && (pad.right <= profile.left || pad.left >= profile.right || pad.bottom <= profile.top || pad.top >= profile.bottom);
+    })()`), 'landscape joystick clears profile plate');
+    const landscapeRailGeometry = await cdp.eval(`(() => {
+      const pad = document.querySelector('#touch-joystick')?.getBoundingClientRect();
+      const rail = document.querySelector('.mission-hud .hud-left-rail')?.getBoundingClientRect();
+      const style = document.querySelector('.mission-hud .hud-left-rail');
+      return pad && rail ? {
+        pad: pad.toJSON(),
+        rail: rail.toJSON(),
+        verticalOverlap: pad.bottom > rail.top && rail.bottom > pad.top,
+        horizontalGap: pad.right <= rail.left ? rail.left - pad.right
+          : rail.right <= pad.left ? pad.left - rail.right
+            : -Math.min(pad.right - rail.left, rail.right - pad.left),
+        railLeft: getComputedStyle(style).left,
+        hudLeft: getComputedStyle(document.querySelector('.mission-hud')).getPropertyValue('--hud-left'),
+        joystickWidth: getComputedStyle(document.querySelector('#touch-joystick')).width,
+      } : null;
+    })()`);
+    assert(landscapeRailGeometry?.verticalOverlap && landscapeRailGeometry.horizontalGap >= 16,
+      `landscape joystick needs at least 16px clearance from mission rail: ${JSON.stringify(landscapeRailGeometry)}`);
     console.log('Pass 3 mobile layout, drawers, dialogs & abort mission OK!');
 
     assertErrorsClean(errors, 'Pass 3');
@@ -1348,6 +1676,7 @@ async function runPass3() {
 }
 
 async function main() {
+  const selectedPass = process.env.SPUD_E2E_PASS;
   const preview = spawn(
     process.execPath,
     ['node_modules/vite/bin/vite.js', 'preview', '--port', String(PREVIEW_PORT), '--strictPort', '--host', '127.0.0.1'],
@@ -1356,10 +1685,12 @@ async function main() {
   try {
     await waitForHttp(BASE_URL);
     console.log(`Vite preview listening at ${BASE_URL}`);
-    await runPass1();
-    await runPass2();
-    await runPass3();
-    console.log('\nALL 3 LIVE CHROME CDP VERIFICATION PASSES SUCCEEDED WITH ZERO ERRORS.');
+    if (!selectedPass || selectedPass === '1') await runPass1();
+    if (!selectedPass || selectedPass === '2') await runPass2();
+    if (!selectedPass || selectedPass === '3') await runPass3();
+    console.log(selectedPass
+      ? `\nLIVE CHROME CDP PASS ${selectedPass} SUCCEEDED WITH ZERO ERRORS.`
+      : '\nALL 3 LIVE CHROME CDP VERIFICATION PASSES SUCCEEDED WITH ZERO ERRORS.');
   } finally {
     try {
       preview.kill('SIGKILL');

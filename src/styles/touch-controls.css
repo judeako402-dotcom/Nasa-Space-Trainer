@@ -1,0 +1,181 @@
+/* --------------------------------------------------------------------------
+ * Touch controls (Phase 1)
+ *
+ * Virtual joystick for free walking plus the secondary camera cluster that
+ * replaces the desktop-only Shift / R / P keys. Both are mounted by
+ * `game/systems/TouchControls.ts` and only appear on coarse-pointer devices.
+ * ------------------------------------------------------------------------ */
+
+.touch-controls {
+  position: absolute;
+  inset: 0;
+  /* Above the canvas and the vignette, below the HUD (z-index 10). */
+  z-index: 9;
+  /* Only the joystick itself takes pointers, so bare floor taps keep reaching
+     the Phaser canvas for tap-to-walk. */
+  pointer-events: none;
+}
+
+.touch-controls[hidden] {
+  display: none;
+}
+
+.touch-joystick {
+  position: absolute;
+  left: max(16px, env(safe-area-inset-left));
+  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 148px);
+  width: clamp(112px, 30vmin, 148px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1px dashed rgba(140, 245, 237, 0.3);
+  background: radial-gradient(circle at 50% 50%, rgba(8, 14, 34, 0.36), rgba(8, 14, 34, 0.1) 72%, transparent);
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+}
+
+.touch-joystick-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 11%;
+  text-align: center;
+  font: 700 9px/1 var(--mono, ui-monospace, monospace);
+  letter-spacing: 0.16em;
+  color: rgba(140, 245, 237, 0.62);
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+
+.touch-joystick.is-active .touch-joystick-hint {
+  opacity: 0;
+}
+
+.touch-joystick-base {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 76%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: rgba(18, 28, 58, 0.55);
+  border: 2px solid rgba(140, 245, 237, 0.5);
+  box-shadow: 0 6px 18px rgba(3, 6, 18, 0.5);
+  opacity: 0;
+  transition: opacity 140ms ease;
+  pointer-events: none;
+}
+
+.touch-joystick.is-active .touch-joystick-base {
+  opacity: 1;
+}
+
+.touch-joystick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 46%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #b9fdf6, #4fd6cd 55%, #1b8f92);
+  box-shadow: 0 2px 8px rgba(2, 8, 18, 0.6);
+}
+
+/* The bottom-left profile plate grows taller as the viewport narrows, so lift
+   the joystick clear of it instead of letting them overlap. */
+@media (max-width: 740px) {
+  .touch-joystick {
+    bottom: calc(max(6px, env(safe-area-inset-bottom)) + 176px);
+    width: clamp(104px, 30vmin, 136px);
+  }
+}
+
+/* Short landscape phones: keep the pad inside thumb reach while clearing the
+   profile plate (bottom-left) and the mission panel rail (top-left). */
+@media (max-height: 520px) and (orientation: landscape) {
+  .touch-joystick {
+    bottom: calc(max(8px, env(safe-area-inset-bottom)) + 176px);
+    width: clamp(92px, 34vh, 116px);
+  }
+}
+
+@media (max-width: 640px) {
+  .camera-cluster { bottom: calc(max(8px, env(safe-area-inset-bottom)) + 126px); }
+}
+
+/* Toasts are centred by default, which lands them straight on top of the
+   joystick. On touch devices hug the right edge instead: that column stays
+   free of the pad at every orientation. */
+body[data-touch-controls] .mission-hud .toast {
+  left: auto;
+  right: max(12px, env(safe-area-inset-right));
+  max-width: min(62vw, 420px);
+  text-align: right;
+  transform: translateY(10px);
+}
+
+body[data-touch-controls] .mission-hud .toast.visible {
+  transform: translateY(0);
+}
+
+/* --------------------------------------------------------------------------
+ * Secondary camera cluster: Shift free-cam peek, R recenter, P demo tour.
+ * ------------------------------------------------------------------------ */
+
+.camera-cluster {
+  position: absolute;
+  right: max(var(--hud-edge, 16px), env(safe-area-inset-right));
+  bottom: calc(max(var(--hud-edge, 16px), env(safe-area-inset-bottom)) + 104px);
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.camera-cluster[hidden] {
+  display: none;
+}
+
+.camera-button {
+  min-width: 58px;
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 1px solid var(--hud-stroke, #8398bb);
+  border-radius: 8px;
+  background: var(--hud-glass, #202251f2);
+  color: var(--hud-ink, #f3f8ff);
+  font: 800 10px/1.1 system-ui, sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  box-shadow: 0 4px 12px rgba(4, 8, 24, 0.5);
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.camera-button.is-held {
+  border-color: var(--hud-ice, #8cf5ed);
+  background: rgba(43, 63, 122, 0.85);
+  color: var(--hud-ice, #8cf5ed);
+}
+
+.camera-button:active {
+  transform: translateY(1px);
+}
+
+/* --------------------------------------------------------------------------
+ * Gesture guards: the game canvas owns every drag so the page never scrolls
+ * or pinch-zooms underneath tap-to-walk and the joystick.
+ * ------------------------------------------------------------------------ */
+
+.game-canvas canvas {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}

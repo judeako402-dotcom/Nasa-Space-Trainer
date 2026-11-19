@@ -291,6 +291,7 @@ function renderSwipe(host: HTMLElement, complete: Complete, cleanups: Cleanups):
   let startTime = 0;
   let currentX = 0;
   let verifyTimer = 0;
+  let touchDrag = false;
 
   const maxX = (): number => Math.max(1, track.clientWidth - card.clientWidth - 14);
   const resetDrag = (): void => {
@@ -301,6 +302,7 @@ function renderSwipe(host: HTMLElement, complete: Complete, cleanups: Cleanups):
   card.addEventListener('pointerdown', (event) => {
     if (activePointer !== null || event.button !== 0 || verifyTimer) return;
     activePointer = event.pointerId;
+    touchDrag = event.pointerType !== 'mouse';
     startX = event.clientX;
     startTime = performance.now();
     card.setPointerCapture(event.pointerId);
@@ -314,14 +316,18 @@ function renderSwipe(host: HTMLElement, complete: Complete, cleanups: Cleanups):
     if (activePointer !== event.pointerId) return;
     activePointer = null;
     const distance = currentX / maxX();
-    if (event.type === 'pointerup' && distance > 0.88) {
+    if (event.type === 'pointerup' && distance > (touchDrag ? 0.8 : 0.88)) {
       const speed = distance / Math.max(0.05, (performance.now() - startTime) / 1000);
-      if (speed > 0.32 && speed < 3.4) {
+      // Thumbs move more deliberately than a mouse, so relax both ends of the
+      // timing window instead of rejecting a careful drag as "TOO SLOW".
+      const minSpeed = touchDrag ? 0.16 : 0.32;
+      const maxSpeed = touchDrag ? 6 : 3.4;
+      if (speed > minSpeed && speed < maxSpeed) {
         status.textContent = 'SEAL VERIFIED';
         complete();
         return;
       }
-      status.textContent = speed <= 0.32 ? 'TOO SLOW — TRY AGAIN' : 'TOO FAST — TRY AGAIN';
+      status.textContent = speed <= minSpeed ? 'TOO SLOW — TRY AGAIN' : 'TOO FAST — TRY AGAIN';
     }
     resetDrag();
   };
@@ -440,6 +446,12 @@ function renderCalibrate(
   button.textContent = 'CALIBRATE';
   host.append(button);
   const status = statusLine(host, '0 / 3 LOCKED');
+  // Thumbs need a slightly bigger target than a mouse cursor on a 1.55 s sweep.
+  const coarsePointer = typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(pointer: coarse)').matches;
+  const hitLow = coarsePointer ? 0.34 : 0.39;
+  const hitHigh = coarsePointer ? 0.66 : 0.61;
   let pos = 0;
   let hits = 0;
   let raf = 0;
@@ -456,7 +468,7 @@ function renderCalibrate(
   };
   raf = requestAnimationFrame(tick);
   button.addEventListener('click', () => {
-    if (pos > 0.39 && pos < 0.61) {
+    if (pos > hitLow && pos < hitHigh) {
       if (lastHitPass === pass) return;
       lastHitPass = pass;
       hits += 1;
@@ -572,6 +584,7 @@ function renderHold(
   let holding = false;
   let start = 0;
   let raf = 0;
+  let capturedPointer: number | null = null;
   const tick = (): void => {
     if (!holding) return;
     const progress = Math.min(100, ((performance.now() - start) / duration) * 100);
@@ -599,11 +612,29 @@ function renderHold(
     status.textContent = 'RELEASED — HOLD UNTIL COMPLETE';
   };
   button.addEventListener('pointerdown', (event) => {
-    if (event.isPrimary && event.button === 0) beginHold();
+    if (!event.isPrimary || event.button !== 0) return;
+    // Capture the pointer so a finger that drifts off the button keeps holding.
+    // Releasing on `pointerleave` used to cancel the purge halfway through.
+    capturedPointer = event.pointerId;
+    try {
+      button.setPointerCapture(event.pointerId);
+    } catch {
+      // Capture is an optimisation; the fallback listeners still cover us.
+    }
+    beginHold();
   });
-  button.addEventListener('pointerup', release);
-  button.addEventListener('pointerleave', release);
-  button.addEventListener('pointercancel', release);
+  const endHold = (event?: PointerEvent): void => {
+    if (event && capturedPointer !== null && event.pointerId !== capturedPointer) return;
+    capturedPointer = null;
+    release();
+  };
+  button.addEventListener('pointerup', endHold);
+  button.addEventListener('pointercancel', endHold);
+  button.addEventListener('lostpointercapture', endHold);
+  button.addEventListener('pointerleave', (event) => {
+    if (button.hasPointerCapture(event.pointerId)) return;
+    endHold(event);
+  });
   button.addEventListener('keydown', (event) => {
     if (event.key !== ' ' && event.key !== 'Enter') return;
     event.preventDefault();
@@ -614,9 +645,10 @@ function renderHold(
     event.preventDefault();
     release();
   });
-  button.addEventListener('blur', release);
+  button.addEventListener('blur', () => endHold());
   cleanups.push(() => {
     holding = false;
+    capturedPointer = null;
     cancelAnimationFrame(raf);
   });
 }

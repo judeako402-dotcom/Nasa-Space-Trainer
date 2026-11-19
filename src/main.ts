@@ -1,5 +1,6 @@
 import './styles/index.css';
 import { startMusic } from './audio/music';
+import { mountPwaController } from './app/pwa';
 import { registerRoutes } from './app/router';
 import {
   applyOptions, configureScene, dom, interactActiveStation, isMissionActive,
@@ -8,6 +9,7 @@ import {
   showToast, talkToCrew, walkStationTo,
 } from './app/session';
 import type { GameEvent } from './game';
+import { touchControls } from './game/systems/TouchControls';
 import { REACTOR_POWER_SWITCH } from './data/missionOpening';
 import {
   setHudDrawer, syncEvaHazardState, syncHelmetButton, syncHudRoomText,
@@ -242,6 +244,56 @@ function onGameEvent(event: GameEvent): void {
   }
 }
 
+/**
+ * Touch equivalents for the desktop-only camera keys: `Shift` free-cam peek,
+ * `R` recenter and `P` demo tour. The buttons live inside the mission HUD so
+ * they vanish automatically while the training deck owns the scene shell, and
+ * they are only mounted on touch devices by `touchControls.mount()`.
+ */
+function wireCameraCluster(): void {
+  const peekButton = document.querySelector<HTMLButtonElement>('[data-action="cam-peek"]');
+  if (!peekButton) return;
+  let peekPointer: number | null = null;
+
+  const endPeek = (event?: PointerEvent): void => {
+    if (event && peekPointer !== null && event.pointerId !== peekPointer) return;
+    peekPointer = null;
+    touchControls.setPeek(false);
+    peekButton.classList.remove('is-held');
+  };
+
+  peekButton.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    peekPointer = event.pointerId;
+    try {
+      peekButton.setPointerCapture(event.pointerId);
+    } catch {
+      // Capture is an optimisation; the release handlers still fire normally.
+    }
+    touchControls.setPeek(true);
+    peekButton.classList.add('is-held');
+  });
+  peekButton.addEventListener('pointerup', endPeek);
+  peekButton.addEventListener('pointercancel', endPeek);
+  peekButton.addEventListener('lostpointercapture', endPeek);
+  peekButton.addEventListener('pointerleave', (event) => {
+    if (peekButton.hasPointerCapture(event.pointerId)) return;
+    endPeek(event);
+  });
+  peekButton.addEventListener('blur', () => endPeek());
+
+  const queueWhenPlaying = (action: 'snapCamera' | 'demoPan'): void => {
+    if (!isMissionActive() || session.mission.modalOpen || session.rewinding) return;
+    sfx.click();
+    touchControls.queueAction(action);
+  };
+  document.querySelector('[data-action="cam-snap"]')
+    ?.addEventListener('click', () => queueWhenPlaying('snapCamera'));
+  document.querySelector('[data-action="cam-tour"]')
+    ?.addEventListener('click', () => queueWhenPlaying('demoPan'));
+}
+
 function wireControls(): void {
   const { screenRoot, modalRoot } = dom();
 
@@ -403,6 +455,8 @@ function wireControls(): void {
     else interactActiveStation();
   });
 
+  wireCameraCluster();
+
   const unlockAudio = (): void => {
     if (session.currentScreen === 'splash'
       || session.currentScreen === 'play-intro'
@@ -421,6 +475,8 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
 }
 
 mountAppFrame();
+mountPwaController();
+touchControls.mount(document.querySelector<HTMLElement>('#touch-controls'));
 setGameEventHandler(onGameEvent);
 applyOptions();
 wireControls();

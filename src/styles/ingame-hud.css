@@ -410,6 +410,97 @@
   transform-origin: left top;
   animation: hudExpandRight 170ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
+
+/* Keep the mission controls inside the usable phone viewport. The compact
+   portrait rail and map otherwise compete for the same top-right corner. */
+@media (max-width: 640px) {
+  .mission-hud {
+    --hud-left: max(8px, env(safe-area-inset-left));
+    --hud-top: max(8px, env(safe-area-inset-top));
+    --hud-bottom: max(8px, env(safe-area-inset-bottom));
+    --hud-rail-width: 52px;
+  }
+
+  .mission-hud .hud-top-left {
+    top: var(--hud-top);
+    left: var(--hud-left);
+    width: min(54vw, 250px);
+    max-width: calc(100vw - 150px - var(--hud-left));
+  }
+
+  .mission-hud .hud-top-right {
+    top: var(--hud-top);
+    right: max(8px, env(safe-area-inset-right));
+    max-width: 34vw;
+  }
+
+  .mission-hud .hud-radar { width: clamp(68px, 20vw, 96px); }
+  .mission-hud .hud-left-rail {
+    position: absolute;
+    left: var(--hud-left);
+    top: calc(var(--hud-top) + 112px);
+    gap: 6px;
+  }
+
+  .mission-hud .hud-drawer-tab { min-height: 48px; padding: 5px 3px; }
+  .mission-hud .hud-drawer-panel {
+    left: calc(var(--hud-left) + var(--hud-rail-width) + 8px);
+    top: calc(var(--hud-top) + 108px);
+    width: min(360px, calc(100vw - var(--hud-left) - var(--hud-rail-width) - 20px));
+    max-height: calc(100dvh - var(--hud-top) - var(--hud-bottom) - 120px);
+    overscroll-behavior: contain;
+  }
+}
+
+@media (max-width: 640px) and (orientation: landscape) {
+  .mission-hud .hud-top-left { max-width: 36vw; }
+  .mission-hud .hud-top-right { flex-direction: row; align-items: flex-start; max-width: none; }
+  .mission-hud .hud-left-rail { left: 136px; top: calc(var(--hud-top) + 82px); flex-direction: row; width: auto; }
+  .mission-hud .hud-drawer-panel {
+    left: var(--hud-left);
+    top: calc(var(--hud-top) + 82px);
+    width: min(420px, 58vw);
+    max-height: calc(100dvh - var(--hud-top) - var(--hud-bottom) - 90px);
+  }
+}
+
+@media (max-height: 520px) and (orientation: landscape) {
+  .mission-hud .hud-left-rail {
+    position: absolute;
+    left: calc(max(16px, env(safe-area-inset-left)) + clamp(92px, 34vh, 116px) + 16px - var(--hud-left));
+    top: calc(var(--hud-top) + 82px);
+    flex-direction: row;
+    width: auto;
+  }
+}
+
+@media (max-height: 460px) {
+  .mission-hud .hud-drawer-panel { max-height: calc(100dvh - var(--hud-top) - var(--hud-bottom) - 12px); }
+}
+
+/* Briefings stay above the lower touch controls and scroll when the viewport
+   is shorter than the dialogue content. */
+@media (max-width: 640px) {
+  .modal-shade.spud-dialogue-backdrop:is(.is-guide-briefing, [data-dialogue-key]) {
+    padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  }
+
+  .spud-dialogue-arcade {
+    width: min(100%, 620px);
+    max-height: calc(100dvh - 20px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .spud-dialogue-arcade.has-commander { padding-left: clamp(76px, 22vw, 120px); }
+  .spud-commander-model { width: clamp(58px, 18vw, 92px); }
+}
+
+@media (max-height: 460px) and (orientation: landscape) {
+  .modal-shade.spud-dialogue-backdrop:is(.is-guide-briefing, [data-dialogue-key]) { place-items: center; }
+  .spud-dialogue-arcade.has-commander { padding-left: 88px; }
+  .spud-commander-model { width: 64px; }
+}
 @media (prefers-reduced-motion: reduce) {
   .mission-hud .hud-drawer-panel { animation: none; }
 }
@@ -669,9 +760,15 @@ dialog.game-menu-dialog.station-map-dialog {
   text-shadow: none;
 }
 
-@media (max-width: 960px) {
+@media (min-width: 641px) and (max-width: 960px) {
   .mission-hud { --hud-bottom: calc(max(6px, env(safe-area-inset-bottom)) + 61px); }
 }
+
+body[data-touch-controls] .mission-hud .toast { bottom: max(280px, calc(env(safe-area-inset-bottom) + 270px)); }
+
+body[data-touch-controls] .mission-hud:has(.hud-drawer-panel:not([hidden])) ~ #touch-controls #touch-joystick,
+body[data-touch-controls] #touch-controls:has(~ .mission-hud .hud-drawer-panel:not([hidden])) #touch-joystick,
+body[data-touch-controls]:has(.modal-shade:not([hidden])) #touch-joystick { visibility: hidden; pointer-events: none; }
 
 @media (max-width: 740px) {
   .mission-hud .hud-bottom-left { width: clamp(176px, 49vw, 260px); }

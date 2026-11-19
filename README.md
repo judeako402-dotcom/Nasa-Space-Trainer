@@ -16,6 +16,18 @@ npm run build     # type-check and create dist/
 npm run preview   # serve the production build
 ```
 
+## Android debug APK (Capacitor)
+
+The Android app wraps the existing Vite/Phaser game; it does not change the game loop or add a native offline mode. NASA data and other network-backed features still require a connection. Browser-only PWA install/update prompts and service-worker registration are disabled inside the native app.
+
+Requirements: Node.js 22+, Android Studio with the Android SDK, and JDK 17 or newer.
+
+```sh
+npm run android:apk
+```
+
+This builds the web app, syncs it into the Capacitor Android project, and assembles a debug APK at `android/app/build/outputs/apk/debug/app-debug.apk`. Open the project in Android Studio with `npm run android:open`. Regenerate the Android launcher/splash assets from `resources/icon.png` with `npm run android:assets`. The package ID is `com.spudnaut.greatstarchmigration`; choose the final ID before distributing because installed app updates must keep the same ID.
+
 ## Trial flow
 
 1. Select a callsign, suit color, specialist, and difficulty. Cadet lasts three shifts, Crew lasts five, and Veteran lasts seven.
@@ -29,12 +41,17 @@ npm run preview   # serve the production build
 | --- | --- |
 | WASD / arrow keys | Move |
 | Click or tap | Walk to a station or destination |
+| Virtual joystick (touch devices) | Drag to move |
 | E | Use a nearby assignment |
+| Training USE button | Use the highlighted training console |
 | M | Open the station map |
 | T | Open today's assignment list |
 | H | Open controls and help |
 | O | Open in-game settings |
 | Esc | Close a task or panel |
+| PEEK / RECENTER / TOUR (touch devices) | Adjust the mission camera |
+
+On touch devices, tap the station floor to walk to a point, or tap a task to follow its route. Choose **INSTALL APP** from the main menu to install when the browser supports it; on iPhone or iPad, use Safari's **Share → Add to Home Screen** option. Visit the game online once before trying an offline cold start. The app shell and small static assets are cached, but large media may still require a network connection.
 
 ## Space weather and EVA
 

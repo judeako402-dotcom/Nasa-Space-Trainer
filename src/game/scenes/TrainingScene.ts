@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
-import { CAMERA, MOVEMENT } from '../../data/balance';
+import { CAMERA, cameraZoomForViewport, MOVEMENT } from '../../data/balance';
 import type { MapDefinition, PropDef } from '../../data/mapTypes';
 import { TRAINING_DECK } from '../../data/trainingDeck';
 import { MapGeometry } from '../../sim/navigation';
 import { createPlayerState, lerp, stepPlayer, type InputSnapshot, type PlayerState } from '../../sim/movement';
+import { touchControls } from '../systems/TouchControls';
 import {
   applyResolvedSpriteVisual,
   getSpriteDisplaySize,
@@ -86,8 +87,12 @@ export class TrainingScene extends Phaser.Scene implements StationControllableSc
   create(): void {
     registerCharacterAnimations(this);
 
-    this.cameras.main.setZoom(CAMERA.zoom);
+    this.cameras.main.setZoom(cameraZoomForViewport(this.cameras.main.width));
     this.cameras.main.setBackgroundColor('#03060c');
+
+    // Re-fit the camera when the viewport changes (rotation, foldable, split
+    // view) so portrait phones keep the wider adaptive framing.
+    this.scale.on('resize', this.applyAdaptiveZoom, this);
 
     this.keys = this.input.keyboard?.addKeys(
       'W,A,S,D,UP,DOWN,LEFT,RIGHT',
@@ -99,8 +104,18 @@ export class TrainingScene extends Phaser.Scene implements StationControllableSc
       this.tryInteract();
     });
 
+    // Tap / click the deck to walk. `#touch-controls` and the HUD sit above the
+    // canvas, so only bare floor taps ever reach this handler.
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (!this.ready || this.state.frozen || this.transitionActive) return;
+      if (pointer.button !== 0) return;
+      const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+      this.navigateTo(world.x, world.y);
+    });
+
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.ready = false;
+      this.scale.off('resize', this.applyAdaptiveZoom, this);
       this.input.keyboard?.removeAllListeners();
       this.input.removeAllListeners();
       this.teardown();
@@ -137,10 +152,24 @@ export class TrainingScene extends Phaser.Scene implements StationControllableSc
     this.syncPlayerAnimation();
   }
 
-  navigateTo(_x: number, _y: number): boolean {
-    this.sim.route = [];
+  /**
+   * Tap-to-walk on the training deck. Uses the same `MapGeometry` BFS the
+   * mission uses, then hands the waypoints to `stepPlayer` through `sim.route`
+   * so the autopilot follows corridors instead of walking through walls.
+   */
+  navigateTo(x: number, y: number): boolean {
+    if (!this.ready || !this.geometry || this.state.frozen) return false;
+    const path = this.geometry.findPath({ x: this.sim.x, y: this.sim.y }, { x, y });
+    if (path.length === 0) {
+      // Standing on the destination already counts as a successful route.
+      if (Math.hypot(this.sim.x - x, this.sim.y - y) > 24) return false;
+      this.sim.route = [];
+      this.sim.routeIndex = 0;
+      return true;
+    }
+    this.sim.route = path;
     this.sim.routeIndex = 0;
-    return false;
+    return true;
   }
 
   interactNow(): void {
@@ -276,12 +305,24 @@ export class TrainingScene extends Phaser.Scene implements StationControllableSc
   private readInput(): InputSnapshot {
     const keys = this.keys;
     const tag = document.activeElement?.tagName;
-    if (!keys || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
       return { axisX: 0, axisY: 0, moveRequest: null };
     }
-    const axisX = Number(keys.D?.isDown || keys.RIGHT?.isDown) - Number(keys.A?.isDown || keys.LEFT?.isDown);
-    const axisY = Number(keys.S?.isDown || keys.DOWN?.isDown) - Number(keys.W?.isDown || keys.UP?.isDown);
-    return { axisX, axisY, moveRequest: null };
+    const axisX = keys
+      ? Number(keys.D?.isDown || keys.RIGHT?.isDown) - Number(keys.A?.isDown || keys.LEFT?.isDown)
+      : 0;
+    const axisY = keys
+      ? Number(keys.S?.isDown || keys.DOWN?.isDown) - Number(keys.W?.isDown || keys.UP?.isDown)
+      : 0;
+    // Keyboard wins outright when held so desktop behaviour never changes.
+    if (axisX !== 0 || axisY !== 0) return { axisX, axisY, moveRequest: null };
+    const touch = touchControls.getVector();
+    return { axisX: touch.x, axisY: touch.y, moveRequest: null };
+  }
+
+  /** Keep the adaptive framing in sync with viewport size changes. */
+  private applyAdaptiveZoom(): void {
+    this.cameras.main.setZoom(cameraZoomForViewport(this.cameras.main.width));
   }
 
   private updateCamera(x: number, y: number, delta: number): void {
@@ -292,7 +333,7 @@ export class TrainingScene extends Phaser.Scene implements StationControllableSc
     if (y < this.camTargetY - deadY) this.camTargetY = y + deadY;
     else if (y > this.camTargetY + deadY) this.camTargetY = y - deadY;
 
-    const zoom = CAMERA.zoom;
+    const zoom = this.cameras.main.zoom;
     const halfW = this.cameras.main.width / (2 * zoom);
     const halfH = this.cameras.main.height / (2 * zoom);
     const maxX = Math.max(0, this.map.width - halfW * 2);
@@ -402,7 +443,7 @@ export class TrainingScene extends Phaser.Scene implements StationControllableSc
   private buildMap(): void {
     this.teardown();
     this.cameras.main.setBackgroundColor('#03060c');
-    this.cameras.main.setZoom(CAMERA.zoom);
+    this.cameras.main.setZoom(cameraZoomForViewport(this.cameras.main.width));
 
     this.geometry = new MapGeometry(this.map, MOVEMENT.bodyHalfWidth, MOVEMENT.bodyHalfHeight, 25);
     this.mapLayer = this.add.container(0, 0).setDepth(0);
